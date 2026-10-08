@@ -117,6 +117,7 @@
           <li>🍕 <b>1 point</b> pr. pizzastykke</li>
           <li>📦 Hel pizza foran sofaen = <b>8 point</b></li>
           <li>🛋️ Kommer du for tæt på sofaen, prøver de voksne at <b>fange dig</b> – du har 3 liv</li>
+          <li>🍺 Snup øllen før de voksne! En voksen med øl er langsom, men <b>følger efter dig</b> resten af spillet</li>
           <li>🏐 Undgå boldene og pas på de blå måtter (de er tunge at løbe på)</li>
           <li>⏱ Du har <b>90 sekunder</b></li>
         </ul>
@@ -219,6 +220,15 @@ const SEAT_Y = 58;
 const SOFA_FRONT = 72; // sofaens forkant (y)
 const WHOLE_PIZZA_POS = { x: 320, y: 190 }; // lidt væk fra sofaen, mellem de to springkasser
 
+/* ---------- Øl til de voksne ---------- */
+// På faste tidspunkter dukker en øl op i voksenzonen, og den nærmeste voksne går hen og henter den.
+// En voksen med øl er langsommere, men følger efter barnet RESTEN af spillet – overalt i salen.
+// Barnet kan snuppe øllen først, så forsvinder den.
+const BEER_TIMES = [20, 45, 70];                 // sekunder inde i spillet
+const BEER_SPOTS = [{ x: 120, y: 120 }, { x: 520, y: 120 }, { x: 320, y: 265 }];
+const FETCH_SPEED = 150;                         // fart når en voksen går efter øllen
+const DRUNK_FACTOR = 0.6;                        // en voksen med øl går med 60 % af den normale jagt-fart
+
 /* =====================================================================
    Hjælpefunktioner
    ===================================================================== */
@@ -297,6 +307,7 @@ const Sound = {
   chomp()   { this.tone(520, 0.08, "square", 0.1, 260); this.tone(700, 0.06, "square", 0.08, 400, 0.07); },
   bigChomp(){ [0, 0.08, 0.16, 0.24].forEach((d, i) => this.tone(400 + i * 120, 0.1, "square", 0.1, null, d)); },
   hey()     { this.tone(300, 0.25, "sawtooth", 0.08, 500); },
+  burp()    { this.tone(110, 0.35, "sawtooth", 0.12, 70); },
   bonk()    { this.tone(180, 0.18, "triangle", 0.2, 80); },
   caught()  { this.tone(400, 0.5, "sawtooth", 0.12, 90); },
   whistle() { this.tone(2200, 0.12, "sine", 0.12); this.tone(2200, 0.35, "sine", 0.12, 2000, 0.16); },
@@ -315,11 +326,12 @@ function newGame() {
     t: 0,                         // spillet tid i sekunder (stiger KUN mens der spilles)
     score: 0, lives: START_LIVES,
     player: { x: START_POS.x, y: START_POS.y, r: PLAYER_R, stun: 0, inv: 0, kx: 0, ky: 0, fx: 0, fy: -1, moving: false, step: 0 },
-    adults: ADULT_DEFS.map((d, i) => ({ ...d, i, x: d.x, y: SEAT_Y, r: ADULT_R, mode: "sit", leaving: false, timer: 0, side: 0, sideT: 0, homeX: d.x })),
+    adults: ADULT_DEFS.map((d, i) => ({ ...d, i, x: d.x, y: SEAT_Y, r: ADULT_R, mode: "sit", leaving: false, beer: null, hik: 0, timer: 0, side: 0, sideT: 0, homeX: d.x })),
     slices: [], nextSpot: 0,
     whole: null, wholeIdx: 0,
+    beers: [], beerIdx: 0,
     floaters: [],
-    stats: { slices: 0, wholes: 0, combo: 0, bestCombo: 0, lastEat: -99, caught: 0, bonks: 0, dist: 0 },
+    stats: { slices: 0, wholes: 0, combo: 0, bestCombo: 0, lastEat: -99, caught: 0, bonks: 0, dist: 0, beersTaken: 0, drunk: 0 },
     endReason: "",
     lastTickSec: -1,
   };
@@ -483,6 +495,24 @@ function update(dt) {
     }
   }
 
+  // ---- Øl til de voksne ----
+  if (G.beerIdx < BEER_TIMES.length && t >= BEER_TIMES[G.beerIdx]) {
+    const spot = BEER_SPOTS[G.beerIdx % BEER_SPOTS.length];
+    G.beerIdx++;
+    G.beers.push({ x: spot.x, y: spot.y, fetcher: null });
+    addFloater(spot.x, spot.y - 30, "ØL! 🍺", "#ffd34d");
+  }
+  for (let i = G.beers.length - 1; i >= 0; i--) {
+    const b = G.beers[i];
+    if (Math.hypot(b.x - P.x, b.y - P.y) < P.r + 14) {      // barnet snupper øllen
+      G.beers.splice(i, 1);
+      G.stats.beersTaken++;
+      if (b.fetcher) { b.fetcher.mode = "return"; b.fetcher.beer = null; }
+      addFloater(P.x, P.y - 25, "Øl snuppet! 🚫🍺", "#7fe0ff");
+      Sound.chomp();
+    }
+  }
+
   // ---- De voksne ----
   updateAdults(dt);
 
@@ -518,6 +548,21 @@ function updateAdults(dt) {
   const inZone = P.y < DANGER_Y && P.inv <= 0;
   const active = G.adults.filter(a => a.mode === "wake" || a.mode === "chase").length;
 
+  // Ligger der en øl, som ingen henter, rejser den nærmeste ledige voksne sig og henter den
+  for (const b of G.beers) {
+    if (b.fetcher) continue;
+    let best = null, bd = 1e9;
+    for (const a of G.adults) {
+      if (a.mode !== "sit" && a.mode !== "return") continue;
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < bd) { bd = d; best = a; }
+    }
+    if (best) {
+      best.mode = "fetch"; best.beer = b; b.fetcher = best;
+      if (best.y < SOFA_FRONT + best.r) best.leaving = true;
+    }
+  }
+
   // Er barnet i voksenzonen, rejser den nærmeste (siddende/gående) voksne sig
   if (inZone && active < maxChasers) {
     let best = null, bd = 1e9;
@@ -538,6 +583,28 @@ function updateAdults(dt) {
       if (P.y > GIVEUP_Y || P.inv > 0) a.timer += dt; else a.timer = 0;
       if (a.timer > 1.0) { a.mode = "return"; continue; }
       moveToward(a, P.x, P.y, chaseSpeed * (onMat(a) ? MAT_SLOW : 1), dt);
+      const d = Math.hypot(a.x - P.x, a.y - P.y);
+      if (d < a.r + P.r - 2 && P.inv <= 0) caught(a);
+    } else if (a.mode === "fetch") {
+      // går hen og henter øllen
+      const b = a.beer;
+      if (!b || !G.beers.includes(b)) { a.mode = "return"; a.beer = null; continue; }
+      moveToward(a, b.x, b.y, FETCH_SPEED, dt);
+      if (Math.hypot(a.x - b.x, a.y - b.y) < a.r + 10) {
+        G.beers.splice(G.beers.indexOf(b), 1);
+        a.mode = "drunk"; a.beer = null; a.hik = 1.5; G.stats.drunk++;
+        addFloater(a.x, a.y - 40, `${a.name} fik en øl! 🍺`, "#ffd34d");
+        Sound.burp();
+      }
+    } else if (a.mode === "drunk") {
+      // Følger efter barnet resten af spillet – langsomt og vaklende (samme vaklen for alle)
+      if (a.timer > 0) { a.timer -= dt; continue; } // tager en tår efter at have fanget barnet
+      const dir = norm(P.x - a.x, P.y - a.y);
+      const far = clamp((Math.hypot(P.x - a.x, P.y - a.y) - 40) / 200, 0, 1); // vakler mindre tæt på
+      const wob = Math.sin(t * 2.6 + a.i * 1.7) * 70 * far;
+      moveToward(a, P.x - dir.y * wob, P.y + dir.x * wob, chaseSpeed * DRUNK_FACTOR * (onMat(a) ? MAT_SLOW : 1), dt);
+      a.hik -= dt;
+      if (a.hik <= 0) { a.hik = 3.2; addFloater(a.x, a.y - 45, "hik!", "#fff"); }
       const d = Math.hypot(a.x - P.x, a.y - P.y);
       if (d < a.r + P.r - 2 && P.inv <= 0) caught(a);
     } else if (a.mode === "return") {
@@ -585,9 +652,13 @@ function caught(a) {
   Sound.caught();
   addFloater(P.x, P.y - 30, `${a.name} fangede dig!`, "#ff5a4e");
   if (G.lives <= 0) { endGame(`${a.name} fangede dig!`); return; }
-  // tilbage til start, og alle voksne går tilbage til sofaen
+  // tilbage til start; de voksne der jagtede går tilbage til sofaen (dem med øl bliver ved med at følge efter)
   P.x = START_POS.x; P.y = START_POS.y; P.inv = 2; P.stun = 0;
-  for (const ad of G.adults) if (ad.mode !== "sit") { ad.mode = "return"; ad.timer = 0; }
+  for (const ad of G.adults) {
+    if (ad.mode === "wake" || ad.mode === "chase") { ad.mode = "return"; ad.timer = 0; }
+    // dem med øl står stille lidt længere end barnet er usårligt, så man kan nå at løbe væk
+    if (ad.mode === "drunk") { ad.timer = 3; addFloater(ad.x, ad.y - 45, "skål! 🍺", "#ffd34d"); }
+  }
 }
 
 /* =====================================================================
@@ -654,6 +725,7 @@ function draw(now) {
   // ---- Pizza ----
   for (const p of G.slices) drawSlice(p, now);
   if (G.whole) drawWhole(G.whole, now);
+  for (const b of G.beers) drawBeer(b.x, b.y, 1, now);
 
   // ---- Bolde ----
   for (const b of balls()) {
@@ -785,7 +857,7 @@ function drawPlayer(P, now) {
 function drawAdult(a, now) {
   const s = view.s, [x, y] = toS(a.x, a.y);
   const R = a.r * s;
-  const walking = a.mode === "chase" || a.mode === "return";
+  const walking = a.mode !== "sit" && a.mode !== "wake";
   const bounce = walking ? Math.abs(Math.sin(now / 90 + a.i)) * 3 * s : 0;
   if (walking) { ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.8, R, R * 0.4, 0, 0, Math.PI * 2); ctx.fill(); }
   // krop
@@ -803,7 +875,15 @@ function drawAdult(a, now) {
   circle(x, hy, R * 0.72, "#ffd9b3");
   ctx.beginPath(); ctx.arc(x, hy - R * 0.15, R * 0.74, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); fillStroke(a.hair, 2);
   ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = 2.5 * s;
-  if (a.mode === "sit" || a.mode === "return") {
+  if (a.mode === "drunk") {
+    // fuld: røde kinder, halvlukkede øjne, skævt smil og en øl i hånden
+    ctx.fillStyle = "rgba(232,69,44,.55)";
+    for (const ex of [-0.42, 0.42]) { ctx.beginPath(); ctx.arc(x + ex * R, hy + R * 0.32, R * 0.14, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = INK;
+    for (const ex of [-0.28, 0.28]) { ctx.beginPath(); ctx.arc(x + ex * R, hy + R * 0.1, R * 0.12, 0, Math.PI); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(x + R * 0.08, hy + R * 0.35, R * 0.2, 0.1, Math.PI - 0.6); ctx.stroke();
+    drawBeer(a.x, a.y, 0.7, now, R * 1.1, -R * 0.3 - bounce);
+  } else if (a.mode === "sit" || a.mode === "return" || a.mode === "fetch") {
     // søvnige øjne
     for (const ex of [-0.28, 0.28]) { ctx.beginPath(); ctx.moveTo(x + ex * R - R * 0.12, hy + R * 0.12); ctx.lineTo(x + ex * R + R * 0.12, hy + R * 0.12); ctx.stroke(); }
     if (a.mode === "sit") {
@@ -824,6 +904,17 @@ function drawAdult(a, now) {
     ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeText("!", x, hy - R * 1.3);
     ctx.fillStyle = "#ffd34d"; ctx.fillText("!", x, hy - R * 1.3);
   }
+}
+// Ølkrus. (wx, wy) er verdens-koordinater; ox/oy flytter det på skærmen (fx hen i en hånd)
+function drawBeer(wx, wy, scale, now, ox = 0, oy = 0) {
+  const s = view.s * scale, [sx, sy] = toS(wx, wy);
+  const x = sx + ox, y = sy + oy + (scale === 1 ? Math.sin(now / 250 + wx) * 2 * view.s : 0);
+  const w = 18 * s, h = 24 * s;
+  if (scale === 1) { ctx.fillStyle = "rgba(255,211,77,.35)"; ctx.beginPath(); ctx.arc(x, y, 24 * s, 0, Math.PI * 2); ctx.fill(); }
+  ctx.beginPath(); ctx.arc(x + w / 2, y + 1 * s, 7 * s, -Math.PI / 2, Math.PI / 2); ctx.lineWidth = 4 * s; ctx.strokeStyle = INK; ctx.stroke();
+  rr(x - w / 2, y - h / 2, w, h, 3 * s); fillStroke("#f5b83d", 2.5 * scale);
+  ctx.beginPath(); ctx.arc(x - w * 0.25, y - h / 2, 5 * s, 0, Math.PI * 2); ctx.arc(x + w * 0.2, y - h / 2 - 1 * s, 6 * s, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff"; ctx.fill();
 }
 function norm(x, y) { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; }
 
@@ -930,6 +1021,8 @@ function endGame(reason) {
     `🏃 Løbet: <b>${fmtNum(Math.round(st.dist / 20))} m</b>`,
     `🙋 Fanget: <b>${st.caught} gang${st.caught === 1 ? "" : "e"}</b>`,
     `🏐 Ramt af bold: <b>${st.bonks}</b>`,
+    `🚫🍺 Øl snuppet: <b>${st.beersTaken}</b>`,
+    `🥴 Voksne med øl: <b>${st.drunk}</b>`,
   ].map(x => `<div>${x}</div>`).join("");
   renderTop();
   // Fælles rangliste (scores.js) – vises når scoren er sendt
