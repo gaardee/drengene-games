@@ -39,6 +39,7 @@
   a.game strong { display: block; font-size: 1.15rem; margin-bottom: 4px; }
   a.game small { color: var(--muted); }
   .status { color: var(--muted); font-style: italic; }
+  .leader { display: block; margin-top: 6px; color: var(--accent); font-size: .9rem; }
 </style>
 </head>
 <body>
@@ -47,6 +48,7 @@
   <p class="intro">Små spil på max 2 minutter. Spil, kopiér dit resultat og prøv at slå de andre.</p>
   <ul id="games"><li class="status">Henter spil…</li></ul>
 </main>
+<script src="scores.js"></script>
 <script>
   // Forsiden finder selv spillene: den spørger GitHub om mapperne i games/
   // og læser hver mappes meta.json. Så skal ingen redigere denne fil, når de
@@ -95,10 +97,21 @@
       strong.textContent = `${g.emoji} ${g.navn}`;
       const small = document.createElement('small');
       small.textContent = g.beskrivelse;
-      a.append(strong, small);
+      const leader = document.createElement('span');
+      leader.className = 'leader';
+      leader.dataset.game = g.dir;
+      a.append(strong, small, leader);
       li.appendChild(a);
       list.appendChild(li);
     }
+    // Vis hvem der fører i hvert spil (fra den fælles rangliste i scores.js)
+    if (window.hentLedere) hentLedere().then(ledere => {
+      if (!ledere) return;
+      for (const el of document.querySelectorAll('.leader')) {
+        const l = ledere[el.dataset.game];
+        if (l) el.textContent = `👑 ${l.name} – ${l.score.toLocaleString('da-DK')} point`;
+      }
+    });
   }).catch(() => status('Kunne ikke hente listen over spil lige nu. Prøv igen om lidt.'));
 </script>
 </body>

@@ -9,7 +9,7 @@ Du skal lave et lille, sjovt browserspil til mig og mine venner. Vi konkurrerer 
 ## Faste krav (skal altid overholdes)
 
 **Teknik**
-- Spillet skal ligge i én enkelt `index.html`-fil med al HTML, CSS og JavaScript inline. Ingen build-step, ingen frameworks der kræver installation, ingen server.
+- Spillet skal ligge i én enkelt `index.html`-fil med al HTML, CSS og JavaScript inline. Ingen build-step, ingen frameworks der kræver installation, ingen server. Eneste undtagelse er den fælles rangliste: `<script src="../../scores.js"></script>`.
 - Læg filen i mappen `games/<mappenavn>/index.html` i dette repo. Mappenavnet må kun have små bogstaver a-z, tal og bindestreger (fx `games/hop-froe/index.html`).
 - Læg også en `games/<mappenavn>/meta.json` med spillets navn, en emoji og en kort beskrivelse (se `CLAUDE.md`). Forsiden bruger den til at vise spillet.
 - Spillet skal virke ved blot at åbne filen i en browser og når det hostes som statisk side (fx GitHub Pages).
@@ -35,7 +35,8 @@ Du skal lave et lille, sjovt browserspil til mig og mine venner. Vi konkurrerer 
 - På startskærmen skal man kunne skrive sit navn (huskes til næste gang via `localStorage`).
 - På slutskærmen skal der vises:
   - Den opnåede score og evt. et par sjove statistikker (fx "længste combo").
-  - En lokal top 10 over de bedste resultater på denne enhed (navn, score, dato), gemt i `localStorage`.
+  - Den **fælles rangliste** for hele vennegruppen: kald `gemScore("<mappenavn>", navn, score)` når spillet slutter, og vis derefter top 10 med `visFaellesTop(tabelElement, "<mappenavn>", navn)` (se toppen af `scores.js`). Gem kun én gang per spil, og kun når et spil er spillet færdigt.
+  - En lokal top 10 over de bedste resultater på denne enhed (navn, score, dato), gemt i `localStorage`. Den virker også uden internet.
   - En knap **"Kopiér resultat"**, der kopierer en kort tekst til udklipsholderen, som vi kan sende i vores gruppechat, fx:
     `🎮 Hop Frø – Mads: 1.240 point (bedste: 1.580)`
     Brug også Web Share API (`navigator.share`) på telefoner, hvis den findes.

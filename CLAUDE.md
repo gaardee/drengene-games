@@ -23,6 +23,13 @@ Flere personer laver spil samtidig, så for at undgå konflikter gælder:
     ```
 - Forsiden (`index.html` i roden) finder selv alle spil i `games/`, så den skal **ikke** redigeres, når der tilføjes et spil. Rør heller ikke `README.md`, `PROMPT.md`, `CLAUDE.md` eller andres spilmapper, medmindre opgaven udtrykkeligt handler om dem.
 
+## Fælles rangliste (Supabase)
+
+- `scores.js` i roden gemmer og henter scores fra Supabase. Alle spil bruger den via `<script src="../../scores.js"></script>`, med `gemScore(...)` og `visFaellesTop(...)` (se kommentaren øverst i filen).
+- Spilnavnet, der sendes, skal være præcis det samme som spillets mappenavn. Forsiden bruger det til at vise, hvem der fører.
+- Nøglen i `scores.js` er den offentlige "publishable" nøgle og må gerne ligge i repoet. Læg **aldrig** en `service_role`/secret-nøgle i repoet.
+- Ret ikke i `scores.js` som en del af et nyt spil. Ændringer af den hører til i en separat PR.
+
 ## Krav til spillene
 
 Se `PROMPT.md` for de faste krav (én HTML-fil, virker på mobil og computer, max ca. 2 minutters spilletid, score + "Kopiér resultat", dansk tekst).
