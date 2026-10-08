@@ -38,20 +38,81 @@
   a.game:hover, a.game:focus-visible { border-color: var(--accent); outline: none; }
   a.game strong { display: block; font-size: 1.15rem; margin-bottom: 4px; }
   a.game small { color: var(--muted); }
-  .empty { color: var(--muted); font-style: italic; }
+  .status { color: var(--muted); font-style: italic; }
+  .leader { display: block; margin-top: 6px; color: var(--accent); font-size: .9rem; }
 </style>
 </head>
 <body>
 <main>
   <h1>🎮 Drengene <span>Games</span></h1>
   <p class="intro">Små spil på max 2 minutter. Spil, kopiér dit resultat og prøv at slå de andre.</p>
-
-  <ul id="games">
-    <!-- SPIL-LISTE: Tilføj nye spil herunder, ét <li> per spil. Eksempel:
-    <li><a class="game" href="games/hop-frø/"><strong>🐸 Hop Frø</strong><small>Hop mellem åkanderne uden at falde i vandet.</small></a></li>
-    -->
-    <li><a class="game" href="games/pizza-party/"><strong>🍕 Pizza Party</strong><small>Spis så meget pizza som muligt i gymnastiksalen på 90 sekunder – men pas på de voksne på sofaen!</small></a></li>
-  </ul>
+  <ul id="games"><li class="status">Henter spil…</li></ul>
 </main>
+<script src="scores.js"></script>
+<script>
+  // Forsiden finder selv spillene: den spørger GitHub om mapperne i games/
+  // og læser hver mappes meta.json. Så skal ingen redigere denne fil, når de
+  // tilføjer et spil, og PR'er kommer ikke i konflikt med hinanden.
+  const REPO = 'gaardee/drengene-games';
+  const list = document.getElementById('games');
+
+  function status(text) {
+    list.innerHTML = '';
+    const li = document.createElement('li');
+    li.className = 'status';
+    li.textContent = text;
+    list.appendChild(li);
+  }
+
+  async function loadGames() {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/games?ref=main`);
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(res.status);
+    const dirs = (await res.json()).filter(e => e.type === 'dir');
+    const games = await Promise.all(dirs.map(async d => {
+      let meta = {};
+      try {
+        const m = await fetch(`games/${d.name}/meta.json`);
+        if (m.ok) meta = await m.json();
+      } catch (e) { /* mangler meta.json – brug mappenavnet */ }
+      return {
+        dir: d.name,
+        navn: meta.navn || d.name,
+        emoji: meta.emoji || '🎮',
+        beskrivelse: meta.beskrivelse || '',
+      };
+    }));
+    return games.sort((a, b) => a.navn.localeCompare(b.navn, 'da'));
+  }
+
+  loadGames().then(games => {
+    if (!games.length) return status('Ingen spil endnu – vær den første!');
+    list.innerHTML = '';
+    for (const g of games) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.className = 'game';
+      a.href = `games/${g.dir}/`;
+      const strong = document.createElement('strong');
+      strong.textContent = `${g.emoji} ${g.navn}`;
+      const small = document.createElement('small');
+      small.textContent = g.beskrivelse;
+      const leader = document.createElement('span');
+      leader.className = 'leader';
+      leader.dataset.game = g.dir;
+      a.append(strong, small, leader);
+      li.appendChild(a);
+      list.appendChild(li);
+    }
+    // Vis hvem der fører i hvert spil (fra den fælles rangliste i scores.js)
+    if (window.hentLedere) hentLedere().then(ledere => {
+      if (!ledere) return;
+      for (const el of document.querySelectorAll('.leader')) {
+        const l = ledere[el.dataset.game];
+        if (l) el.textContent = `👑 ${l.name} – ${l.score.toLocaleString('da-DK')} point`;
+      }
+    });
+  }).catch(() => status('Kunne ikke hente listen over spil lige nu. Prøv igen om lidt.'));
+</script>
 </body>
 </html>

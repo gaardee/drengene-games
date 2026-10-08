@@ -148,6 +148,8 @@
           <button class="big alt" id="copyBtn">Kopiér resultat</button>
           <button class="big" id="shareBtn" hidden>Del</button>
         </div>
+        <h3>🌍 Fælles rangliste</h3>
+        <table id="faellesTop"></table>
         <h3>🏆 Top 10 på denne enhed</h3>
         <table id="topTable"></table>
       </div>
@@ -156,6 +158,7 @@
   </div>
 </div>
 
+<script src="../../scores.js"></script>
 <script>
 "use strict";
 
@@ -928,6 +931,8 @@ function endGame(reason) {
     `🏐 Ramt af bold: <b>${st.bonks}</b>`,
   ].map(x => `<div>${x}</div>`).join("");
   renderTop();
+  // Fælles rangliste (scores.js) – vises når scoren er sendt
+  if (window.gemScore) gemScore("pizza-party", name, score).then(() => visFaellesTop($("faellesTop"), "pizza-party", name));
   $("shareBtn").hidden = !navigator.share;
   showScreen("endScreen");
 }
