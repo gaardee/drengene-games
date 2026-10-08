@@ -14,7 +14,7 @@
    Alle funktioner fejler stille: er der ingen forbindelse, gemmes scoren
    lokalt og sendes næste gang, og hentTop() giver null.
 
-   Scores sendes kun fra https://gaardee.github.io/ – i previews og lokalt
+   Scores sendes kun fra https://gaardee.github.io/ (ikke fra /preview/) – i previews og lokalt
    gør gemScore() ingenting (window.erTestversion er så true).
    ===================================================================== */
 (function () {
@@ -28,10 +28,10 @@
   const TIMEOUT_MS = 6000;
 
   // Scores sendes KUN fra den rigtige side på GitHub Pages. Previews af PR'er
-  // (raw.githack.com), filer åbnet lokalt og localhost er "test" og sender aldrig.
+  // (…/preview/pr-N/), filer åbnet lokalt og localhost er "test" og sender aldrig.
   // Ranglisten kan stadig læses i test, så man kan se, hvordan den ser ud.
   const LIVE_HOST = "gaardee.github.io";
-  const ER_TEST = location.hostname !== LIVE_HOST;
+  const ER_TEST = location.hostname !== LIVE_HOST || location.pathname.includes("/preview/");
 
   async function api(path, options = {}) {
     const ctrl = new AbortController();
