@@ -217,7 +217,7 @@ const ADULT_DEFS = [
 ];
 const SEAT_Y = 58;
 const SOFA_FRONT = 72; // sofaens forkant (y)
-const WHOLE_PIZZA_POS = { x: 320, y: 120 };
+const WHOLE_PIZZA_POS = { x: 320, y: 190 }; // lidt væk fra sofaen, mellem de to springkasser
 
 /* =====================================================================
    Hjælpefunktioner
@@ -567,8 +567,9 @@ function moveToward(a, tx, ty, speed, dt) {
   const step = Math.min(speed * dt, d);
   const bx = a.x, by = a.y;
   a.x += dx * step; a.y += dy * step;
-  // a.leaving = er ved at rejse sig fra / sætte sig i sofaen (må gerne "gå igennem" den)
-  if (a.leaving && a.y > SOFA_FRONT + a.r) a.leaving = false;
+  // a.leaving = er ved at rejse sig fra / sætte sig i sofaen (må gerne "gå igennem" den).
+  // Flaget slås kun fra, når man er på vej VÆK fra sofaen – ellers kan de voksne ikke sætte sig igen.
+  if (a.leaving && a.mode !== "return" && a.y > SOFA_FRONT + a.r) a.leaving = false;
   collideWorld(a, a.leaving);
   if (a.leaving) return;
   const moved = Math.hypot(a.x - bx, a.y - by);
