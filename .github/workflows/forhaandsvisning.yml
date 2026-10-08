@@ -70,7 +70,7 @@ jobs:
             if (games.length) {
               for (const g of games) body += `- **${await meta(g)}**: ${base}/games/${g}/index.html\n`;
               body += `\nLinket viser præcis commit \`${sha.slice(0, 7)}\` og opdateres automatisk, når der pushes igen.\n`;
-              body += `\n> ⚠️ Scores fra forhåndsvisningen kommer med i den rigtige fælles rangliste. Brug fx navnet "test", hvis du bare prøver.\n`;
+              body += `\n> 🧪 Det er en testversion: scores herfra bliver ikke gemt i den fælles rangliste.\n`;
             } else {
               body += `PR'en ændrer ikke længere nogen spil.\n`;
             }
