@@ -10,7 +10,8 @@ Du skal lave et lille, sjovt browserspil til mig og mine venner. Vi konkurrerer 
 
 **Teknik**
 - Spillet skal ligge i én enkelt `index.html`-fil med al HTML, CSS og JavaScript inline. Ingen build-step, ingen frameworks der kræver installation, ingen server.
-- Læg filen i mappen `games/<spillets-navn>/index.html` i dette repo (navnet med små bogstaver og bindestreger, fx `games/hop-frø/index.html`).
+- Læg filen i mappen `games/<mappenavn>/index.html` i dette repo. Mappenavnet må kun have små bogstaver a-z, tal og bindestreger (fx `games/hop-froe/index.html`).
+- Læg også en `games/<mappenavn>/meta.json` med spillets navn, en emoji og en kort beskrivelse (se `CLAUDE.md`). Forsiden bruger den til at vise spillet.
 - Spillet skal virke ved blot at åbne filen i en browser og når det hostes som statisk side (fx GitHub Pages).
 - Brug gerne `<canvas>` til grafik. Billeder/lyde skal enten tegnes i kode, laves med Web Audio API eller være emojis – ingen eksterne filer.
 
@@ -52,9 +53,9 @@ Du skal lave et lille, sjovt browserspil til mig og mine venner. Vi konkurrerer 
 1. Læs beskrivelsen i "MIT SPIL" nedenfor. Hvis noget vigtigt er uklart, så stil mig højst 3 korte spørgsmål – ellers træf selv fornuftige valg og fortæl hvilke.
 2. Byg spillet.
 3. Test at det virker: tjek gerne i en headless browser både i mobil-størrelse (fx 390×844 med touch) og desktop-størrelse (fx 1280×800), og at et spil faktisk slutter inden for ca. 2 minutter.
-4. Tilføj spillet til forsiden `index.html` (som et nyt `<li>` i spil-listen, og fjern "Ingen spil endnu"-linjen hvis den stadig er der) og til listen i `README.md` – med navn, en kort beskrivelse og link til mappen.
-5. Commit og push ændringerne til `main`. Spillet ligger derefter på `https://gaardee.github.io/drengene-games/games/<spillets-navn>/` efter et minuts tid.
-6. Giv mig til sidst en kort opsummering: hvordan spillet spilles, hvordan man får point, og eventuelle ting du var i tvivl om.
+4. Følg git-reglerne i `CLAUDE.md`: arbejd på en branch (aldrig direkte på `main`), rør kun filer i din egen spilmappe, og push branchen.
+5. Opret en pull request mod `main`. Når en af os har merget den, ligger spillet på `https://gaardee.github.io/drengene-games/games/<mappenavn>/` og dukker selv op på forsiden.
+6. Giv mig til sidst et link til pull requesten og en kort opsummering: hvordan spillet spilles, hvordan man får point, og eventuelle ting du var i tvivl om.
 
 ## MIT SPIL
 
