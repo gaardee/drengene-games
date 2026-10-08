@@ -932,7 +932,12 @@ function endGame(reason) {
   ].map(x => `<div>${x}</div>`).join("");
   renderTop();
   // Fælles rangliste (scores.js) – vises når scoren er sendt
-  if (window.gemScore) gemScore("pizza-party", name, score).then(() => visFaellesTop($("faellesTop"), "pizza-party", name));
+  if (window.gemScore) {
+    $("faellesTop").innerHTML = "<tr><td>Henter fælles rangliste…</td></tr>";
+    gemScore("pizza-party", name, score).then(() => visFaellesTop($("faellesTop"), "pizza-party", name));
+  } else {
+    $("faellesTop").innerHTML = "<tr><td>Den fælles rangliste kunne ikke indlæses</td></tr>";
+  }
   $("shareBtn").hidden = !navigator.share;
   showScreen("endScreen");
 }
