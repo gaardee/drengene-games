@@ -1,0 +1,146 @@
+# Udgiver siden på GitHub Pages – inkl. forhåndsvisninger af åbne pull requests
+#
+# - Ved push til main: siden bygges fra main.
+# - Ved PR (oprettet/opdateret/lukket): siden bygges igen, og hver ÅBEN PR fra
+#   dette repo får en kopi under /preview/pr-<nummer>/, fx
+#   https://gaardee.github.io/drengene-games/preview/pr-3/games/pizza-party/
+#   Lukkede/mergede PR'er forsvinder automatisk ved næste build.
+# - PR'en får en kommentar med link til de spil, den ændrer.
+#
+# KRÆVER: Settings → Pages → Build and deployment → Source = "GitHub Actions".
+#
+# Sikkerhed: Workflowet kører fra main ("pull_request_target") og kører ALDRIG kode
+# fra PR'erne – PR'ernes filer pakkes kun ud og udgives som statiske filer.
+# Forks får ingen preview, symlinks fjernes, og hver preview får main's scores.js
+# (som ved, at /preview/ er test og aldrig sender scores).
+
+name: Udgiv siden
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Byg siden fra main + previews af åbne PR'er
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          git archive HEAD | tar -x -C _site
+          rm -rf _site/.github
+
+          # Åbne PR'er fra dette repo (ikke forks)
+          gh pr list --repo "$REPO" --state open --limit 100 \
+            --json number,isCrossRepository \
+            --jq '.[] | select(.isCrossRepository | not) | .number' > prs.txt
+
+          while read -r n; do
+            d="_site/preview/pr-$n"
+            mkdir -p "$d"
+            git fetch --quiet --depth=1 "https://github.com/$REPO.git" "refs/pull/$n/head"
+            git archive FETCH_HEAD | tar -x -C "$d"
+            rm -rf "$d/.github" "$d/preview"
+            find "$d" -type l -delete          # ingen symlinks ud af mappen
+            cp scores.js "$d/scores.js"        # main's scores.js: /preview/ sender aldrig scores
+            echo "Preview: pr-$n"
+          done < prs.txt
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Skriver/opdaterer én kommentar på PR'en med links til de ændrede spil
+  comment:
+    if: github.event_name == 'pull_request_target' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const MARKER = "<!-- spil-forhaandsvisning -->";
+            const fork = pr.head.repo && pr.head.repo.full_name !== `${owner}/${repo}`;
+
+            // Find de spilmapper (games/<mappenavn>/), som PR'en ændrer
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            const games = [...new Set(files
+              .filter(f => f.status !== "removed")
+              .map(f => f.filename.match(/^games\/([a-z0-9-]+)\//))
+              .filter(Boolean)
+              .map(m => m[1]))].sort();
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: pr.number, per_page: 100,
+            });
+            const old = comments.find(c => c.user.type === "Bot" && c.body.includes(MARKER));
+            if (!games.length && !old) return; // PR'en rører ingen spil
+
+            // Læs navn og emoji fra meta.json (hvis den findes)
+            async function meta(dir) {
+              try {
+                const res = await github.rest.repos.getContent({
+                  owner, repo, path: `games/${dir}/meta.json`, ref: pr.head.sha,
+                });
+                const m = JSON.parse(Buffer.from(res.data.content, "base64").toString("utf8"));
+                return `${String(m.emoji || "🎮").slice(0, 8)} ${String(m.navn || dir).slice(0, 60)}`;
+              } catch (e) {
+                return `🎮 ${dir}`;
+              }
+            }
+
+            const base = `https://${owner.toLowerCase()}.github.io/${repo}/preview/pr-${pr.number}`;
+            let body = `${MARKER}\n## 🕹️ Prøv spillet før det merges\n\n`;
+            if (fork) {
+              body += `PR'er fra forks får ikke en preview. Bed en af os om at lave branchen direkte i repoet.\n`;
+            } else if (games.length) {
+              for (const g of games) body += `- **${await meta(g)}**: ${base}/games/${g}/\n`;
+              body += `\nLinket viser altid PR'ens nyeste version. Efter et push går der 1–2 minutter, før den nye version er ude.\n`;
+              body += `\n> 🧪 Det er en testversion: scores herfra bliver ikke gemt i den fælles rangliste.\n`;
+            } else {
+              body += `PR'en ændrer ikke længere nogen spil.\n`;
+            }
+
+            if (old) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: old.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+            }
