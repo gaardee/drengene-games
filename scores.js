@@ -13,6 +13,9 @@
 
    Alle funktioner fejler stille: er der ingen forbindelse, gemmes scoren
    lokalt og sendes næste gang, og hentTop() giver null.
+
+   Scores sendes kun fra https://gaardee.github.io/ – i previews og lokalt
+   gør gemScore() ingenting (window.erTestversion er så true).
    ===================================================================== */
 (function () {
   "use strict";
@@ -23,6 +26,12 @@
   const KEY = "sb_publishable_bPz2AhlylAksfjP3Vkgy7g_vCT7v4jF";
   const QUEUE_KEY = "drengene_scores_koe"; // scores der ikke kunne sendes endnu
   const TIMEOUT_MS = 6000;
+
+  // Scores sendes KUN fra den rigtige side på GitHub Pages. Previews af PR'er
+  // (raw.githack.com), filer åbnet lokalt og localhost er "test" og sender aldrig.
+  // Ranglisten kan stadig læses i test, så man kan se, hvordan den ser ud.
+  const LIVE_HOST = "gaardee.github.io";
+  const ER_TEST = location.hostname !== LIVE_HOST;
 
   async function api(path, options = {}) {
     const ctrl = new AbortController();
@@ -62,6 +71,7 @@
   // Sender scores, der tidligere ikke kunne sendes (fx uden internet)
   let flushing = null;
   function flushQueue() {
+    if (ER_TEST) return Promise.resolve();
     if (flushing) return flushing;
     const q = loadQueue();
     if (!q.length) return Promise.resolve();
@@ -73,6 +83,10 @@
   /** Gemmer en score i den fælles rangliste. Giver true hvis den blev sendt. */
   async function gemScore(spil, navn, score) {
     const row = clean(spil, navn, score);
+    if (ER_TEST) {
+      console.info("Testversion – scoren sendes ikke til den fælles rangliste:", row);
+      return false;
+    }
     await flushQueue();
     try {
       await send([row]);
@@ -123,12 +137,14 @@
       const tr = row([`${i + 1}.`, e.name, e.score.toLocaleString("da-DK")]);
       if (mitNavn && e.name === mitNavn) tr.className = "me";
     });
+    if (ER_TEST) row(["🧪 Testversion – din score bliver ikke gemt her"]);
   }
 
   window.gemScore = gemScore;
   window.hentTop = hentTop;
   window.hentLedere = hentLedere;
   window.visFaellesTop = visFaellesTop;
+  window.erTestversion = ER_TEST;
 
   flushQueue();
 })();
