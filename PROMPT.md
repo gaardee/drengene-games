@@ -52,8 +52,8 @@ Du skal lave et lille, sjovt browserspil til mig og mine venner. Vi konkurrerer 
 1. Læs beskrivelsen i "MIT SPIL" nedenfor. Hvis noget vigtigt er uklart, så stil mig højst 3 korte spørgsmål – ellers træf selv fornuftige valg og fortæl hvilke.
 2. Byg spillet.
 3. Test at det virker: tjek gerne i en headless browser både i mobil-størrelse (fx 390×844 med touch) og desktop-størrelse (fx 1280×800), og at et spil faktisk slutter inden for ca. 2 minutter.
-4. Tilføj spillet til listen i `README.md` med navn, en kort beskrivelse og link til mappen.
-5. Commit og push ændringerne.
+4. Tilføj spillet til forsiden `index.html` (som et nyt `<li>` i spil-listen, og fjern "Ingen spil endnu"-linjen hvis den stadig er der) og til listen i `README.md` – med navn, en kort beskrivelse og link til mappen.
+5. Commit og push ændringerne til `main`. Spillet ligger derefter på `https://gaardee.github.io/drengene-games/games/<spillets-navn>/` efter et minuts tid.
 6. Giv mig til sidst en kort opsummering: hvordan spillet spilles, hvordan man får point, og eventuelle ting du var i tvivl om.
 
 ## MIT SPIL
