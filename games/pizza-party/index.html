@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#2b1d14">
+<title>Pizza Party</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #5b6f8f;
+    font-family: "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+    color: #2b1d14;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* ---------- Topbjælke (HUD) ---------- */
+  #hud {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; padding-top: max(6px, env(safe-area-inset-top));
+    background: #2b1d14; color: #fff; font-weight: 900;
+  }
+  .pill {
+    background: #fff; color: #2b1d14; border-radius: 999px; padding: 4px 12px;
+    font-size: 22px; border: 3px solid #f5b83d; white-space: nowrap;
+  }
+  #time.hurry { background: #ff5a4e; color: #fff; }
+  #lives { font-size: 20px; letter-spacing: 2px; white-space: nowrap; }
+  .spacer { flex: 1; }
+  .iconBtn {
+    width: 44px; height: 44px; border-radius: 12px; border: 3px solid #f5b83d;
+    background: #fff; font-size: 22px; cursor: pointer; padding: 0;
+  }
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* ---------- Skærme (start / pause / slut) ---------- */
+  .screen {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(43, 29, 20, .55); padding: 12px; overflow-y: auto;
+    touch-action: pan-y; /* så slutskærmen kan scrolles på små skærme */
+  }
+  .screen * { touch-action: pan-y; }
+  .screen[hidden] { display: none; }
+  .card {
+    background: #fff8e6; border: 5px solid #2b1d14; border-radius: 24px;
+    box-shadow: 0 8px 0 #2b1d14; padding: 16px 18px; width: min(440px, 100%);
+    text-align: center; margin: auto;
+  }
+  h1 { margin: 0; font-size: 40px; color: #e8452c; text-shadow: 3px 3px 0 #2b1d14; letter-spacing: 1px; }
+  h2 { margin: 0 0 4px; font-size: 28px; color: #e8452c; }
+  h3 { margin: 12px 0 4px; font-size: 17px; }
+  .tagline { margin: 6px 0 10px; font-size: 16px; }
+  .rules { list-style: none; padding: 0; margin: 0 0 8px; text-align: left; font-size: 15px; line-height: 1.45; }
+  .rules b { color: #e8452c; }
+  .controls { background: #ffe08a; border-radius: 12px; padding: 6px 10px; margin: 8px 0; font-size: 15px; }
+  input {
+    width: 100%; font: inherit; font-size: 20px; padding: 10px 12px; margin: 4px 0 10px;
+    border: 4px solid #2b1d14; border-radius: 14px; text-align: center; background: #fff;
+    user-select: text; -webkit-user-select: text;
+  }
+  .big {
+    font: inherit; font-weight: 900; font-size: 24px; color: #fff; background: #e8452c;
+    border: 4px solid #2b1d14; border-radius: 16px; box-shadow: 0 5px 0 #2b1d14;
+    padding: 12px 20px; min-height: 54px; width: 100%; cursor: pointer;
+  }
+  .big:active { transform: translateY(3px); box-shadow: 0 2px 0 #2b1d14; }
+  .btnrow { display: flex; gap: 8px; margin-top: 10px; }
+  .btnrow .big { font-size: 17px; padding: 10px 8px; }
+  .big.alt { background: #3d7fd6; }
+  .big.alt2 { background: #4caf50; }
+  .small { font-size: 14px; margin: 6px 0 0; opacity: .85; }
+  .bigscore { font-size: 54px; font-weight: 900; line-height: 1; margin: 4px 0; }
+  .bigscore small { font-size: 22px; }
+  #newBest { color: #e8452c; font-weight: 900; min-height: 1em; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 14px; text-align: left; margin-top: 6px; }
+  .stats div { background: #ffe9b0; border-radius: 8px; padding: 4px 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 3px 4px; border-bottom: 1px dashed #c9b78f; }
+  td:nth-child(1) { width: 2em; text-align: right; }
+  td:nth-child(2) { text-align: left; }
+  td:nth-child(3) { text-align: right; font-weight: 900; }
+  td:nth-child(4) { text-align: right; opacity: .7; width: 5.5em; }
+  tr.me td { background: #ffd34d; }
+  #toast {
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+    background: #2b1d14; color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 900;
+    pointer-events: none; opacity: 0; transition: opacity .2s;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span class="pill" id="score">🍕 0</span>
+    <span class="pill" id="time">⏱ 1:30</span>
+    <span id="lives">❤️❤️❤️</span>
+    <span class="spacer"></span>
+    <button class="iconBtn" id="pauseBtn" aria-label="Pause">⏸️</button>
+    <button class="iconBtn" id="muteBtn" aria-label="Lyd til/fra">🔊</button>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+
+    <!-- Startskærm -->
+    <div class="screen" id="startScreen">
+      <div class="card">
+        <h1>🍕 Pizza Party</h1>
+        <p class="tagline">Løb rundt i gymnastiksalen og spis så meget pizza som muligt!</p>
+        <ul class="rules">
+          <li>🍕 <b>1 point</b> pr. pizzastykke</li>
+          <li>📦 Hel pizza foran sofaen = <b>8 point</b></li>
+          <li>🛋️ Kommer du for tæt på sofaen, prøver de voksne at <b>fange dig</b> – du har 3 liv</li>
+          <li>🏐 Undgå boldene og pas på de blå måtter (de er tunge at løbe på)</li>
+          <li>⏱ Du har <b>90 sekunder</b></li>
+        </ul>
+        <div class="controls" id="ctrlHelp"></div>
+        <input id="nameInput" maxlength="16" placeholder="Skriv dit navn" autocomplete="off">
+        <button class="big" id="startBtn">Start spillet!</button>
+        <p class="small" id="bestLine"></p>
+      </div>
+    </div>
+
+    <!-- Pauseskærm -->
+    <div class="screen" id="pauseScreen" hidden>
+      <div class="card">
+        <h2>Pause</h2>
+        <p>Tiden står stille, og ingen kan få point.</p>
+        <button class="big" id="resumeBtn">Fortsæt</button>
+      </div>
+    </div>
+
+    <!-- Slutskærm -->
+    <div class="screen" id="endScreen" hidden>
+      <div class="card">
+        <h2 id="endTitle">Tiden er gået!</h2>
+        <div class="bigscore"><span id="endScore">0</span> <small>point</small></div>
+        <div id="newBest"></div>
+        <div class="stats" id="stats"></div>
+        <div class="btnrow">
+          <button class="big alt2" id="againBtn">Spil igen</button>
+          <button class="big alt" id="copyBtn">Kopiér resultat</button>
+          <button class="big" id="shareBtn" hidden>Del</button>
+        </div>
+        <h3>🏆 Top 10 på denne enhed</h3>
+        <table id="topTable"></table>
+      </div>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   INDSTILLINGER – pil gerne ved disse tal
+   ===================================================================== */
+const GAME_TIME   = 90;      // sekunder pr. spil
+const START_LIVES = 3;       // antal liv
+const SEED        = 20261008;// fast seed => alle får samme pizza-rækkefølge
+const SLICES_ON_FIELD = 6;   // hvor mange pizzastykker der ligger fremme ad gangen
+const WHOLE_PIZZA_POINTS = 8;
+const WHOLE_PIZZA_TIMES = [15, 40, 65]; // sekunder inde i spillet, hvor en hel pizza dukker op
+const COMBO_WINDOW = 2.0;    // sek. mellem stykker for at tælle som combo
+
+const PLAYER_SPEED = 250;    // pixels (verdensenheder) pr. sekund
+const PLAYER_R = 18;
+const ADULT_R = 24;
+const MAT_SLOW = 0.55;       // fart på måtter
+
+// Salen: 640 bred, 1000 lang. Sofaen står i toppen (y=0), barnet starter i bunden.
+const W = 640, L = 1000;
+const DANGER_Y = 300;        // kommer man over denne linje, rejser de voksne sig
+const GIVEUP_Y = 430;        // er man længere væk end dette, giver de voksne op
+const START_POS = { x: 320, y: 950 };
+
+/* ---------- Banen (faste forhindringer) ---------- */
+// type: box = springkasse, bench = bænk, buck = buk, sofa = sofa (alle massive)
+const SOLIDS = [
+  { type: "sofa",  x: 170, y: 10,  w: 300, h: 62 },
+  { type: "box",   x: 80,  y: 175, w: 85,  h: 55 },
+  { type: "box",   x: 475, y: 175, w: 85,  h: 55 },
+  { type: "bench", x: 60,  y: 380, w: 200, h: 20 },
+  { type: "bench", x: 380, y: 380, w: 200, h: 20 },
+  { type: "buck",  x: 290, y: 540, w: 60,  h: 42 },
+  { type: "bench", x: 150, y: 760, w: 20,  h: 140 },
+  { type: "bench", x: 470, y: 760, w: 20,  h: 140 },
+];
+// Blå måtter: man kan løbe på dem, men langsomt
+const MATS = [
+  { x: 40,  y: 515, w: 160, h: 125 },
+  { x: 440, y: 515, w: 160, h: 125 },
+];
+// Rullende bolde: kører frem og tilbage på faste baner (samme for alle)
+const BALL_DEFS = [
+  { y: 470, speed: 190, phase: 0,   from: 0  },
+  { y: 700, speed: 230, phase: 300, from: 0  },
+  { y: 335, speed: 260, phase: 150, from: 40 }, // denne bold kommer først efter 40 sek.
+];
+const BALL_R = 22;
+// De voksne på sofaen
+const ADULT_DEFS = [
+  { x: 215, shirt: "#4caf50", hair: "#5a3a1a", name: "Far" },
+  { x: 290, shirt: "#9c5ad6", hair: "#f2c94c", name: "Mor" },
+  { x: 350, shirt: "#e8452c", hair: "#888",    name: "Onkel" },
+  { x: 425, shirt: "#3d7fd6", hair: "#2b1d14", name: "Faster" },
+];
+const SEAT_Y = 58;
+const SOFA_FRONT = 72; // sofaens forkant (y)
+const WHOLE_PIZZA_POS = { x: 320, y: 120 };
+
+/* =====================================================================
+   Hjælpefunktioner
+   ===================================================================== */
+// Deterministisk tilfældighed (mulberry32) – samme seed giver samme tal
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const inRect = (x, y, r, pad = 0) => x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad;
+const fmtNum = n => n.toLocaleString("da-DK");
+const $ = id => document.getElementById(id);
+
+// Skub en cirkel (e med e.r) ud af et rektangel. Returnerer true hvis der var kollision.
+function pushOut(e, r) {
+  const cx = clamp(e.x, r.x, r.x + r.w), cy = clamp(e.y, r.y, r.y + r.h);
+  let dx = e.x - cx, dy = e.y - cy;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= e.r * e.r) return false;
+  if (d2 > 0) {
+    const d = Math.sqrt(d2);
+    e.x += dx / d * (e.r - d); e.y += dy / d * (e.r - d);
+  } else { // centrum er inde i rektanglet: skub ud ad den korteste vej
+    const left = e.x - r.x, right = r.x + r.w - e.x, top = e.y - r.y, bottom = r.y + r.h - e.y;
+    const m = Math.min(left, right, top, bottom);
+    if (m === left) e.x = r.x - e.r; else if (m === right) e.x = r.x + r.w + e.r;
+    else if (m === top) e.y = r.y - e.r; else e.y = r.y + r.h + e.r;
+  }
+  return true;
+}
+function collideWorld(e, skipSofa = false) {
+  let hit = false;
+  for (const s of SOLIDS) if (!(skipSofa && s.type === "sofa") && pushOut(e, s)) hit = true;
+  e.x = clamp(e.x, e.r, W - e.r); e.y = clamp(e.y, e.r, L - e.r);
+  return hit;
+}
+const onMat = e => MATS.some(m => inRect(e.x, e.y, m));
+
+// Fast liste over hvor pizzastykkerne dukker op (samme for alle spillere)
+function makeSliceSpots() {
+  const rnd = mulberry32(SEED), spots = [];
+  while (spots.length < 400) {
+    const x = 35 + rnd() * (W - 70), y = 100 + rnd() * (L - 150);
+    if (SOLIDS.some(s => inRect(x, y, s, 22))) continue;
+    if (Math.hypot(x - START_POS.x, y - START_POS.y) < 60) continue;
+    if (Math.hypot(x - WHOLE_PIZZA_POS.x, y - WHOLE_PIZZA_POS.y) < 40) continue;
+    spots.push({ x, y, rot: rnd() * Math.PI * 2 });
+  }
+  return spots;
+}
+const SLICE_SPOTS = makeSliceSpots();
+
+/* =====================================================================
+   Lyd (Web Audio) – startes først efter brugerens første tryk
+   ===================================================================== */
+const Sound = {
+  ctx: null,
+  muted: localStorage.getItem("pizzaparty_mute") === "1",
+  unlock() {
+    if (this.ctx) { if (this.ctx.state === "suspended") this.ctx.resume(); return; }
+    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  },
+  tone(freq, dur, type = "square", vol = 0.12, slideTo = null, delay = 0) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+  },
+  chomp()   { this.tone(520, 0.08, "square", 0.1, 260); this.tone(700, 0.06, "square", 0.08, 400, 0.07); },
+  bigChomp(){ [0, 0.08, 0.16, 0.24].forEach((d, i) => this.tone(400 + i * 120, 0.1, "square", 0.1, null, d)); },
+  hey()     { this.tone(300, 0.25, "sawtooth", 0.08, 500); },
+  bonk()    { this.tone(180, 0.18, "triangle", 0.2, 80); },
+  caught()  { this.tone(400, 0.5, "sawtooth", 0.12, 90); },
+  whistle() { this.tone(2200, 0.12, "sine", 0.12); this.tone(2200, 0.35, "sine", 0.12, 2000, 0.16); },
+  tick()    { this.tone(1000, 0.04, "square", 0.05); },
+  end()     { [523, 392, 330, 262].forEach((f, i) => this.tone(f, 0.18, "triangle", 0.15, null, i * 0.16)); },
+};
+
+/* =====================================================================
+   Spillets tilstand
+   ===================================================================== */
+let state = "start";   // "start" | "play" | "pause" | "end"
+let G = null;           // alt om det aktuelle spil
+
+function newGame() {
+  G = {
+    t: 0,                         // spillet tid i sekunder (stiger KUN mens der spilles)
+    score: 0, lives: START_LIVES,
+    player: { x: START_POS.x, y: START_POS.y, r: PLAYER_R, stun: 0, inv: 0, kx: 0, ky: 0, fx: 0, fy: -1, moving: false, step: 0 },
+    adults: ADULT_DEFS.map((d, i) => ({ ...d, i, x: d.x, y: SEAT_Y, r: ADULT_R, mode: "sit", leaving: false, timer: 0, side: 0, sideT: 0, homeX: d.x })),
+    slices: [], nextSpot: 0,
+    whole: null, wholeIdx: 0,
+    floaters: [],
+    stats: { slices: 0, wholes: 0, combo: 0, bestCombo: 0, lastEat: -99, caught: 0, bonks: 0, dist: 0 },
+    endReason: "",
+    lastTickSec: -1,
+  };
+  for (let i = 0; i < SLICES_ON_FIELD; i++) spawnSlice();
+}
+function spawnSlice() {
+  const s = SLICE_SPOTS[G.nextSpot % SLICE_SPOTS.length];
+  G.nextSpot++;
+  G.slices.push({ x: s.x, y: s.y, rot: s.rot, born: G.t });
+}
+function addFloater(x, y, text, color = "#fff") {
+  G.floaters.push({ x, y, text, color, life: 1 });
+}
+
+/* =====================================================================
+   Input: tastatur + "joystick" med finger/mus (træk hvor som helst)
+   ===================================================================== */
+const keys = {};
+const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+const JOY_MAX = 55; // px
+
+addEventListener("keydown", e => {
+  Sound.unlock();
+  if (document.activeElement === $("nameInput")) {
+    if (e.key === "Enter") startGame();
+    return;
+  }
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") e.preventDefault();
+  if ((e.key === "Enter" || e.key === " ") && state === "end" && performance.now() - endedAt > 900) startGame();
+  if ((e.key === "Enter" || e.key === " ") && state === "start") startGame();
+  if (e.key === "p" || e.key === "Escape") { if (state === "play") pause(); else if (state === "pause") resume(); }
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("pointerdown", () => Sound.unlock(), { capture: true });
+
+const canvas = $("c");
+canvas.addEventListener("pointerdown", e => {
+  if (state !== "play" || joy.active) return;
+  joy.active = true; joy.id = e.pointerId; joy.ox = e.offsetX; joy.oy = e.offsetY; joy.dx = joy.dy = 0;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", e => {
+  if (!joy.active || e.pointerId !== joy.id) return;
+  let dx = e.offsetX - joy.ox, dy = e.offsetY - joy.oy;
+  const d = Math.hypot(dx, dy);
+  if (d > JOY_MAX) { // joysticket følger med, så man ikke "løber tør" for plads
+    joy.ox += dx / d * (d - JOY_MAX); joy.oy += dy / d * (d - JOY_MAX);
+    dx = e.offsetX - joy.ox; dy = e.offsetY - joy.oy;
+  }
+  joy.dx = dx; joy.dy = dy;
+});
+const joyEnd = e => { if (e.pointerId === joy.id) { joy.active = false; joy.dx = joy.dy = 0; } };
+canvas.addEventListener("pointerup", joyEnd);
+canvas.addEventListener("pointercancel", joyEnd);
+
+// Retning på SKÆRMEN (x mod højre, y nedad), længde 0..1
+function screenInput() {
+  let x = 0, y = 0;
+  if (keys["arrowleft"] || keys["a"]) x -= 1;
+  if (keys["arrowright"] || keys["d"]) x += 1;
+  if (keys["arrowup"] || keys["w"]) y -= 1;
+  if (keys["arrowdown"] || keys["s"]) y += 1;
+  if (joy.active) {
+    const d = Math.hypot(joy.dx, joy.dy);
+    if (d > 8) { x = joy.dx / JOY_MAX; y = joy.dy / JOY_MAX; }
+  }
+  const len = Math.hypot(x, y);
+  if (len > 1) { x /= len; y /= len; }
+  return { x, y };
+}
+
+/* =====================================================================
+   Kamera: på liggende skærme drejes salen 90°, så sofaen er til højre.
+   Al tegning og al input går gennem disse funktioner.
+   ===================================================================== */
+const view = { rot: false, s: 1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 1 };
+function resize() {
+  const r = $("stage").getBoundingClientRect();
+  view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  view.cw = r.width; view.ch = r.height;
+  canvas.width = Math.round(r.width * view.dpr); canvas.height = Math.round(r.height * view.dpr);
+  view.rot = r.width > r.height;
+  const pad = 8;
+  const ww = view.rot ? L : W, wh = view.rot ? W : L;
+  view.s = Math.min((r.width - pad * 2) / ww, (r.height - pad * 2) / wh);
+  view.ox = (r.width - ww * view.s) / 2; view.oy = (r.height - wh * view.s) / 2;
+}
+addEventListener("resize", resize);
+// verden -> skærm
+function toS(x, y) {
+  return view.rot ? [view.ox + (L - y) * view.s, view.oy + x * view.s] : [view.ox + x * view.s, view.oy + y * view.s];
+}
+function rectS(r) {
+  return view.rot
+    ? [view.ox + (L - r.y - r.h) * view.s, view.oy + r.x * view.s, r.h * view.s, r.w * view.s]
+    : [view.ox + r.x * view.s, view.oy + r.y * view.s, r.w * view.s, r.h * view.s];
+}
+// skærm-retning -> verdens-retning
+function toWorldDir(v) { return view.rot ? { x: v.y, y: -v.x } : v; }
+function toScreenDir(v) { return view.rot ? { x: -v.y, y: v.x } : v; }
+
+/* =====================================================================
+   Opdatering (kører kun når state === "play")
+   ===================================================================== */
+function update(dt) {
+  G.t += dt;
+  const P = G.player;
+  const t = G.t;
+
+  // ---- Spilleren ----
+  P.inv = Math.max(0, P.inv - dt);
+  const prevX = P.x, prevY = P.y;
+  if (P.stun > 0) {
+    P.stun -= dt;
+    P.x += P.kx * dt; P.y += P.ky * dt; P.kx *= 0.9; P.ky *= 0.9;
+    P.moving = false;
+  } else {
+    const inp = toWorldDir(screenInput());
+    const sp = PLAYER_SPEED * (onMat(P) ? MAT_SLOW : 1);
+    P.x += inp.x * sp * dt; P.y += inp.y * sp * dt;
+    P.moving = Math.hypot(inp.x, inp.y) > 0.1;
+    if (P.moving) { const l = Math.hypot(inp.x, inp.y); P.fx = inp.x / l; P.fy = inp.y / l; P.step += dt * 12; }
+  }
+  collideWorld(P);
+  G.stats.dist += Math.hypot(P.x - prevX, P.y - prevY);
+
+  // ---- Pizzastykker ----
+  for (let i = G.slices.length - 1; i >= 0; i--) {
+    const s = G.slices[i];
+    if (Math.hypot(s.x - P.x, s.y - P.y) < P.r + 14) {
+      G.slices.splice(i, 1);
+      G.score += 1; G.stats.slices++;
+      G.stats.combo = (t - G.stats.lastEat <= COMBO_WINDOW) ? G.stats.combo + 1 : 1;
+      G.stats.lastEat = t;
+      G.stats.bestCombo = Math.max(G.stats.bestCombo, G.stats.combo);
+      addFloater(s.x, s.y, G.stats.combo > 1 ? `+1  combo x${G.stats.combo}` : "+1");
+      Sound.chomp();
+      spawnSlice();
+    }
+  }
+  // ---- Hel pizza foran sofaen ----
+  if (G.wholeIdx < WHOLE_PIZZA_TIMES.length && t >= WHOLE_PIZZA_TIMES[G.wholeIdx]) {
+    G.wholeIdx++;
+    if (!G.whole) { G.whole = { ...WHOLE_PIZZA_POS, born: t }; addFloater(WHOLE_PIZZA_POS.x, WHOLE_PIZZA_POS.y + 40, "HEL PIZZA!", "#ffd34d"); }
+  }
+  if (G.whole && Math.hypot(G.whole.x - P.x, G.whole.y - P.y) < P.r + 26) {
+    G.whole = null;
+    G.score += WHOLE_PIZZA_POINTS; G.stats.wholes++;
+    addFloater(P.x, P.y - 20, `+${WHOLE_PIZZA_POINTS}  HEL PIZZA!`, "#ffd34d");
+    Sound.bigChomp();
+  }
+
+  // ---- Bolde ----
+  for (const b of balls()) {
+    if (P.stun <= 0 && P.inv <= 0 && Math.hypot(b.x - P.x, b.y - P.y) < P.r + BALL_R) {
+      P.stun = 0.7; P.kx = b.dir * 380; P.ky = (P.y < b.y ? -1 : 1) * 200;
+      G.stats.bonks++;
+      addFloater(P.x, P.y - 25, "BONK!", "#ff5a4e");
+      Sound.bonk();
+    }
+  }
+
+  // ---- De voksne ----
+  updateAdults(dt);
+
+  // ---- Tid ----
+  const left = GAME_TIME - t;
+  const sec = Math.ceil(left);
+  if (sec <= 10 && sec !== G.lastTickSec && sec > 0) { G.lastTickSec = sec; Sound.tick(); }
+  if (left <= 0) endGame("Tiden er gået!");
+
+  // ---- Svævende tekster ----
+  for (const f of G.floaters) { f.life -= dt; f.y -= 40 * dt; }
+  G.floaters = G.floaters.filter(f => f.life > 0);
+}
+
+// Boldenes position afhænger kun af tiden => helt ens for alle
+function balls() {
+  const out = [];
+  const span = W - BALL_R * 2;
+  for (const d of BALL_DEFS) {
+    if (G.t < d.from) continue;
+    const p = ((G.t - d.from) * d.speed + d.phase) % (span * 2);
+    const x = BALL_R + (p < span ? p : span * 2 - p);
+    out.push({ x, y: d.y, dir: p < span ? 1 : -1, roll: p / BALL_R });
+  }
+  return out;
+}
+
+function updateAdults(dt) {
+  const P = G.player, t = G.t;
+  // Jo længere tid der er gået, jo flere voksne må jagte på én gang, og jo hurtigere er de
+  const maxChasers = t < 30 ? 1 : t < 60 ? 2 : 3;
+  const chaseSpeed = 175 + 45 * (t / GAME_TIME);
+  const inZone = P.y < DANGER_Y && P.inv <= 0;
+  const active = G.adults.filter(a => a.mode === "wake" || a.mode === "chase").length;
+
+  // Er barnet i voksenzonen, rejser den nærmeste (siddende/gående) voksne sig
+  if (inZone && active < maxChasers) {
+    let best = null, bd = 1e9;
+    for (const a of G.adults) {
+      if (a.mode !== "sit" && a.mode !== "return") continue;
+      const d = Math.hypot(a.x - P.x, a.y - P.y);
+      if (d < bd) { bd = d; best = a; }
+    }
+    if (best) { best.mode = "wake"; best.timer = 0.45; if (best.y < SOFA_FRONT + best.r) best.leaving = true; Sound.hey(); }
+  }
+
+  for (const a of G.adults) {
+    if (a.mode === "wake") {            // "!" – kort reaktionstid, så det er fair
+      a.timer -= dt;
+      if (a.timer <= 0) { a.mode = "chase"; a.timer = 0; }
+    } else if (a.mode === "chase") {
+      // giver op hvis barnet er sluppet væk et stykke tid
+      if (P.y > GIVEUP_Y || P.inv > 0) a.timer += dt; else a.timer = 0;
+      if (a.timer > 1.0) { a.mode = "return"; continue; }
+      moveToward(a, P.x, P.y, chaseSpeed * (onMat(a) ? MAT_SLOW : 1), dt);
+      const d = Math.hypot(a.x - P.x, a.y - P.y);
+      if (d < a.r + P.r - 2 && P.inv <= 0) caught(a);
+    } else if (a.mode === "return") {
+      // først hen foran sin plads, derefter direkte ned i sofaen
+      const ty = a.leaving ? SEAT_Y : SOFA_FRONT + a.r + 6;
+      if (!a.leaving && Math.hypot(a.x - a.homeX, a.y - ty) < 6) a.leaving = true;
+      moveToward(a, a.homeX, ty, 130, dt);
+      if (a.leaving && Math.hypot(a.x - a.homeX, a.y - SEAT_Y) < 3) { a.mode = "sit"; a.x = a.homeX; a.y = SEAT_Y; a.leaving = false; }
+    }
+  }
+  // voksne må ikke stå oven i hinanden
+  for (let i = 0; i < G.adults.length; i++) for (let j = i + 1; j < G.adults.length; j++) {
+    const a = G.adults[i], b = G.adults[j];
+    if (a.mode === "sit" || b.mode === "sit") continue;
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, o = a.r + b.r - d;
+    if (o > 0) { a.x -= dx / d * o / 2; a.y -= dy / d * o / 2; b.x += dx / d * o / 2; b.y += dy / d * o / 2; }
+  }
+}
+
+// Gå mod et punkt. Rammer man en forhindring, går man lidt til siden et øjeblik.
+function moveToward(a, tx, ty, speed, dt) {
+  let dx = tx - a.x, dy = ty - a.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 1) return;
+  dx /= d; dy /= d;
+  if (a.sideT > 0) { a.sideT -= dt; const nx = -dy * a.side, ny = dx * a.side; dx = dx * 0.3 + nx; dy = dy * 0.3 + ny; const l = Math.hypot(dx, dy); dx /= l; dy /= l; }
+  const step = Math.min(speed * dt, d);
+  const bx = a.x, by = a.y;
+  a.x += dx * step; a.y += dy * step;
+  // a.leaving = er ved at rejse sig fra / sætte sig i sofaen (må gerne "gå igennem" den)
+  if (a.leaving && a.y > SOFA_FRONT + a.r) a.leaving = false;
+  collideWorld(a, a.leaving);
+  if (a.leaving) return;
+  const moved = Math.hypot(a.x - bx, a.y - by);
+  if (moved < step * 0.35 && a.sideT <= 0) {
+    a.side = (tx - a.x) * dy - (ty - a.y) * dx > 0 ? 1 : -1;
+    a.sideT = 0.5;
+  }
+}
+
+function caught(a) {
+  const P = G.player;
+  G.lives--; G.stats.caught++;
+  Sound.caught();
+  addFloater(P.x, P.y - 30, `${a.name} fangede dig!`, "#ff5a4e");
+  if (G.lives <= 0) { endGame(`${a.name} fangede dig!`); return; }
+  // tilbage til start, og alle voksne går tilbage til sofaen
+  P.x = START_POS.x; P.y = START_POS.y; P.inv = 2; P.stun = 0;
+  for (const ad of G.adults) if (ad.mode !== "sit") { ad.mode = "return"; ad.timer = 0; }
+}
+
+/* =====================================================================
+   Tegning (tegneserie-stil: kraftige farver og tykke sorte streger)
+   ===================================================================== */
+const ctx = canvas.getContext("2d");
+const INK = "#2b1d14";
+
+function rr(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function fillStroke(fill, lw = 3) {
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.lineWidth = Math.max(1.5, lw * view.s); ctx.strokeStyle = INK; ctx.stroke();
+}
+function circle(x, y, r, fill, lw = 3) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); fillStroke(fill, lw); }
+
+function draw(now) {
+  const s = view.s;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.clearRect(0, 0, view.cw, view.ch);
+  if (!G) return;
+
+  // ---- Gulv ----
+  const [hx, hy, hw, hh] = rectS({ x: 0, y: 0, w: W, h: L });
+  rr(hx - 6, hy - 6, hw + 12, hh + 12, 14); ctx.fillStyle = INK; ctx.fill();
+  ctx.fillStyle = "#e9b87a"; ctx.fillRect(hx, hy, hw, hh);
+  ctx.fillStyle = "rgba(160,100,40,.18)";
+  for (let x = 40; x < W; x += 40) { const [a, b, c, d] = rectS({ x, y: 0, w: 2, h: L }); ctx.fillRect(a, b, c, d); }
+  // banelinjer
+  ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 3 * s;
+  { const [cx, cy] = toS(320, 620); ctx.beginPath(); ctx.arc(cx, cy, 80 * s, 0, Math.PI * 2); ctx.stroke(); }
+  { const [a, b, c, d] = rectS({ x: 0, y: 619, w: W, h: 2 }); ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fillRect(a, b, c, d); }
+  // voksenzonen (rødt tæppe + stiplet linje)
+  { const [a, b, c, d] = rectS({ x: 0, y: 0, w: W, h: DANGER_Y }); ctx.fillStyle = "rgba(232,69,44,.13)"; ctx.fillRect(a, b, c, d); }
+  {
+    const [x1, y1] = toS(0, DANGER_Y), [x2, y2] = toS(W, DANGER_Y);
+    ctx.setLineDash([12 * s, 10 * s]); ctx.strokeStyle = "#e8452c"; ctx.lineWidth = 4 * s;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
+    const [tx, ty] = toS(W / 2, DANGER_Y + 14);
+    ctx.save(); ctx.translate(tx, ty); if (view.rot) ctx.rotate(-Math.PI / 2);
+    ctx.font = `900 ${Math.max(10, 15 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(232,69,44,.85)"; ctx.fillText("⚠ VOKSENZONE ⚠", 0, 0); ctx.restore();
+  }
+  // ribber langs væggene (pynt)
+  ctx.fillStyle = "#b5773e";
+  for (let y = 420; y < 960; y += 22) {
+    for (const x of [0, W - 10]) { const [a, b, c, d] = rectS({ x, y, w: 10, h: 6 }); ctx.fillRect(a, b, c, d); }
+  }
+
+  // ---- Måtter ----
+  for (const m of MATS) {
+    const [a, b, c, d] = rectS(m); rr(a, b, c, d, 10 * s); fillStroke("#3d7fd6");
+    ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 2 * s;
+    rr(a + 6 * s, b + 6 * s, c - 12 * s, d - 12 * s, 6 * s); ctx.stroke();
+  }
+
+  // ---- Forhindringer ----
+  for (const o of SOLIDS) drawSolid(o);
+
+  // ---- Pizza ----
+  for (const p of G.slices) drawSlice(p, now);
+  if (G.whole) drawWhole(G.whole, now);
+
+  // ---- Bolde ----
+  for (const b of balls()) {
+    const [x, y] = toS(b.x, b.y);
+    circle(x, y, BALL_R * s, "#ff5a4e");
+    ctx.save(); ctx.translate(x, y); ctx.rotate(b.roll * (view.rot ? 0 : 1));
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 3 * s;
+    ctx.beginPath(); ctx.arc(0, 0, BALL_R * s * 0.55, 0.3, 2.6); ctx.stroke(); ctx.restore();
+  }
+
+  // ---- De voksne + barnet (tegnet oppefra og ned, så de overlapper pænt) ----
+  const people = [...G.adults.map(a => ({ k: "a", o: a })), { k: "p", o: G.player }];
+  people.sort((u, v) => toS(u.o.x, u.o.y)[1] - toS(v.o.x, v.o.y)[1]);
+  for (const p of people) p.k === "a" ? drawAdult(p.o, now) : drawPlayer(G.player, now);
+
+  // ---- Svævende tekster ----
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const f of G.floaters) {
+    const [x, y] = toS(f.x, f.y);
+    ctx.globalAlpha = clamp(f.life * 1.5, 0, 1);
+    ctx.font = `900 ${Math.max(14, 22 * s)}px sans-serif`;
+    ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeText(f.text, x, y);
+    ctx.fillStyle = f.color; ctx.fillText(f.text, x, y);
+  }
+  ctx.globalAlpha = 1;
+
+  // ---- Joystick ----
+  if (joy.active && state === "play") {
+    ctx.globalAlpha = 0.35; ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, JOY_MAX, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawSolid(o) {
+  const s = view.s;
+  const [a, b, c, d] = rectS(o);
+  if (o.type === "sofa") {
+    rr(a - 4 * s, b - 4 * s, c + 8 * s, d + 8 * s, 18 * s); fillStroke("#c0392b");
+    const [ia, ib, ic, id] = rectS({ x: o.x + 14, y: o.y + 12, w: o.w - 28, h: o.h - 20 });
+    rr(ia, ib, ic, id, 10 * s); fillStroke("#e8604c", 2);
+  } else if (o.type === "box") {
+    rr(a, b, c, d, 6 * s); fillStroke("#d49452");
+    ctx.strokeStyle = "rgba(43,29,20,.5)"; ctx.lineWidth = 2 * s;
+    for (let k = 1; k < 4; k++) {
+      ctx.beginPath();
+      if (view.rot) { ctx.moveTo(a + c * k / 4, b); ctx.lineTo(a + c * k / 4, b + d); }
+      else { ctx.moveTo(a, b + d * k / 4); ctx.lineTo(a + c, b + d * k / 4); }
+      ctx.stroke();
+    }
+    rr(a + 6 * s, b + 6 * s, c - 12 * s, d - 12 * s, 6 * s); ctx.fillStyle = "rgba(255,255,255,.25)"; ctx.fill();
+  } else if (o.type === "bench") {
+    rr(a, b, c, d, 5 * s); fillStroke("#a8692f");
+  } else if (o.type === "buck") {
+    rr(a, b, c, d, 18 * s); fillStroke("#7a3b1e");
+    rr(a + 8 * s, b + 8 * s, c - 16 * s, d - 16 * s, 10 * s); ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fill();
+  }
+}
+
+function drawSlice(p, now) {
+  const s = view.s, [x, y] = toS(p.x, p.y);
+  const bob = Math.sin(now / 250 + p.rot * 3) * 2 * s;
+  const R = 17 * s;
+  ctx.save(); ctx.translate(x, y + bob); ctx.rotate(p.rot);
+  // skygge
+  ctx.fillStyle = "rgba(0,0,0,.15)"; ctx.beginPath(); ctx.ellipse(0, R * 0.9 - bob, R, R * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0, -R); ctx.lineTo(R * 0.9, R * 0.7); ctx.lineTo(-R * 0.9, R * 0.7); ctx.closePath();
+  fillStroke("#ffcf4a", 2.5);
+  ctx.beginPath(); ctx.moveTo(R * 0.95, R * 0.65); ctx.quadraticCurveTo(0, R * 1.15, -R * 0.95, R * 0.65);
+  ctx.lineWidth = 6 * s; ctx.strokeStyle = "#c97a2c"; ctx.lineCap = "round"; ctx.stroke();
+  for (const [px, py] of [[0, -R * 0.2], [-R * 0.35, R * 0.35], [R * 0.35, R * 0.35]]) {
+    ctx.beginPath(); ctx.arc(px, py, R * 0.18, 0, Math.PI * 2); ctx.fillStyle = "#d63a2a"; ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawWhole(p, now) {
+  const s = view.s, [x, y] = toS(p.x, p.y);
+  const pulse = 1 + Math.sin(now / 150) * 0.06;
+  ctx.save(); ctx.translate(x, y); ctx.scale(pulse, pulse);
+  // glorie
+  ctx.fillStyle = "rgba(255,211,77,.45)"; ctx.beginPath(); ctx.arc(0, 0, 40 * s, 0, Math.PI * 2); ctx.fill();
+  rr(-28 * s, -28 * s, 56 * s, 56 * s, 4 * s); fillStroke("#c9a36b");
+  circle(0, 0, 24 * s, "#c97a2c", 2);
+  circle(0, 0, 19 * s, "#ffcf4a", 0);
+  ctx.fillStyle = "#d63a2a";
+  for (let k = 0; k < 7; k++) {
+    const ang = k / 7 * Math.PI * 2, rr2 = k % 2 ? 12 * s : 7 * s;
+    ctx.beginPath(); ctx.arc(Math.cos(ang) * rr2, Math.sin(ang) * rr2, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = "rgba(43,29,20,.35)"; ctx.lineWidth = 1.5 * s;
+  for (let k = 0; k < 4; k++) { const ang = k / 4 * Math.PI; ctx.beginPath(); ctx.moveTo(Math.cos(ang) * 22 * s, Math.sin(ang) * 22 * s); ctx.lineTo(-Math.cos(ang) * 22 * s, -Math.sin(ang) * 22 * s); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawPlayer(P, now) {
+  const s = view.s, [x, y] = toS(P.x, P.y);
+  if (P.inv > 0 && Math.floor(now / 100) % 2) ctx.globalAlpha = 0.4;
+  const R = P.r * s;
+  const bounce = P.moving ? Math.abs(Math.sin(P.step)) * 3 * s : 0;
+  const f = toScreenDir({ x: P.fx, y: P.fy });
+  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.8, R, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  // ben
+  const leg = P.moving ? Math.sin(P.step) * 4 * s : 0;
+  circle(x - R * 0.4, y + R * 0.7 + leg, R * 0.28, "#3d7fd6", 2);
+  circle(x + R * 0.4, y + R * 0.7 - leg, R * 0.28, "#3d7fd6", 2);
+  // krop
+  circle(x, y - bounce, R * 0.85, "#ffd34d");
+  // hoved
+  const hy = y - R * 1.15 - bounce;
+  circle(x, hy, R * 0.75, "#ffd9b3");
+  // kasket (skyggen peger i løberetningen)
+  ctx.beginPath(); ctx.arc(x, hy - R * 0.1, R * 0.76, Math.PI, 0); ctx.closePath(); fillStroke("#e8452c", 2.5);
+  ctx.beginPath(); ctx.ellipse(x + f.x * R * 0.6, hy - R * 0.15, R * 0.45, R * 0.18, 0, 0, Math.PI * 2); fillStroke("#e8452c", 2);
+  // øjne
+  ctx.fillStyle = INK;
+  for (const ex of [-0.28, 0.28]) { ctx.beginPath(); ctx.arc(x + ex * R + f.x * R * 0.18, hy + R * 0.18 + f.y * R * 0.1, R * 0.11, 0, Math.PI * 2); ctx.fill(); }
+  // smil
+  ctx.beginPath(); ctx.arc(x + f.x * R * 0.15, hy + R * 0.35, R * 0.22, 0.2, Math.PI - 0.2); ctx.lineWidth = 2 * s; ctx.strokeStyle = INK; ctx.stroke();
+  if (P.stun > 0) {
+    ctx.font = `${16 * s}px sans-serif`; ctx.textAlign = "center";
+    ctx.fillText("💫", x + Math.sin(now / 80) * 10 * s, hy - R);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawAdult(a, now) {
+  const s = view.s, [x, y] = toS(a.x, a.y);
+  const R = a.r * s;
+  const walking = a.mode === "chase" || a.mode === "return";
+  const bounce = walking ? Math.abs(Math.sin(now / 90 + a.i)) * 3 * s : 0;
+  if (walking) { ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.8, R, R * 0.4, 0, 0, Math.PI * 2); ctx.fill(); }
+  // krop
+  rr(x - R, y - R * 0.9 - bounce, R * 2, R * 1.8, R * 0.8); fillStroke(a.shirt);
+  // arme strakt frem når de jagter
+  if (a.mode === "chase" && G) {
+    const d = toScreenDir(norm(G.player.x - a.x, G.player.y - a.y));
+    for (const side of [-1, 1]) {
+      const px = -d.y * side * R * 0.7, py = d.x * side * R * 0.7;
+      circle(x + px + d.x * R * 1.2, y + py + d.y * R * 1.2 - bounce, R * 0.28, "#ffd9b3", 2);
+    }
+  }
+  // hoved
+  const hy = y - R * 1.35 - bounce;
+  circle(x, hy, R * 0.72, "#ffd9b3");
+  ctx.beginPath(); ctx.arc(x, hy - R * 0.15, R * 0.74, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); fillStroke(a.hair, 2);
+  ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = 2.5 * s;
+  if (a.mode === "sit" || a.mode === "return") {
+    // søvnige øjne
+    for (const ex of [-0.28, 0.28]) { ctx.beginPath(); ctx.moveTo(x + ex * R - R * 0.12, hy + R * 0.12); ctx.lineTo(x + ex * R + R * 0.12, hy + R * 0.12); ctx.stroke(); }
+    if (a.mode === "sit") {
+      ctx.font = `900 ${12 * s}px sans-serif`; ctx.textAlign = "center";
+      const zt = (now / 900 + a.i * 0.37) % 1;
+      ctx.globalAlpha = 1 - zt; ctx.fillText("z", x + R * 0.6 + zt * 10 * s, hy - R * 0.8 - zt * 16 * s); ctx.globalAlpha = 1;
+    }
+  } else {
+    // vrede øjne og øjenbryn
+    for (const ex of [-0.28, 0.28]) {
+      ctx.beginPath(); ctx.arc(x + ex * R, hy + R * 0.15, R * 0.12, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + ex * R - R * 0.18 * Math.sign(ex), hy - R * 0.12); ctx.lineTo(x + ex * R + R * 0.15 * Math.sign(ex), hy + R * 0.0); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(x, hy + R * 0.48, R * 0.15, 0, Math.PI * 2); ctx.fill();
+  }
+  if (a.mode === "wake") {
+    ctx.font = `900 ${Math.max(16, 28 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeText("!", x, hy - R * 1.3);
+    ctx.fillStyle = "#ffd34d"; ctx.fillText("!", x, hy - R * 1.3);
+  }
+}
+function norm(x, y) { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; }
+
+/* =====================================================================
+   HUD
+   ===================================================================== */
+let lastHud = "";
+function updateHud() {
+  if (!G) return;
+  const left = Math.max(0, Math.ceil(GAME_TIME - G.t));
+  const txt = `${G.score}|${left}|${G.lives}`;
+  if (txt === lastHud) return; lastHud = txt;
+  $("score").textContent = `🍕 ${fmtNum(G.score)}`;
+  $("time").textContent = `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  $("time").classList.toggle("hurry", left <= 10);
+  $("lives").textContent = "❤️".repeat(G.lives) + "🤍".repeat(START_LIVES - G.lives);
+}
+
+/* =====================================================================
+   Game loop – delta-tid, så det kører lige hurtigt på 60 Hz og 120 Hz
+   ===================================================================== */
+let lastNow = performance.now();
+function frame(now) {
+  let dt = (now - lastNow) / 1000; lastNow = now;
+  // Store huller (fx fanen var skjult) tæller ikke med – ingen gratis tid eller point
+  if (dt > 0.25) dt = 0;
+  if (state === "play" && dt > 0) {
+    // del lange frames op, så man ikke kan "hoppe" gennem forhindringer
+    let rest = Math.min(dt, 0.1);
+    while (rest > 0 && state === "play") { const step = Math.min(rest, 1 / 60); update(step); rest -= step; }
+  }
+  draw(now);
+  updateHud();
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   Skærme, pause, rangliste og deling
+   ===================================================================== */
+const NAME_KEY = "drengene_navn", TOP_KEY = "pizzaparty_top10", BEST_KEY = "pizzaparty_bedste";
+let endedAt = 0, lastEntry = null;
+
+function getName() { return ($("nameInput").value.trim() || "Anonym").slice(0, 16); }
+function loadJSON(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch (e) { return def; } }
+function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+function showScreen(id) {
+  for (const s of ["startScreen", "pauseScreen", "endScreen"]) $(s).hidden = s !== id;
+}
+
+function startGame() {
+  Sound.unlock();
+  try { localStorage.setItem(NAME_KEY, getName()); } catch (e) {}
+  $("nameInput").blur();
+  newGame();
+  for (const k in keys) keys[k] = false;
+  joy.active = false;
+  lastHud = "";
+  state = "play";
+  showScreen(null);
+  Sound.whistle();
+}
+function pause() {
+  if (state !== "play") return;
+  state = "pause"; joy.active = false;
+  for (const k in keys) keys[k] = false;
+  showScreen("pauseScreen");
+}
+function resume() {
+  if (state !== "pause") return;
+  state = "play"; lastNow = performance.now();
+  showScreen(null);
+}
+function endGame(reason) {
+  if (state !== "play") return;
+  state = "end"; endedAt = performance.now(); joy.active = false;
+  G.endReason = reason;
+  Sound.end();
+  const name = getName(), score = G.score;
+
+  // Personlig rekord (pr. navn)
+  const bests = loadJSON(BEST_KEY, {});
+  const oldBest = bests[name] ?? null;
+  const isBest = oldBest === null || score > oldBest;
+  if (isBest) { bests[name] = score; saveJSON(BEST_KEY, bests); }
+
+  // Top 10
+  const d = new Date();
+  lastEntry = { n: name, s: score, d: `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(2)}`, id: Date.now() };
+  const top = loadJSON(TOP_KEY, []);
+  top.push(lastEntry);
+  top.sort((a, b) => b.s - a.s || a.id - b.id);
+  saveJSON(TOP_KEY, top.slice(0, 10));
+
+  $("endTitle").textContent = reason;
+  $("endScore").textContent = fmtNum(score);
+  $("newBest").textContent = isBest && score > 0 ? "🎉 Ny personlig rekord!"
+    : oldBest !== null ? `Din bedste: ${fmtNum(oldBest)} point` : "";
+  const st = G.stats;
+  $("stats").innerHTML = [
+    `🍕 Pizzastykker: <b>${st.slices}</b>`,
+    `📦 Hele pizzaer: <b>${st.wholes}</b>`,
+    `🔥 Længste combo: <b>${st.bestCombo}</b>`,
+    `🏃 Løbet: <b>${fmtNum(Math.round(st.dist / 20))} m</b>`,
+    `🙋 Fanget: <b>${st.caught} gang${st.caught === 1 ? "" : "e"}</b>`,
+    `🏐 Ramt af bold: <b>${st.bonks}</b>`,
+  ].map(x => `<div>${x}</div>`).join("");
+  renderTop();
+  $("shareBtn").hidden = !navigator.share;
+  showScreen("endScreen");
+}
+function renderTop() {
+  const top = loadJSON(TOP_KEY, []);
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  $("topTable").innerHTML = top.length
+    ? top.map((e, i) => `<tr class="${lastEntry && e.id === lastEntry.id ? "me" : ""}"><td>${i + 1}.</td><td>${esc(e.n)}</td><td>${fmtNum(e.s)}</td><td>${esc(e.d)}</td></tr>`).join("")
+    : "<tr><td colspan=4>Ingen resultater endnu</td></tr>";
+}
+function resultText() {
+  const name = getName();
+  const best = loadJSON(BEST_KEY, {})[name] ?? G.score;
+  return `🎮 Pizza Party – ${name}: ${fmtNum(G.score)} point (bedste: ${fmtNum(best)})`;
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 1800);
+}
+async function copyResult() {
+  const txt = resultText();
+  try { await navigator.clipboard.writeText(txt); toast("Kopieret! 📋"); return; } catch (e) {}
+  // reserve-løsning til ældre browsere
+  const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); toast("Kopieret! 📋"); } catch (e) { toast("Kunne ikke kopiere"); }
+  ta.remove();
+}
+async function shareResult() {
+  try { await navigator.share({ text: resultText() }); } catch (e) { /* brugeren annullerede */ }
+}
+
+// Pause automatisk ved fane-/appskift
+document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+addEventListener("blur", () => pause());
+
+$("startBtn").onclick = startGame;
+$("againBtn").onclick = () => { if (performance.now() - endedAt > 600) startGame(); };
+$("resumeBtn").onclick = resume;
+$("pauseBtn").onclick = () => { state === "play" ? pause() : resume(); };
+$("copyBtn").onclick = copyResult;
+$("shareBtn").onclick = shareResult;
+function updateMuteBtn() { $("muteBtn").textContent = Sound.muted ? "🔇" : "🔊"; }
+$("muteBtn").onclick = () => {
+  Sound.muted = !Sound.muted;
+  try { localStorage.setItem("pizzaparty_mute", Sound.muted ? "1" : "0"); } catch (e) {}
+  updateMuteBtn();
+};
+// knapperne i topbjælken må ikke "stjæle" tastaturet (mellemrum skal ikke trykke på dem)
+for (const b of document.querySelectorAll(".iconBtn")) b.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") e.preventDefault(); });
+
+/* ---------- Opstart ---------- */
+(function init() {
+  try { $("nameInput").value = localStorage.getItem(NAME_KEY) || ""; } catch (e) {}
+  const touch = matchMedia("(pointer: coarse)").matches;
+  $("ctrlHelp").innerHTML = touch
+    ? "👆 <b>Sæt fingeren på skærmen og træk</b> i den retning, du vil løbe"
+    : "⌨️ <b>Piletaster / WASD</b> for at løbe · P = pause<br>(eller træk med musen)";
+  const name = $("nameInput").value.trim();
+  const best = name ? loadJSON(BEST_KEY, {})[name] : undefined;
+  $("bestLine").textContent = best !== undefined ? `Din bedste score: ${fmtNum(best)} point` : "";
+  updateMuteBtn();
+  resize();
+  newGame(); // viser banen bag startskærmen
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

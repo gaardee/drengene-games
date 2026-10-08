@@ -8,4 +8,4 @@ Små browserspil, vi konkurrerer i. Hvert spil tager max ca. 2 minutter og virke
 
 ## Spil
 
-_Ingen spil endnu – vær den første!_
+- **[🍕 Pizza Party](games/pizza-party/)** – Løb rundt i gymnastiksalen og spis så meget pizza som muligt på 90 sekunder. 1 point pr. stykke, 8 for en hel pizza – men kommer du for tæt på sofaen, prøver de voksne at fange dig!
