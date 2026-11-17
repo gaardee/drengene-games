@@ -51,41 +51,39 @@ Du skal lave et lille, sjovt browserspil til mig og mine venner. Vi konkurrerer 
 
 ## Multiplayer (kun hvis "MIT SPIL" beder om det)
 
-Spil kan godt have flere spillere på hver sin enhed. Det kører over **Supabase Realtime "broadcast"** (en WebSocket) i det samme Supabase-projekt og med den samme offentlige nøgle som `scores.js`. Der skal ikke installeres noget, der skal ikke bruges noget bibliotek, og der gemmes intet i databasen. `games/pizza-party-multi/index.html` er et færdigt eksempel. Genbrug gerne dens `Net`-objekt (en lille Realtime-klient på ca. 70 linjer) og dens opbygning.
+Spil kan godt have flere spillere på hver sin enhed. Det kører over vores egen WebSocket-server: **Laravel Reverb på `ws.realtime.gaarde.it`** (repo: `gaardee/realtime-gaming`). Der skal ikke installeres noget, der skal ikke bruges noget bibliotek, og der gemmes intet på serveren. `games/pizza-party-multi/index.html` er et færdigt eksempel. Genbrug dens `Net`-objekt (en lille Reverb-klient på ca. 60 linjer) og dens opbygning.
+
+```js
+// Serveren (nøglen er offentlig og må gerne stå i spillet)
+const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
+```
 
 **Sådan skal det bygges**
 - **Rum med kode:** Én spiller trykker "Opret rum" og får en kode på 4 bogstaver og et link (`…/#KODE`). De andre skriver koden eller åbner linket. Der er en lobby, hvor man kan se, hvem der er med, og hvor værten trykker "Start".
 - **Værten bestemmer:** Værtens browser kører det fælles spil (fjender, ting man kan samle op, point, liv, tid) og afgør, hvem der kom først. Hver spiller styrer selv sin egen figur lokalt, så det føles hurtigt, og sender sin position til værten.
-- **Kanaler – vigtigt for at holde beskedforbruget nede:**
-  - Én fælles kanal pr. rum, hvor **kun værten sender** (lobby, start, spillets tilstand, slut).
-  - Én kanal pr. spiller, som **kun den spiller og værten** er med på. Her sender spilleren sin position, så den ikke går ud til alle de andre spillere.
+- **Kanaler:**
+  - Én fælles kanal pr. rum (fx `<mappenavn>-KODE`), hvor **kun værten sender** (lobby, start, spillets tilstand, slut).
+  - Én kanal pr. spiller (fx `<mappenavn>-KODE-<spiller-id>`), som **kun den spiller og værten** er med på. Her sender spilleren sin position, så den ikke går ud til alle de andre.
+  - Kanalnavne må kun indeholde bogstaver, tal og `-_=@,.;`. Brug altid spillets mappenavn i kanalnavnet, så spil ikke blander sig med hinanden.
 - **Send sjældent og glid blødt:** Send ca. 6-8 gange i sekundet (ikke hver frame), brug hele tal i beskederne, og lad de andre spilleres figurer glide blødt hen mod den seneste position.
 - **Undtagelser fra de faste krav:**
   - Kun værten kan pause, fordi en pause gælder for alle. Skifter værten app, pauses spillet for alle. Skifter en anden spiller app, står deres figur bare stille.
   - Hver spiller gemmer sin egen score med `gemScore(...)`. Slutskærmen viser også stillingen for runden.
   - Spillere, der forsvinder midt i spillet, må ikke få spillet til at gå i stå for de andre.
-- **Test:** Åbn spillet i 3 eller flere browser-kontekster i Playwright (én vært, resten spillere, blandet mobil og desktop), og tjek lobby, start, at point tælles, slutskærm og "ny runde". WebSocket-forbindelsen virker også ved lokal test og i PR-previews. Det er kun scores, der ikke sendes derfra.
+- **Kun på GitHub Pages:** Serveren tager kun imod spil fra `gaardee.github.io` (også PR-previews). Åbnes spillet lokalt, kan man ikke spille multiplayer. Vis en tydelig besked om det i stedet for at vente forgæves.
 
-**Supabase' grænser**
+**Serverens grænser**
 
-Supabase tæller hver besked både når den sendes og når den modtages: én besked til 4 modtagere tæller som 5.
+| | Grænse |
+|---|---|
+| Beskeder pr. forbindelse | max 30 pr. sekund (spillene bruger ca. 8) |
+| Størrelse pr. besked | max 10 KB (Pizza Party Multi med 11 spillere bruger under 1 KB) |
+| Samtidige forbindelser | max 500 for alle spil tilsammen |
+| Beskeder i alt | ingen grænse |
 
-| | Gratis | Pro (25 $/md) |
-|---|---|---|
-| Beskeder pr. sekund (hele projektet) | 100 | 500 |
-| Beskeder pr. måned | 2 mio. | 5 mio. (derefter 2,50 $ pr. mio.) |
-| Samtidige forbindelser | 200 | 500 |
+Når en spiller abonnerer på mange kanaler på én gang, tæller det også med i de 30 pr. sekund. Hold det under ca. 20 kanaler pr. spiller.
 
-Går projektet over grænsen pr. sekund, bliver forbindelserne afbrudt. Grænsen gælder **alle spil og rum tilsammen**. Med opbygningen ovenfor (vært 8/sek, spillere 7/sek) bruger et rum med n spillere ca. `8·n + 14·(n−1)` beskeder pr. sekund:
-
-| Spillere | Beskeder/sek | Gratis? |
-|---|---|---|
-| 2 | ~30 | ✅ |
-| 4 | ~75 | ✅ (men kun ét rum ad gangen) |
-| 5 | ~95 | ⚠️ lige på grænsen |
-| 11 | ~230 | ❌ kræver Pro |
-
-Lav derfor kun spil til flere end ca. 4 spillere, hvis vi har Pro. Skru ned for opdateringshastigheden, hvis det kan lade sig gøre.
+**Test:** Serveren afviser `localhost`, så i Playwright skal spillet ligge på `https://gaardee.github.io/drengene-games/...`. Brug `context.route("https://gaardee.github.io/**", …)` til at svare med de lokale filer, og erstat `scores.js` med en tom udgave, så testen ikke gemmer rigtige scores. Åbn 3 eller flere browser-kontekster (én vært, resten spillere, blandet mobil og desktop), og tjek lobby, start, at point tælles, slutskærm og "ny runde".
 
 ## Fremgangsmåde
 

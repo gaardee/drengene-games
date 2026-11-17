@@ -203,9 +203,12 @@
 
 /* =====================================================================
    SÅDAN VIRKER MULTIPLAYER
-   - Alle spillere i et rum forbindes via Supabase Realtime "broadcast"
-     (en WebSocket). Det er samme Supabase-projekt og samme offentlige
-     nøgle som den fælles rangliste – der gemmes INTET i databasen.
+   - Alle spillere i et rum forbindes via vores egen WebSocket-server
+     (Laravel Reverb på realtime.gaarde.it, repo: gaardee/realtime-gaming).
+     Der gemmes intet – serveren videresender kun beskeder.
+   - Serveren tager kun imod spil fra gaardee.github.io. Spillet kan derfor
+     IKKE spille multiplayer, når det åbnes lokalt (localhost/fil) – kun på
+     GitHub Pages (også PR-previews).
    - Den der opretter rummet er "værten". Værtens browser bestemmer alt
      det fælles: pizza, voksne, øl, point og liv, og sender det ud ~8 gange
      i sekundet.
@@ -213,16 +216,14 @@
      sender sin position til værten ~7 gange i sekundet.
    - KANALER: Rummet har én fælles kanal, hvor kun værten sender (til alle).
      Hver spiller har desuden sin egen kanal, som kun spilleren og værten er
-     med i. Så når en spillers position kun ud til værten og ikke til alle de
-     andre. Supabase tæller hver modtaget besked, så det sparer rigtig meget:
-       11 spillere: værten 8/sek × 11  ≈  90 beskeder/sek
-                    10 spillere 7/sek × 2 ≈ 140 beskeder/sek   =>  ~230/sek
-     (Supabase gratis: max 100/sek · Pro: max 500/sek. Med Supabase gratis
-     kan ca. 4 spillere være med; til 5-11 spillere kræver det Pro.)
+     med i. Så når en spillers position kun ud til værten og ikke til alle
+     de andre (mindre trafik på telefonerne).
+   - Grænser på serveren: max 30 beskeder/sek pr. forbindelse og 10 KB pr.
+     besked. Ingen grænse for hvor mange beskeder der sendes i alt.
    ===================================================================== */
 const GAME_NAME   = "pizza-party-multi"; // = mappenavnet (bruges til ranglisten)
-const RT_URL = "wss://uzpqgnrxitvwyeazzfin.supabase.co/realtime/v1/websocket";
-const RT_KEY = "sb_publishable_bPz2AhlylAksfjP3Vkgy7g_vCT7v4jF"; // offentlig nøgle (samme som scores.js)
+// Reverb-serveren. Nøglen er offentlig (den må gerne stå her) – den hemmelige ligger kun på serveren.
+const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
 const MAX_PLAYERS = 11;
 const HOST_SEND_MS = 125;   // værten sender spillets tilstand 8 gange/sek
 const CLIENT_SEND_MS = 140; // spillerne sender deres position ~7 gange/sek
@@ -421,69 +422,70 @@ const Sound = {
 };
 
 /* =====================================================================
-   Netværk: en lille Supabase Realtime-klient (Phoenix-protokollen)
+   Netværk: en lille klient til Laravel Reverb (Pusher-protokollen)
    direkte over WebSocket – intet bibliotek nødvendigt.
+   (Samme klient som public/js/realtime.js i gaardee/realtime-gaming.)
+   - join(kanal) / leave(kanal): gå på / af en kanal
+   - send(kanal, event, data): når ud til alle ANDRE på kanalen
+   - onMsg(kanal, event, data) kaldes, når der kommer en besked
    ===================================================================== */
 const Net = {
-  ws: null, ref: 0, want: false, hb: 0, main: "",
-  topics: new Set(), joined: new Set(), refs: {},
+  ws: null, want: false, main: "", idle: 0,
+  topics: new Set(), joined: new Set(),
   onMsg: null, onStatus: null,
   open(main) {
     this.close();
     this.want = true; this.main = main; this.topics = new Set([main]);
     this._connect();
   },
-  join(topic) { if (this.topics.has(topic)) return; this.topics.add(topic); this._join(topic); },
-  leave(topic) { if (!this.topics.delete(topic)) return; this.joined.delete(topic); this._raw(topic, "phx_leave", {}); },
-  _raw(topic, event, payload) {
-    const ref = String(++this.ref);
-    if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ topic, event, payload, ref }));
-    return ref;
-  },
-  _join(topic) {
-    const ref = this._raw(topic, "phx_join", { config: { broadcast: { self: false, ack: false }, presence: { key: "" }, private: false } });
-    this.refs[ref] = topic;
-  },
+  join(topic) { if (this.topics.has(topic)) return; this.topics.add(topic); this._raw("pusher:subscribe", { channel: topic }); },
+  leave(topic) { if (!this.topics.delete(topic)) return; this.joined.delete(topic); this._raw("pusher:unsubscribe", { channel: topic }); },
+  _raw(event, data) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ event, data })); },
   _connect() {
-    const ws = new WebSocket(`${RT_URL}?apikey=${RT_KEY}&vsn=1.0.0`);
-    this.ws = ws; this.joined = new Set(); this.refs = {};
-    ws.onopen = () => { for (const t of this.topics) this._join(t); };
+    const ws = new WebSocket(`wss://${RT.host}:${RT.port}/app/${RT.key}?protocol=7&client=js&version=8.4.0&flash=false`);
+    this.ws = ws; this.joined = new Set();
+    // Serveren lukker forbindelsen efter 30 sek. uden trafik – send et "ping", hvis der er stille
+    const resetIdle = () => { clearTimeout(this.idle); this.idle = setTimeout(() => this._raw("pusher:ping", {}), 20000); };
     ws.onmessage = e => {
       if (ws !== this.ws) return;
-      let d; try { d = JSON.parse(e.data); } catch (err) { return; }
-      if (d.event === "phx_reply" && this.refs[d.ref]) {
-        const t = this.refs[d.ref]; delete this.refs[d.ref];
-        const ok = d.payload && d.payload.status === "ok";
-        if (ok && this.topics.has(t)) this.joined.add(t);
-        if (t === this.main && this.onStatus) this.onStatus(ok ? "ok" : "fejl");
-      } else if (d.event === "broadcast" && this.joined.has(d.topic) && d.payload && this.onMsg) {
-        this.onMsg(d.topic, d.payload.event, d.payload.payload || {});
+      resetIdle();
+      let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+      let d = m.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch (err) {} }
+      if (m.event === "pusher:connection_established") {
+        for (const t of this.topics) this._raw("pusher:subscribe", { channel: t });
+      } else if (m.event === "pusher_internal:subscription_succeeded") {
+        if (this.topics.has(m.channel)) this.joined.add(m.channel);
+        if (m.channel === this.main && this.onStatus) this.onStatus("ok");
+      } else if (m.event === "pusher:ping") {
+        this._raw("pusher:pong", {});
+      } else if (m.event === "pusher:error") {
+        console.warn("Reverb-fejl:", d);
+      } else if (m.channel && m.event && m.event.startsWith("client-") && this.joined.has(m.channel) && this.onMsg) {
+        this.onMsg(m.channel, m.event.slice(7), d || {});
       }
     };
     ws.onclose = () => {
+      clearTimeout(this.idle);
       if (ws !== this.ws) return;
       this.joined = new Set();
       if (this.onStatus) this.onStatus("lukket");
       if (this.want) setTimeout(() => { if (this.want && this.ws === ws) this._connect(); }, 1500);
     };
-    clearInterval(this.hb);
-    this.hb = setInterval(() => {
-      if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(++this.ref) }));
-    }, 25000);
   },
   send(topic, event, payload) {
     if (!this.joined.has(topic) || !this.ws || this.ws.readyState !== 1) return false;
-    this.ws.send(JSON.stringify({ topic, event: "broadcast", ref: String(++this.ref), payload: { type: "broadcast", event, payload } }));
+    this.ws.send(JSON.stringify({ event: "client-" + event, channel: topic, data: payload || {} }));
     return true;
   },
   close() {
-    this.want = false; this.joined = new Set(); this.topics = new Set(); clearInterval(this.hb);
+    this.want = false; this.joined = new Set(); this.topics = new Set(); clearTimeout(this.idle);
     const w = this.ws; this.ws = null;
     if (w) try { w.close(); } catch (e) {}
   },
 };
 // Kanalnavne: den fælles kanal for rummet, og én kanal pr. spiller (kun spilleren + værten)
-const mainTopic = () => "realtime:pizza-party-multi-" + roomCode;
+const mainTopic = () => "pizza-party-multi-" + roomCode;
 const playerTopic = id => mainTopic() + "-" + id;
 const sendMain = (ev, payload) => Net.send(mainTopic(), ev, payload);
 const sendMine = (ev, payload) => Net.send(playerTopic(MY_ID), ev, payload);
@@ -1012,7 +1014,7 @@ function createRoom() {
   role = "host"; roomCode = makeCode();
   lobby = { players: [{ id: MY_ID, name: getName(), c: 0, last: Infinity }], started: false };
   Net.onMsg = onNetMsg;
-  Net.onStatus = st => { if (state === "lobby") $("lobbyMsg").textContent = st === "ok" ? "" : "Forbinder…"; if (st === "ok") hostBroadcastLobby(); };
+  Net.onStatus = st => { if (state === "lobby") $("lobbyMsg").textContent = st === "ok" ? "" : connectHint(); if (st === "ok") hostBroadcastLobby(); };
   Net.open(mainTopic());
   enterLobby();
 }
@@ -1023,18 +1025,23 @@ function joinRoom() {
   role = "client"; roomCode = code;
   lobby = { players: [], started: false }; lobbySeen = false;
   Net.onMsg = onNetMsg;
-  Net.onStatus = st => { if (st === "ok") sendMain("hello", { id: MY_ID, name: getName() }); };
+  Net.onStatus = st => { if (st === "ok") sendMain("hello", { id: MY_ID, name: getName() }); else if (state === "lobby") $("lobbyMsg").textContent = connectHint(); };
   Net.open(mainTopic());
   Net.join(playerTopic(MY_ID));
   enterLobby();
-  setTimeout(() => { if (state === "lobby" && role === "client" && !lobbySeen) $("lobbyMsg").textContent = "Kan ikke finde rummet – er koden rigtig, og har værten spillet åbent?"; }, 5000);
+  setTimeout(() => { if (state === "lobby" && role === "client" && !lobbySeen) $("lobbyMsg").textContent = ON_PAGES ? "Kan ikke finde rummet – er koden rigtig, og har værten spillet åbent?" : connectHint(); }, 5000);
+}
+// Serveren tager kun imod spil fra gaardee.github.io – lokalt kan man ikke spille multiplayer
+const ON_PAGES = location.hostname === "gaardee.github.io";
+function connectHint() {
+  return ON_PAGES ? "Forbinder…" : "Multiplayer virker kun på gaardee.github.io – ikke når spillet er åbnet lokalt.";
 }
 function enterLobby() {
   state = "lobby";
   $("startErr").textContent = "";
   $("lobbyCode").textContent = roomCode;
   $("room").textContent = "Rum " + roomCode;
-  $("lobbyMsg").textContent = role === "host" ? "Forbinder…" : "Leder efter rummet…";
+  $("lobbyMsg").textContent = !ON_PAGES ? connectHint() : role === "host" ? "Forbinder…" : "Leder efter rummet…";
   try { history.replaceState(null, "", "#" + roomCode); } catch (e) {}
   renderLobby();
   showScreen("lobbyScreen");
