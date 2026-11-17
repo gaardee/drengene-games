@@ -83,8 +83,8 @@
   .small { font-size: 14px; margin: 6px 0 0; opacity: .85; }
   .err { color: #c0392b; font-weight: 900; min-height: 1.2em; margin: 6px 0 0; font-size: 15px; }
   .code { font-size: 54px; font-weight: 900; letter-spacing: 10px; color: #e8452c; text-shadow: 3px 3px 0 #2b1d14; margin: 2px 0; }
-  .plist { list-style: none; padding: 0; margin: 8px 0; text-align: left; font-size: 19px; }
-  .plist li { background: #ffe9b0; border-radius: 10px; padding: 6px 10px; margin: 4px 0; display: flex; align-items: center; gap: 8px; }
+  .plist { list-style: none; padding: 0; margin: 8px 0; text-align: left; font-size: 17px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .plist li { background: #ffe9b0; border-radius: 10px; padding: 5px 8px; display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .dot { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #2b1d14; flex: 0 0 auto; }
   .bigscore { font-size: 54px; font-weight: 900; line-height: 1; margin: 4px 0; }
   .bigscore small { font-size: 22px; }
@@ -125,11 +125,12 @@
     <div class="screen" id="startScreen">
       <div class="card">
         <h1>🍕 Pizza Party Multi</h1>
-        <p class="tagline">Op til <b>4 spillere</b> på hver sin telefon eller computer. Hvem spiser mest pizza?</p>
+        <p class="tagline">Op til <b>11 spillere</b> på hver sin telefon eller computer. Hvem spiser mest pizza?</p>
         <ul class="rules">
           <li>🍕 <b>1 point</b> pr. pizzastykke – snup dem før de andre!</li>
           <li>📦 Hel pizza foran sofaen = <b>8 point</b></li>
           <li>🛋️ Kommer du for tæt på sofaen, prøver de voksne at <b>fange dig</b> – 3 liv hver</li>
+          <li>👨‍👩‍👧‍👦 Jo flere I er, jo større sal, flere pizzaer og flere voksne</li>
           <li>🍺 En voksen med øl følger efter den nærmeste spiller resten af spillet</li>
           <li>🏐 Undgå boldene og de blå måtter · ⏱ <b>90 sekunder</b></li>
         </ul>
@@ -210,11 +211,19 @@
      i sekundet.
    - Hver spiller styrer selv sit eget barn (så det føles hurtigt) og
      sender sin position til værten ~7 gange i sekundet.
+   - KANALER: Rummet har én fælles kanal, hvor kun værten sender (til alle).
+     Hver spiller har desuden sin egen kanal, som kun spilleren og værten er
+     med i. Så når en spillers position kun ud til værten og ikke til alle de
+     andre. Supabase tæller hver modtaget besked, så det sparer rigtig meget:
+       11 spillere: værten 8/sek × 11  ≈  90 beskeder/sek
+                    10 spillere 7/sek × 2 ≈ 140 beskeder/sek   =>  ~230/sek
+     (Supabase gratis: max 100/sek · Pro: max 500/sek. Med Supabase gratis
+     kan ca. 4 spillere være med; til 5-11 spillere kræver det Pro.)
    ===================================================================== */
 const GAME_NAME   = "pizza-party-multi"; // = mappenavnet (bruges til ranglisten)
 const RT_URL = "wss://uzpqgnrxitvwyeazzfin.supabase.co/realtime/v1/websocket";
 const RT_KEY = "sb_publishable_bPz2AhlylAksfjP3Vkgy7g_vCT7v4jF"; // offentlig nøgle (samme som scores.js)
-const MAX_PLAYERS = 4;
+const MAX_PLAYERS = 11;
 const HOST_SEND_MS = 125;   // værten sender spillets tilstand 8 gange/sek
 const CLIENT_SEND_MS = 140; // spillerne sender deres position ~7 gange/sek
 const LOBBY_PING_MS = 1500;
@@ -225,7 +234,8 @@ const LOBBY_PING_MS = 1500;
 const GAME_TIME   = 90;
 const START_LIVES = 3;
 const SEED        = 20261117;
-const SLICES_ON_FIELD = 8;   // lidt flere end i solo, fordi der er flere munde
+// Flere spillere => flere pizzastykker fremme ad gangen (8 for 1-4 spillere, 16 for 11)
+const slicesOnField = () => Math.max(8, 5 + NPL);
 const WHOLE_PIZZA_POINTS = 8;
 const WHOLE_PIZZA_TIMES = [15, 40, 65];
 const COMBO_WINDOW = 2.0;
@@ -235,21 +245,26 @@ const PLAYER_R = 18;
 const ADULT_R = 24;
 const MAT_SLOW = 0.55;
 
-const W = 640, L = 1000;
-const DANGER_Y = 300;
-const GIVEUP_Y = 430;
-const START_Y = 950;
-const startX = slot => 320 + (slot - 1.5) * 70; // hver spiller sin startplads
-
-// Farver til de op til 4 spillere (kasket, trøje)
+// Farver til de op til 11 spillere (kasket, trøje)
 const COLORS = [
-  { cap: "#e8452c", body: "#ffd34d", name: "Rød" },
-  { cap: "#3d7fd6", body: "#a8e0ff", name: "Blå" },
-  { cap: "#2e9e44", body: "#c8f29a", name: "Grøn" },
-  { cap: "#9c5ad6", body: "#ffb3e0", name: "Lilla" },
+  { cap: "#e8452c", body: "#ffd34d" }, // rød
+  { cap: "#3d7fd6", body: "#a8e0ff" }, // blå
+  { cap: "#2e9e44", body: "#c8f29a" }, // grøn
+  { cap: "#9c5ad6", body: "#ffb3e0" }, // lilla
+  { cap: "#f28c28", body: "#fff1c1" }, // orange
+  { cap: "#2b2b2b", body: "#e0e0e0" }, // sort
+  { cap: "#e84393", body: "#ffd6ec" }, // pink
+  { cap: "#13a89e", body: "#b8f5ee" }, // turkis
+  { cap: "#8b5a2b", body: "#f3d6b0" }, // brun
+  { cap: "#f5c400", body: "#7fb2ff" }, // gul
+  { cap: "#ffffff", body: "#ff9a8a" }, // hvid
 ];
 
-const SOLIDS = [
+/* ---------- Gymnastiksalen ----------
+   Salen er tegnet i 640×1000, men bliver gjort større, når der er mange
+   spillere (børnene og de voksne har samme størrelse, så der bliver mere plads).
+   1-4 spillere: ×1 · 5-7: ×1,2 · 8-11: ×1,4 (og 6 voksne i stedet for 4) */
+const BASE_SOLIDS = [
   { type: "sofa",  x: 170, y: 10,  w: 300, h: 62 },
   { type: "box",   x: 80,  y: 175, w: 85,  h: 55 },
   { type: "box",   x: 475, y: 175, w: 85,  h: 55 },
@@ -259,30 +274,54 @@ const SOLIDS = [
   { type: "bench", x: 150, y: 760, w: 20,  h: 140 },
   { type: "bench", x: 470, y: 760, w: 20,  h: 140 },
 ];
-const MATS = [
+const BASE_MATS = [
   { x: 40,  y: 515, w: 160, h: 125 },
   { x: 440, y: 515, w: 160, h: 125 },
 ];
-const BALL_DEFS = [
+const BASE_BALLS = [
   { y: 470, speed: 190, phase: 0,   from: 0  },
   { y: 700, speed: 230, phase: 300, from: 0  },
   { y: 335, speed: 260, phase: 150, from: 40 },
 ];
 const BALL_R = 22;
-const ADULT_DEFS = [
-  { x: 215, shirt: "#4caf50", hair: "#5a3a1a", name: "Far" },
-  { x: 290, shirt: "#9c5ad6", hair: "#f2c94c", name: "Mor" },
-  { x: 350, shirt: "#e8452c", hair: "#888",    name: "Onkel" },
-  { x: 425, shirt: "#3d7fd6", hair: "#2b1d14", name: "Faster" },
+const ALL_ADULTS = [
+  { shirt: "#4caf50", hair: "#5a3a1a", name: "Far" },
+  { shirt: "#9c5ad6", hair: "#f2c94c", name: "Mor" },
+  { shirt: "#e8452c", hair: "#888",    name: "Onkel" },
+  { shirt: "#3d7fd6", hair: "#2b1d14", name: "Faster" },
+  { shirt: "#f5b83d", hair: "#ddd",    name: "Mormor" }, // kun med 8+ spillere
+  { shirt: "#8b5a2b", hair: "#eee",    name: "Morfar" },
 ];
-const SEAT_Y = 58;
-const SOFA_FRONT = 72;
-const WHOLE_PIZZA_POS = { x: 320, y: 190 };
 const BEER_TIMES = [20, 45, 70];
-const BEER_SPOTS = [{ x: 120, y: 120 }, { x: 520, y: 120 }, { x: 320, y: 265 }];
 const FETCH_SPEED = 150;
 const DRUNK_FACTOR = 0.6;
 const MODES = ["sit", "wake", "chase", "fetch", "drunk", "return"]; // sendes som tal
+
+// Disse sættes af setHall() ud fra antal spillere
+let NPL = 1, HS = 1, SPEED_K = 1;
+let W, L, DANGER_Y, GIVEUP_Y, START_Y, SEAT_Y, SOFA_FRONT, SOLIDS, MATS, BALL_DEFS, ADULT_DEFS, WHOLE_PIZZA_POS, BEER_SPOTS, SLICE_SPOTS;
+function setHall(n) {
+  NPL = Math.max(1, n);
+  HS = NPL <= 4 ? 1 : NPL <= 7 ? 1.2 : 1.4;
+  SPEED_K = 1 + (HS - 1) * 0.5;               // alle løber lidt hurtigere i en større sal
+  const sc = r => ({ ...r, x: r.x * HS, y: r.y * HS, w: r.w * HS, h: r.h * HS });
+  W = 640 * HS; L = 1000 * HS;
+  DANGER_Y = 300 * HS; GIVEUP_Y = 430 * HS; START_Y = L - 50;
+  SEAT_Y = 58 * HS; SOFA_FRONT = 72 * HS;
+  SOLIDS = BASE_SOLIDS.map(sc); MATS = BASE_MATS.map(sc);
+  BALL_DEFS = BASE_BALLS.map(b => ({ ...b, y: b.y * HS, speed: b.speed * HS, phase: b.phase * HS }));
+  const sofa = SOLIDS[0], k = NPL >= 8 ? 6 : 4;
+  ADULT_DEFS = ALL_ADULTS.slice(0, k).map((a, i) => ({ ...a, x: sofa.x + sofa.w * (i + 0.5) / k }));
+  WHOLE_PIZZA_POS = { x: 320 * HS, y: 190 * HS };
+  BEER_SPOTS = [{ x: 120 * HS, y: 120 * HS }, { x: 520 * HS, y: 120 * HS }, { x: 320 * HS, y: 265 * HS }];
+  SLICE_SPOTS = makeSliceSpots();
+  resize(); // kameraet skal passe til den nye salstørrelse
+}
+// Hver spiller sin startplads på bundlinjen
+function startX(slot) {
+  const gap = NPL > 1 ? Math.min(70, (W - 120) / (NPL - 1)) : 0;
+  return W / 2 + (slot - (NPL - 1) / 2) * gap;
+}
 
 /* =====================================================================
    Hjælpefunktioner
@@ -332,13 +371,12 @@ function makeSliceSpots() {
   while (spots.length < 400) {
     const x = 35 + rnd() * (W - 70), y = 100 + rnd() * (L - 150);
     if (SOLIDS.some(s => inRect(x, y, s, 22))) continue;
-    if (y > START_Y - 50 && x > startX(0) - 40 && x < startX(3) + 40) continue;
+    if (y > START_Y - 50) continue; // ikke oven i startpladserne
     if (Math.hypot(x - WHOLE_PIZZA_POS.x, y - WHOLE_PIZZA_POS.y) < 40) continue;
     spots.push({ x, y, rot: rnd() * Math.PI * 2 });
   }
   return spots;
 }
-const SLICE_SPOTS = makeSliceSpots();
 
 // Boldenes position afhænger kun af tiden => ens på alle skærme
 function balls(t) {
@@ -387,35 +425,44 @@ const Sound = {
    direkte over WebSocket – intet bibliotek nødvendigt.
    ===================================================================== */
 const Net = {
-  ws: null, topic: "", ref: 0, joined: false, want: false, hb: 0,
+  ws: null, ref: 0, want: false, hb: 0, main: "",
+  topics: new Set(), joined: new Set(), refs: {},
   onMsg: null, onStatus: null,
-  open(code) {
+  open(main) {
     this.close();
-    this.want = true;
-    this.topic = "realtime:pizza-party-multi-" + code;
+    this.want = true; this.main = main; this.topics = new Set([main]);
     this._connect();
+  },
+  join(topic) { if (this.topics.has(topic)) return; this.topics.add(topic); this._join(topic); },
+  leave(topic) { if (!this.topics.delete(topic)) return; this.joined.delete(topic); this._raw(topic, "phx_leave", {}); },
+  _raw(topic, event, payload) {
+    const ref = String(++this.ref);
+    if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ topic, event, payload, ref }));
+    return ref;
+  },
+  _join(topic) {
+    const ref = this._raw(topic, "phx_join", { config: { broadcast: { self: false, ack: false }, presence: { key: "" }, private: false } });
+    this.refs[ref] = topic;
   },
   _connect() {
     const ws = new WebSocket(`${RT_URL}?apikey=${RT_KEY}&vsn=1.0.0`);
-    this.ws = ws; this.joined = false;
-    ws.onopen = () => ws.send(JSON.stringify({
-      topic: this.topic, event: "phx_join", ref: String(++this.ref),
-      payload: { config: { broadcast: { self: false, ack: false }, presence: { key: "" }, private: false } },
-    }));
+    this.ws = ws; this.joined = new Set(); this.refs = {};
+    ws.onopen = () => { for (const t of this.topics) this._join(t); };
     ws.onmessage = e => {
       if (ws !== this.ws) return;
       let d; try { d = JSON.parse(e.data); } catch (err) { return; }
-      if (d.topic !== this.topic) return;
-      if (d.event === "phx_reply" && !this.joined) {
-        this.joined = d.payload && d.payload.status === "ok";
-        if (this.onStatus) this.onStatus(this.joined ? "ok" : "fejl");
-      } else if (d.event === "broadcast" && d.payload && this.onMsg) {
-        this.onMsg(d.payload.event, d.payload.payload || {});
+      if (d.event === "phx_reply" && this.refs[d.ref]) {
+        const t = this.refs[d.ref]; delete this.refs[d.ref];
+        const ok = d.payload && d.payload.status === "ok";
+        if (ok && this.topics.has(t)) this.joined.add(t);
+        if (t === this.main && this.onStatus) this.onStatus(ok ? "ok" : "fejl");
+      } else if (d.event === "broadcast" && this.joined.has(d.topic) && d.payload && this.onMsg) {
+        this.onMsg(d.topic, d.payload.event, d.payload.payload || {});
       }
     };
     ws.onclose = () => {
       if (ws !== this.ws) return;
-      this.joined = false;
+      this.joined = new Set();
       if (this.onStatus) this.onStatus("lukket");
       if (this.want) setTimeout(() => { if (this.want && this.ws === ws) this._connect(); }, 1500);
     };
@@ -424,17 +471,22 @@ const Net = {
       if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(++this.ref) }));
     }, 25000);
   },
-  send(event, payload) {
-    if (!this.joined || !this.ws || this.ws.readyState !== 1) return false;
-    this.ws.send(JSON.stringify({ topic: this.topic, event: "broadcast", ref: String(++this.ref), payload: { type: "broadcast", event, payload } }));
+  send(topic, event, payload) {
+    if (!this.joined.has(topic) || !this.ws || this.ws.readyState !== 1) return false;
+    this.ws.send(JSON.stringify({ topic, event: "broadcast", ref: String(++this.ref), payload: { type: "broadcast", event, payload } }));
     return true;
   },
   close() {
-    this.want = false; this.joined = false; clearInterval(this.hb);
+    this.want = false; this.joined = new Set(); this.topics = new Set(); clearInterval(this.hb);
     const w = this.ws; this.ws = null;
     if (w) try { w.close(); } catch (e) {}
   },
 };
+// Kanalnavne: den fælles kanal for rummet, og én kanal pr. spiller (kun spilleren + værten)
+const mainTopic = () => "realtime:pizza-party-multi-" + roomCode;
+const playerTopic = id => mainTopic() + "-" + id;
+const sendMain = (ev, payload) => Net.send(mainTopic(), ev, payload);
+const sendMine = (ev, payload) => Net.send(playerTopic(MY_ID), ev, payload);
 
 /* =====================================================================
    Tilstand
@@ -477,7 +529,7 @@ function hostNewGame() {
       st: { slices: 0, wholes: 0, caught: 0, beersTaken: 0, combo: 0, bestCombo: 0, lastEat: -99 },
     };
   });
-  for (let i = 0; i < SLICES_ON_FIELD; i++) spawnSlice();
+  for (let i = 0; i < slicesOnField(); i++) spawnSlice();
   S = G;
 }
 function spawnSlice() {
@@ -594,7 +646,7 @@ function moveMe(dt, t) {
     P.moving = false;
   } else {
     const inp = toWorldDir(screenInput());
-    const sp = PLAYER_SPEED * (onMat(P) ? MAT_SLOW : 1);
+    const sp = PLAYER_SPEED * SPEED_K * (onMat(P) ? MAT_SLOW : 1);
     P.x += inp.x * sp * dt; P.y += inp.y * sp * dt;
     P.moving = Math.hypot(inp.x, inp.y) > 0.1;
     if (P.moving) { const l = Math.hypot(inp.x, inp.y); P.fx = inp.x / l; P.fy = inp.y / l; P.step += dt * 12; }
@@ -680,8 +732,8 @@ function hostUpdateAdults(dt, act) {
   const t = G.t;
   const n = Object.keys(G.players).length;
   // flere spillere => lidt flere voksne må jagte samtidig
-  const maxChasers = Math.min(4, (t < 30 ? 1 : t < 60 ? 2 : 3) + (n >= 3 ? 1 : 0));
-  const chaseSpeed = 175 + 45 * (t / GAME_TIME);
+  const maxChasers = Math.min(G.adults.length, (t < 30 ? 1 : t < 60 ? 2 : 3) + Math.floor((n - 1) / 3));
+  const chaseSpeed = (175 + 45 * (t / GAME_TIME)) * SPEED_K;
   const inZone = act.filter(p => p.y < DANGER_Y && p.inv <= 0);
   const free = a => a.mode === "sit" || a.mode === "return";
   const nearest = (a, list) => { let best = null, bd = 1e9; for (const p of list) { const d = Math.hypot(a.x - p.x, a.y - p.y); if (d < bd) { bd = d; best = p; } } return best; };
@@ -724,7 +776,7 @@ function hostUpdateAdults(dt, act) {
     } else if (a.mode === "fetch") {
       const b = a.beer;
       if (!b || !G.beers.includes(b)) { a.mode = "return"; a.beer = null; continue; }
-      moveToward(a, b.x, b.y, FETCH_SPEED, dt);
+      moveToward(a, b.x, b.y, FETCH_SPEED * SPEED_K, dt);
       if (Math.hypot(a.x - b.x, a.y - b.y) < a.r + 10) {
         G.beers.splice(G.beers.indexOf(b), 1);
         a.mode = "drunk"; a.beer = null; a.hik = 1.5;
@@ -744,7 +796,7 @@ function hostUpdateAdults(dt, act) {
     } else if (a.mode === "return") {
       const ty = a.leaving ? SEAT_Y : SOFA_FRONT + a.r + 6;
       if (!a.leaving && Math.hypot(a.x - a.homeX, a.y - ty) < 6) a.leaving = true;
-      moveToward(a, a.homeX, ty, 130, dt);
+      moveToward(a, a.homeX, ty, 130 * SPEED_K, dt);
       if (a.leaving && Math.hypot(a.x - a.homeX, a.y - SEAT_Y) < 3) { a.mode = "sit"; a.x = a.homeX; a.y = SEAT_Y; a.leaving = false; }
     }
   }
@@ -797,7 +849,7 @@ function applyReset(p) {
 // Værten sender hele den fælles tilstand
 function hostSendState() {
   const pl = Object.values(G.players).map(p => [p.id, r1(p.x), r1(p.y), r1(p.fx * 100), r1(p.fy * 100), p.moving ? 1 : 0, p.score, p.lives, r1(p.inv * 10), p.rs, p.out ? 1 : 0, p.stun > 0 ? 1 : 0]);
-  Net.send("state", {
+  sendMain("state", {
     t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0,
     sl: G.slices.map(s => [r1(s.x), r1(s.y), r1(s.rot * 100)]),
     wh: G.whole ? 1 : 0,
@@ -816,9 +868,9 @@ function hostEnd(reason) {
     .sort((a, b) => b.s - a.s);
   hostSendState();
   const msg = { reason, res };
-  Net.send("end", msg);
+  sendMain("end", msg);
   // send igen et øjeblik efter, hvis nogen lige var ved at genoprette forbindelsen
-  setTimeout(() => Net.send("end", msg), 800);
+  setTimeout(() => sendMain("end", msg), 800);
   lobby.started = false;
   showEnd(msg);
 }
@@ -878,10 +930,12 @@ const clientTime = () => S.t + (S.paused ? 0 : Math.min(0.4, (performance.now() 
 /* =====================================================================
    Beskeder fra netværket
    ===================================================================== */
-function onNetMsg(ev, m) {
+function onNetMsg(topic, ev, m) {
   if (role === "host") {
+    // på en spillers egen kanal stoler vi kun på kanalens id
+    if (topic !== mainTopic()) m.id = topic.slice(mainTopic().length + 1);
     if (ev === "hello") hostHello(m);
-    else if (ev === "bye") { lobby.players = lobby.players.filter(p => p.id !== m.id); renderLobby(); hostBroadcastLobby(); }
+    else if (ev === "bye") { hostRemove(m.id); renderLobby(); hostBroadcastLobby(); }
     else if (ev === "pos" && G && state !== "end") {
       const p = G.players[m.id];
       if (!p) return;
@@ -891,7 +945,8 @@ function onNetMsg(ev, m) {
     }
     return;
   }
-  // ---- vi er spiller ----
+  // ---- vi er spiller: vi lytter kun på den fælles kanal ----
+  if (topic !== mainTopic()) return;
   if (ev === "lobby" || ev === "state" || ev === "start" || ev === "end") lastHostMsg = performance.now();
   if (ev === "lobby") {
     lobbySeen = true;
@@ -900,7 +955,7 @@ function onNetMsg(ev, m) {
     if (!m.st && (state === "lobby" || state === "end" || state === "wait")) {
       if (state !== "lobby") { state = "lobby"; showScreen("lobbyScreen"); }
       renderLobby();
-      $("lobbyMsg").textContent = inIt ? "" : (m.pl.length >= MAX_PLAYERS ? "Rummet er fyldt (max 4)." : "Melder mig ind…");
+      $("lobbyMsg").textContent = inIt ? "" : (m.pl.length >= MAX_PLAYERS ? `Rummet er fyldt (max ${MAX_PLAYERS}).` : "Melder mig ind…");
     } else if (m.st && state === "lobby") {
       renderLobby();
       $("lobbyMsg").textContent = inIt ? "" : "Spillet er i gang – du kommer med i næste runde.";
@@ -919,12 +974,13 @@ function hostHello(m) {
   let p = lobby.players.find(q => q.id === m.id);
   if (!p && !lobby.started && lobby.players.length < MAX_PLAYERS) {
     const used = lobby.players.map(q => q.c);
-    const c = [0, 1, 2, 3].find(i => !used.includes(i));
+    const c = COLORS.findIndex((_, i) => !used.includes(i));
     // samme navn to gange? => tilføj et tal
     let name = String(m.name || "Anonym").slice(0, 16), base = name, k = 2;
     while (lobby.players.some(q => q.name === name)) name = `${base} ${k++}`;
     p = { id: m.id, name, c, last: 0 };
     lobby.players.push(p);
+    Net.join(playerTopic(p.id)); // nu kan spilleren sende til værten alene
     Sound.join();
     renderLobby();
     hostBroadcastLobby();
@@ -932,8 +988,13 @@ function hostHello(m) {
   if (p) p.last = performance.now();
   else hostBroadcastLobby(); // fortæl at der er fyldt / spillet er i gang
 }
+function hostRemove(id) {
+  if (id === MY_ID) return;
+  lobby.players = lobby.players.filter(p => p.id !== id);
+  Net.leave(playerTopic(id));
+}
 function hostBroadcastLobby() {
-  Net.send("lobby", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })), st: lobby.started ? 1 : 0 });
+  sendMain("lobby", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })), st: lobby.started ? 1 : 0 });
 }
 
 /* =====================================================================
@@ -952,7 +1013,7 @@ function createRoom() {
   lobby = { players: [{ id: MY_ID, name: getName(), c: 0, last: Infinity }], started: false };
   Net.onMsg = onNetMsg;
   Net.onStatus = st => { if (state === "lobby") $("lobbyMsg").textContent = st === "ok" ? "" : "Forbinder…"; if (st === "ok") hostBroadcastLobby(); };
-  Net.open(roomCode);
+  Net.open(mainTopic());
   enterLobby();
 }
 function joinRoom() {
@@ -962,8 +1023,9 @@ function joinRoom() {
   role = "client"; roomCode = code;
   lobby = { players: [], started: false }; lobbySeen = false;
   Net.onMsg = onNetMsg;
-  Net.onStatus = st => { if (st === "ok") Net.send("hello", { id: MY_ID, name: getName() }); };
-  Net.open(roomCode);
+  Net.onStatus = st => { if (st === "ok") sendMain("hello", { id: MY_ID, name: getName() }); };
+  Net.open(mainTopic());
+  Net.join(playerTopic(MY_ID));
   enterLobby();
   setTimeout(() => { if (state === "lobby" && role === "client" && !lobbySeen) $("lobbyMsg").textContent = "Kan ikke finde rummet – er koden rigtig, og har værten spillet åbent?"; }, 5000);
 }
@@ -978,7 +1040,7 @@ function enterLobby() {
   showScreen("lobbyScreen");
 }
 function leaveRoom() {
-  if (role === "client") Net.send("bye", { id: MY_ID });
+  if (role === "client") sendMine("bye", { id: MY_ID });
   Net.close();
   role = null; roomCode = ""; G = null; lobby = { players: [], started: false };
   $("room").textContent = ""; $("pauseBtn").hidden = true;
@@ -1001,11 +1063,13 @@ function roomLink() { return location.origin + location.pathname + "#" + roomCod
 function hostStart() {
   if (role !== "host" || state !== "lobby") return;
   lobby.started = true;
-  Net.send("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })) });
+  setHall(lobby.players.length);
+  sendMain("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })) });
   hostNewGame();
   beginRound(0);
 }
 function clientStart() {
+  setHall(lobby.players.length);
   clientNewView();
   const slot = lobby.players.findIndex(p => p.id === MY_ID);
   beginRound(slot);
@@ -1071,8 +1135,8 @@ function draw(now) {
   ctx.fillStyle = "rgba(160,100,40,.18)";
   for (let x = 40; x < W; x += 40) { const [a, b, c, d] = rectS({ x, y: 0, w: 2, h: L }); ctx.fillRect(a, b, c, d); }
   ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 3 * s;
-  { const [cx, cy] = toS(320, 620); ctx.beginPath(); ctx.arc(cx, cy, 80 * s, 0, Math.PI * 2); ctx.stroke(); }
-  { const [a, b, c, d] = rectS({ x: 0, y: 619, w: W, h: 2 }); ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fillRect(a, b, c, d); }
+  { const [cx, cy] = toS(W / 2, 620 * HS); ctx.beginPath(); ctx.arc(cx, cy, 80 * HS * s, 0, Math.PI * 2); ctx.stroke(); }
+  { const [a, b, c, d] = rectS({ x: 0, y: 619 * HS, w: W, h: 2 }); ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fillRect(a, b, c, d); }
   { const [a, b, c, d] = rectS({ x: 0, y: 0, w: W, h: DANGER_Y }); ctx.fillStyle = "rgba(232,69,44,.13)"; ctx.fillRect(a, b, c, d); }
   {
     const [x1, y1] = toS(0, DANGER_Y), [x2, y2] = toS(W, DANGER_Y);
@@ -1084,7 +1148,7 @@ function draw(now) {
     ctx.fillStyle = "rgba(232,69,44,.85)"; ctx.fillText("⚠ VOKSENZONE ⚠", 0, 0); ctx.restore();
   }
   ctx.fillStyle = "#b5773e";
-  for (let y = 420; y < 960; y += 22) for (const x of [0, W - 10]) { const [a, b, c, d] = rectS({ x, y, w: 10, h: 6 }); ctx.fillRect(a, b, c, d); }
+  for (let y = 420 * HS; y < L - 40; y += 22) for (const x of [0, W - 10]) { const [a, b, c, d] = rectS({ x, y, w: 10, h: 6 }); ctx.fillRect(a, b, c, d); }
 
   for (const m of MATS) {
     const [a, b, c, d] = rectS(m); rr(a, b, c, d, 10 * s); fillStroke("#3d7fd6");
@@ -1142,18 +1206,24 @@ function drawScoreboard() {
     return { name: info.name || "?", c: info.c ?? 0, score: p.score || 0, out: p.out, me: p.id === MY_ID };
   }).sort((a, b) => b.score - a.score);
   if (rows.length < 2) return;
+  rows.forEach((r, i) => r.rank = i + 1);
+  // mange spillere: vis kun top 5 + mig selv
+  let shown = rows.slice(0, 5);
+  const meRow = rows.find(r => r.me);
+  if (meRow && !shown.includes(meRow)) shown.push(meRow);
+  const many = rows.length > 5;
   // stående skærm: øverst til venstre (ved siden af sofaen) · liggende: nederst til venstre
-  const fs = 12, lh = 17, w = 104, h = rows.length * lh + 8;
+  const fs = 12, lh = 17, w = many ? 118 : 104, h = shown.length * lh + 8;
   const x0 = 4, y0 = view.rot ? view.ch - h - 4 : 4;
   ctx.globalAlpha = 0.85; rr(x0, y0, w, h, 8); ctx.fillStyle = "#fff8e6"; ctx.fill();
   ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke(); ctx.globalAlpha = 1;
   ctx.textBaseline = "middle"; ctx.font = `900 ${fs}px sans-serif`;
-  rows.forEach((r, i) => {
+  shown.forEach((r, i) => {
     const y = y0 + 4 + lh * i + lh / 2;
     ctx.beginPath(); ctx.arc(x0 + 12, y, 5, 0, Math.PI * 2); ctx.fillStyle = COLORS[r.c].cap; ctx.fill();
     ctx.fillStyle = r.out ? "#9a8a7a" : INK; ctx.textAlign = "left";
     let n = r.name; if (n.length > 8) n = n.slice(0, 7) + "…";
-    ctx.fillText((r.me ? "▸" : "") + n, x0 + 21, y);
+    ctx.fillText((many ? r.rank + ". " : "") + (r.me ? "▸" : "") + n, x0 + 21, y);
     ctx.textAlign = "right"; ctx.fillText(r.out ? `${r.score} 💀` : String(r.score), x0 + w - 7, y);
   });
 }
@@ -1349,9 +1419,9 @@ function frame(now) {
     if (state === "lobby" && now - lastLobbyPing >= LOBBY_PING_MS) {
       lastLobbyPing = now;
       // fjern spillere vi ikke har hørt fra i 6 sek.
-      const before = lobby.players.length;
-      lobby.players = lobby.players.filter(p => p.id === MY_ID || now - p.last < 6000);
-      if (lobby.players.length !== before) renderLobby();
+      const gone = lobby.players.filter(p => p.id !== MY_ID && now - p.last >= 6000);
+      for (const p of gone) hostRemove(p.id);
+      if (gone.length) renderLobby();
       hostBroadcastLobby();
     }
   } else if (role === "client") {
@@ -1362,15 +1432,17 @@ function frame(now) {
       clientSmooth(dt);
       if (now - lastSend >= CLIENT_SEND_MS) {
         lastSend = now;
-        Net.send("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: r1(ME.fx * 100), fy: r1(ME.fy * 100), m: ME.moving ? 1 : 0, st: ME.stun > 0 ? 1 : 0, rs: ME.rs });
+        sendMine("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: r1(ME.fx * 100), fy: r1(ME.fy * 100), m: ME.moving ? 1 : 0, st: ME.stun > 0 ? 1 : 0, rs: ME.rs });
       }
     } else if (state === "pause" && S) {
       clientSmooth(dt);
-      if (now - lastSend >= 1000) { lastSend = now; Net.send("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: 0, fy: -100, m: 0, st: 0, rs: ME.rs }); }
+      if (now - lastSend >= 1000) { lastSend = now; sendMine("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: 0, fy: -100, m: 0, st: 0, rs: ME.rs }); }
     }
     if ((state === "lobby" || state === "end") && now - lastLobbyPing >= LOBBY_PING_MS) {
       lastLobbyPing = now;
-      Net.send("hello", { id: MY_ID, name: getName() });
+      // Først på den fælles kanal (værten kender os ikke endnu), derefter på vores egen
+      const known = lobby.players.some(p => p.id === MY_ID);
+      (known ? sendMine : sendMain)("hello", { id: MY_ID, name: getName() });
     }
     // Er værten forsvundet?
     if (state === "play" || state === "pause" || state === "wait") {
@@ -1516,7 +1588,7 @@ document.addEventListener("visibilitychange", () => {
   if (role === "host") pause();
 });
 addEventListener("blur", clearInput);
-addEventListener("pagehide", () => { if (role === "client") Net.send("bye", { id: MY_ID }); });
+addEventListener("pagehide", () => { if (role === "client") sendMine("bye", { id: MY_ID }); });
 
 $("createBtn").onclick = createRoom;
 $("joinBtn").onclick = joinRoom;
@@ -1548,7 +1620,8 @@ for (const b of document.querySelectorAll(".iconBtn")) b.addEventListener("keydo
 // Viser den tomme sal bag start-/lobbyskærmen
 function showPreview() {
   ME = null;
-  S = { t: 0, slices: SLICE_SPOTS.slice(0, SLICES_ON_FIELD).map(s => ({ ...s })), whole: null, beers: [],
+  setHall(1);
+  S = { t: 0, slices: SLICE_SPOTS.slice(0, slicesOnField()).map(s => ({ ...s })), whole: null, beers: [],
     adults: ADULT_DEFS.map((d, i) => ({ ...d, i, x: d.x, y: SEAT_Y, dx: d.x, dy: SEAT_Y, mode: "sit" })), players: {}, floaters: [] };
 }
 
