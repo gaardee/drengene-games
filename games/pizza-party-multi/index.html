@@ -153,6 +153,7 @@
         <div class="code" id="lobbyCode">----</div>
         <p class="small">Vennerne åbner spillet og skriver koden – eller du sender dem linket.</p>
         <ul class="plist" id="lobbyList"></ul>
+        <p class="small" id="hallInfo"></p>
         <p class="err" id="lobbyMsg"></p>
         <button class="big alt2" id="hostStartBtn" hidden>Start spillet!</button>
         <div class="btnrow">
@@ -235,7 +236,7 @@ const LOBBY_PING_MS = 1500;
 const GAME_TIME   = 90;
 const START_LIVES = 3;
 const SEED        = 20261117;
-// Flere spillere => flere pizzastykker fremme ad gangen (8 for 1-4 spillere, 16 for 11)
+// Flere spillere => flere pizzastykker fremme ad gangen (8 for 1-3 spillere, 16 for 11)
 const slicesOnField = () => Math.max(8, 5 + NPL);
 const WHOLE_PIZZA_POINTS = 8;
 const WHOLE_PIZZA_TIMES = [15, 40, 65];
@@ -264,7 +265,7 @@ const COLORS = [
 /* ---------- Gymnastiksalen ----------
    Salen er tegnet i 640×1000, men bliver gjort større, når der er mange
    spillere (børnene og de voksne har samme størrelse, så der bliver mere plads).
-   1-4 spillere: ×1 · 5-7: ×1,2 · 8-11: ×1,4 (og 6 voksne i stedet for 4) */
+   Se HALL_STEPS længere nede: 1-2 spillere ×1 · 3-4 ×1,2 · 5-7 ×1,35 (5 voksne) · 8-11 ×1,5 (6 voksne) */
 const BASE_SOLIDS = [
   { type: "sofa",  x: 170, y: 10,  w: 300, h: 62 },
   { type: "box",   x: 80,  y: 175, w: 85,  h: 55 },
@@ -298,12 +299,23 @@ const FETCH_SPEED = 150;
 const DRUNK_FACTOR = 0.6;
 const MODES = ["sit", "wake", "chase", "fetch", "drunk", "return"]; // sendes som tal
 
+// Salens størrelse ud fra antal spillere. Børn og voksne har samme størrelse,
+// så en større sal giver mere plads. I en stor sal følger kameraet ens eget barn.
+const HALL_STEPS = [
+  { min: 1, scale: 1,    adults: 4, name: "Normal sal" },
+  { min: 3, scale: 1.2,  adults: 4, name: "Stor sal 🏟️" },
+  { min: 5, scale: 1.35, adults: 5, name: "Større sal 🏟️" },
+  { min: 8, scale: 1.5,  adults: 6, name: "Kæmpe sal 🏟️🏟️" },
+];
+const hallStep = n => HALL_STEPS.filter(h => n >= h.min).pop();
+const nextHallStep = n => HALL_STEPS.find(h => h.min > n);
+
 // Disse sættes af setHall() ud fra antal spillere
 let NPL = 1, HS = 1, SPEED_K = 1;
 let W, L, DANGER_Y, GIVEUP_Y, START_Y, SEAT_Y, SOFA_FRONT, SOLIDS, MATS, BALL_DEFS, ADULT_DEFS, WHOLE_PIZZA_POS, BEER_SPOTS, SLICE_SPOTS;
 function setHall(n) {
   NPL = Math.max(1, n);
-  HS = NPL <= 4 ? 1 : NPL <= 7 ? 1.2 : 1.4;
+  HS = hallStep(NPL).scale;
   SPEED_K = 1 + (HS - 1) * 0.5;               // alle løber lidt hurtigere i en større sal
   const sc = r => ({ ...r, x: r.x * HS, y: r.y * HS, w: r.w * HS, h: r.h * HS });
   W = 640 * HS; L = 1000 * HS;
@@ -311,7 +323,7 @@ function setHall(n) {
   SEAT_Y = 58 * HS; SOFA_FRONT = 72 * HS;
   SOLIDS = BASE_SOLIDS.map(sc); MATS = BASE_MATS.map(sc);
   BALL_DEFS = BASE_BALLS.map(b => ({ ...b, y: b.y * HS, speed: b.speed * HS, phase: b.phase * HS }));
-  const sofa = SOLIDS[0], k = NPL >= 8 ? 6 : 4;
+  const sofa = SOLIDS[0], k = hallStep(NPL).adults;
   ADULT_DEFS = ALL_ADULTS.slice(0, k).map((a, i) => ({ ...a, x: sofa.x + sofa.w * (i + 0.5) / k }));
   WHOLE_PIZZA_POS = { x: 320 * HS, y: 190 * HS };
   BEER_SPOTS = [{ x: 120 * HS, y: 120 * HS }, { x: 520 * HS, y: 120 * HS }, { x: 320 * HS, y: 265 * HS }];
@@ -611,7 +623,11 @@ function screenInput() {
 /* =====================================================================
    Kamera (liggende skærm => salen drejes 90°)
    ===================================================================== */
-const view = { rot: false, s: 1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 1 };
+const view = { rot: false, s: 1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 1, follow: false };
+// I en stor sal zoomer kameraet ind, så figurerne har samme størrelse som i en
+// normal sal, og følger ens eget barn. Ellers vises hele salen.
+const FOLLOW_ZOOM = 1.1;                          // vis 10 % mere end en normal sal
+const cam = { snap: true };
 function resize() {
   const r = $("stage").getBoundingClientRect();
   view.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -619,9 +635,25 @@ function resize() {
   canvas.width = Math.round(r.width * view.dpr); canvas.height = Math.round(r.height * view.dpr);
   view.rot = r.width > r.height;
   const pad = 8;
+  view.follow = HS > 1 && !!ME;
+  const bw = view.follow ? 640 * FOLLOW_ZOOM : W, bl = view.follow ? 1000 * FOLLOW_ZOOM : L;
+  const fw = view.rot ? bl : bw, fh = view.rot ? bw : bl;
+  view.s = Math.min((r.width - pad * 2) / fw, (r.height - pad * 2) / fh);
   const ww = view.rot ? L : W, wh = view.rot ? W : L;
-  view.s = Math.min((r.width - pad * 2) / ww, (r.height - pad * 2) / wh);
   view.ox = (r.width - ww * view.s) / 2; view.oy = (r.height - wh * view.s) / 2;
+  cam.snap = true;
+}
+// Flyt kameraet blødt hen over mit barn (men ikke ud over salens kanter)
+function updateCamera(dt) {
+  if (!view.follow || !ME) return;
+  const s = view.s, pad = 8;
+  const hw = (view.rot ? L : W) * s, hh = (view.rot ? W : L) * s;
+  const mx = view.rot ? (L - ME.y) * s : ME.x * s, my = view.rot ? ME.x * s : ME.y * s;
+  const fit = (size, room, center) => size + pad * 2 <= room ? (room - size) / 2 : clamp(room / 2 - center, room - size - pad, pad);
+  const tx = fit(hw, view.cw, mx), ty = fit(hh, view.ch, my);
+  const k = cam.snap ? 1 : 1 - Math.exp(-dt * 6);
+  view.ox += (tx - view.ox) * k; view.oy += (ty - view.oy) * k;
+  cam.snap = false;
 }
 addEventListener("resize", resize);
 function toS(x, y) {
@@ -955,7 +987,7 @@ function onNetMsg(topic, ev, m) {
     lobby.players = m.pl; lobby.started = !!m.st;
     const inIt = m.pl.some(p => p.id === MY_ID);
     if (!m.st && (state === "lobby" || state === "end" || state === "wait")) {
-      if (state !== "lobby") { state = "lobby"; showScreen("lobbyScreen"); }
+      if (state !== "lobby") { state = "lobby"; showScreen("lobbyScreen"); showPreview(); }
       renderLobby();
       $("lobbyMsg").textContent = inIt ? "" : (m.pl.length >= MAX_PLAYERS ? `Rummet er fyldt (max ${MAX_PLAYERS}).` : "Melder mig ind…");
     } else if (m.st && state === "lobby") {
@@ -1061,6 +1093,9 @@ function renderLobby() {
   $("lobbyList").innerHTML = list.length
     ? list.map((p, i) => `<li><span class="dot" style="background:${COLORS[p.c].cap}"></span>${esc(p.name)}${i === 0 ? " 👑" : ""}${p.id === MY_ID ? " <small>(dig)</small>" : ""}</li>`).join("")
     : "<li>…</li>";
+  const n = Math.max(1, list.length), h = hallStep(n), nx = nextHallStep(n);
+  $("hallInfo").textContent = `${h.name}${h.scale > 1 ? ` (×${String(h.scale).replace(".", ",")})` : ""} · ${h.adults} voksne` +
+    (nx ? ` · fra ${nx.min} spillere: ${nx.name}` : "");
   $("hostStartBtn").hidden = role !== "host";
   $("hostStartBtn").textContent = list.length > 1 ? `Start spillet! (${list.length} spillere)` : "Start alene (eller vent på venner)";
 }
@@ -1083,6 +1118,7 @@ function clientStart() {
 }
 function beginRound(slot) {
   ME = newMe(Math.max(0, slot));
+  resize(); // nu hvor mit barn findes: følg det, hvis salen er stor
   myStats = { dist: 0, bonks: 0 };
   roundResult = null;
   clearInput();
@@ -1091,6 +1127,7 @@ function beginRound(slot) {
   $("pauseBtn").hidden = role !== "host";
   showScreen(null);
   Sound.whistle();
+  if (HS > 1) S.floaters.push({ x: ME.x, y: ME.y - 70, text: hallStep(NPL).name.toUpperCase() + "!", color: "#ffd34d", life: 2 });
 }
 
 /* =====================================================================
@@ -1195,6 +1232,7 @@ function draw(now) {
   ctx.globalAlpha = 1;
 
   if (ME && state !== "end") drawScoreboard();
+  if (view.follow && ME) drawMinimap();
 
   if (joy.active && state === "play") {
     ctx.globalAlpha = 0.35; ctx.fillStyle = "#fff";
@@ -1233,6 +1271,42 @@ function drawScoreboard() {
     ctx.fillText((many ? r.rank + ". " : "") + (r.me ? "▸" : "") + n, x0 + 21, y);
     ctx.textAlign = "right"; ctx.fillText(r.out ? `${r.score} 💀` : String(r.score), x0 + w - 7, y);
   });
+}
+
+// Lille kort over hele salen (kun når kameraet følger mig): voksne, børn og hvad man kan se
+function drawMinimap() {
+  const LONG = Math.min(view.cw, view.ch) < 500 ? 84 : 110, short = Math.round(LONG * W / L); // mindre på telefoner
+  const mw = view.rot ? LONG : short, mh = view.rot ? short : LONG;
+  const x0 = view.cw - mw - 6, y0 = view.rot ? view.ch - mh - 6 : 6;
+  const mm = (x, y) => view.rot ? [x0 + (L - y) / L * mw, y0 + x / W * mh] : [x0 + x / W * mw, y0 + y / L * mh];
+  ctx.save();
+  ctx.globalAlpha = 0.85; rr(x0, y0, mw, mh, 6); ctx.fillStyle = "#e9b87a"; ctx.fill();
+  ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); rr(x0, y0, mw, mh, 6); ctx.clip();
+  // voksenzone + sofa
+  { const [a, b] = mm(0, 0), [c, d] = mm(W, DANGER_Y); ctx.fillStyle = "rgba(232,69,44,.25)"; ctx.fillRect(Math.min(a, c), Math.min(b, d), Math.abs(c - a), Math.abs(d - b)); }
+  { const so = SOLIDS[0], [a, b] = mm(so.x, so.y), [c, d] = mm(so.x + so.w, so.y + so.h); ctx.fillStyle = "#c0392b"; ctx.fillRect(Math.min(a, c), Math.min(b, d), Math.abs(c - a), Math.abs(d - b)); }
+  // hvad skærmen viser lige nu
+  const s = view.s;
+  const w2 = (sx, sy) => view.rot ? [(sy - view.oy) / s, L - (sx - view.ox) / s] : [(sx - view.ox) / s, (sy - view.oy) / s];
+  ctx.beginPath();
+  [[0, 0], [view.cw, 0], [view.cw, view.ch], [0, view.ch]].forEach(([sx, sy], i) => { const [wx, wy] = w2(sx, sy); const [px, py] = mm(wx, wy); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+  ctx.closePath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(43,29,20,.6)"; ctx.stroke();
+  // voksne (rød = jagter, orange = har øl)
+  for (const a of S.adults) {
+    const [px, py] = mm(role === "client" ? a.dx : a.x, role === "client" ? a.dy : a.y);
+    ctx.beginPath(); ctx.arc(px, py, a.mode === "chase" || a.mode === "drunk" ? 3.5 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = a.mode === "chase" ? "#e8452c" : a.mode === "drunk" ? "#f28c28" : "#5a4a3a"; ctx.fill();
+  }
+  // børn
+  for (const k of kidsToDraw()) {
+    if (k.out) continue;
+    const [px, py] = mm(k.x, k.y);
+    ctx.beginPath(); ctx.arc(px, py, k.isMe ? 4 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS[k.c].cap; ctx.fill();
+    if (k.isMe) { ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke(); }
+  }
+  ctx.restore();
 }
 
 function drawSolid(o) {
@@ -1465,6 +1539,7 @@ function frame(now) {
     for (const f of S.floaters) { f.life -= dt; f.y -= 40 * dt; }
     S.floaters = S.floaters.filter(f => f.life > 0);
   }
+  updateCamera(dt);
   draw(now);
   updateHud();
   requestAnimationFrame(frame);
