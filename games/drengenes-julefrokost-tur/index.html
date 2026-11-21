@@ -1,0 +1,2125 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#123524">
+<title>Drengenes Julefrokost-tur</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #123524;
+    font-family: "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+    color: #1d1a16;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* ---------- Topbjælke (HUD) ---------- */
+  #hud {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; padding-top: max(6px, env(safe-area-inset-top));
+    background: #123524; color: #fff; font-weight: 900;
+    border-bottom: 4px solid #c8102e;
+  }
+  .pill {
+    background: #fffaf0; color: #1d1a16; border-radius: 999px; padding: 4px 12px;
+    font-size: 22px; border: 3px solid #f5c542; white-space: nowrap;
+  }
+  #clothes { font-size: 22px; letter-spacing: 1px; white-space: nowrap; }
+  #clothes .gone { opacity: .25; filter: grayscale(1); }
+  #room { font-size: 14px; opacity: .8; white-space: nowrap; }
+  @media (max-width: 520px) { #room { display: none; } .pill { font-size: 19px; padding: 3px 9px; } #clothes { font-size: 19px; } }
+  .spacer { flex: 1; }
+  .iconBtn {
+    width: 44px; height: 44px; border-radius: 12px; border: 3px solid #f5c542;
+    background: #fffaf0; font-size: 22px; cursor: pointer; padding: 0;
+  }
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* ---------- "Syng LAST CHRISTMAS!!!" ---------- */
+  #sing {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(200, 16, 46, .35); pointer-events: none; text-align: center; padding: 16px;
+  }
+  #sing[hidden] { display: none; }
+  #sing .singText {
+    font-size: clamp(34px, 9vw, 84px); font-weight: 900; color: #fff; line-height: 1.05;
+    text-shadow: 4px 4px 0 #123524, -2px -2px 0 #c8102e;
+    animation: blink .5s steps(2, start) infinite, wob 1s ease-in-out infinite;
+  }
+  #sing .singSub { margin-top: 10px; font-size: 22px; font-weight: 900; color: #fff; text-shadow: 2px 2px 0 #123524; }
+  #singCount { font-size: 64px; font-weight: 900; color: #f5c542; text-shadow: 4px 4px 0 #123524; margin-top: 6px; }
+  @keyframes blink { to { color: #f5c542; } }
+  @keyframes wob { 0%, 100% { transform: rotate(-4deg) scale(1); } 50% { transform: rotate(4deg) scale(1.08); } }
+
+  /* ---------- Skærme ---------- */
+  .screen {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(18, 53, 36, .55); padding: 12px; overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .screen * { touch-action: pan-y; }
+  .screen[hidden] { display: none; }
+  .card {
+    background: #fffaf0; border: 5px solid #1d1a16; border-radius: 24px;
+    box-shadow: 0 8px 0 #1d1a16; padding: 16px 18px; width: min(460px, 100%);
+    text-align: center; margin: auto;
+  }
+  h1 { margin: 0; font-size: 32px; color: #c8102e; text-shadow: 3px 3px 0 #1d1a16; letter-spacing: 1px; line-height: 1.1; }
+  h2 { margin: 0 0 4px; font-size: 28px; color: #c8102e; }
+  h3 { margin: 12px 0 4px; font-size: 17px; }
+  .tagline { margin: 6px 0 10px; font-size: 16px; }
+  .rules { list-style: none; padding: 0; margin: 0 0 8px; text-align: left; font-size: 14.5px; line-height: 1.45; }
+  .rules li { margin-bottom: 3px; }
+  .rules b { color: #c8102e; }
+  .controls { background: #ffe6a8; border-radius: 12px; padding: 6px 10px; margin: 8px 0; font-size: 15px; }
+  input {
+    width: 100%; font: inherit; font-size: 20px; padding: 10px 12px; margin: 4px 0 10px;
+    border: 4px solid #1d1a16; border-radius: 14px; text-align: center; background: #fff;
+    user-select: text; -webkit-user-select: text;
+  }
+  #codeInput { text-transform: uppercase; letter-spacing: 6px; margin: 0; }
+  .big {
+    font: inherit; font-weight: 900; font-size: 22px; color: #fff; background: #c8102e;
+    border: 4px solid #1d1a16; border-radius: 16px; box-shadow: 0 5px 0 #1d1a16;
+    padding: 12px 16px; min-height: 54px; width: 100%; cursor: pointer;
+  }
+  .big:active { transform: translateY(3px); box-shadow: 0 2px 0 #1d1a16; }
+  .big:disabled { opacity: .5; }
+  .btnrow { display: flex; gap: 8px; margin-top: 10px; align-items: stretch; }
+  .btnrow .big { font-size: 17px; padding: 10px 8px; }
+  .big.alt { background: #2f6fa3; }
+  .big.alt2 { background: #1f8a4c; }
+  .big.grey { background: #7d7468; }
+  .or { margin: 10px 0 4px; font-weight: 900; opacity: .7; }
+  .small { font-size: 14px; margin: 6px 0 0; opacity: .85; }
+  .err { color: #c0392b; font-weight: 900; min-height: 1.2em; margin: 6px 0 0; font-size: 15px; }
+  .code { font-size: 54px; font-weight: 900; letter-spacing: 10px; color: #c8102e; text-shadow: 3px 3px 0 #1d1a16; margin: 2px 0; }
+  .plist { list-style: none; padding: 0; margin: 8px 0; text-align: left; font-size: 17px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .plist li { background: #f3e6c8; border-radius: 10px; padding: 5px 8px; display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #1d1a16; flex: 0 0 auto; }
+  .bigscore { font-size: 54px; font-weight: 900; line-height: 1; margin: 4px 0; }
+  .bigscore small { font-size: 22px; }
+  #newBest { color: #c8102e; font-weight: 900; min-height: 1em; }
+  #teamLine { font-weight: 900; margin: 4px 0; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 14px; text-align: left; margin-top: 6px; }
+  .stats div { background: #f3e6c8; border-radius: 8px; padding: 4px 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 3px 4px; border-bottom: 1px dashed #c9b78f; }
+  td:nth-child(1) { width: 2em; text-align: right; }
+  td:nth-child(2) { text-align: left; }
+  td:nth-child(3) { text-align: right; font-weight: 900; }
+  td:nth-child(4) { text-align: right; opacity: .7; width: 5.5em; }
+  tr.me td { background: #f5c542; }
+  #roundTable td:nth-child(4) { opacity: 1; width: auto; font-size: 13px; }
+  #toast {
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+    background: #1d1a16; color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 900;
+    pointer-events: none; opacity: 0; transition: opacity .2s; text-align: center;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span class="pill" id="score">⭐ 0</span>
+    <span id="clothes"></span>
+    <span class="spacer"></span>
+    <span id="room"></span>
+    <button class="iconBtn" id="pauseBtn" aria-label="Pause" hidden>⏸️</button>
+    <button class="iconBtn" id="muteBtn" aria-label="Lyd til/fra">🔊</button>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+
+    <!-- "Syng LAST CHRISTMAS!!!" – spillet står stille i 10 sekunder -->
+    <div id="sing" hidden>
+      <div class="singText">🎤 Syng<br>LAST CHRISTMAS!!! 🎤</div>
+      <div class="singSub">Alle sammen – nu!</div>
+      <div id="singCount">10</div>
+    </div>
+
+    <!-- Startskærm: navn + opret/deltag -->
+    <div class="screen" id="startScreen">
+      <div class="card">
+        <h1>🎅 Drengenes<br>Julefrokost-tur</h1>
+        <p class="tagline">Kom igennem København sammen – op til <b>10 drenge</b> på hver sin telefon.</p>
+        <ul class="rules">
+          <li>📍 Ruten: <b>Bodega → Tivoli → Smørrebrød → Snapsbaren → Natklubben → Pølsevognen</b></li>
+          <li>👬 Et stop klares, når <b>alle</b> drenge med tøj på står der: <b>+100</b> til alle (+25 til den første)</li>
+          <li>🛡️ Alle stop er <b>fristeder</b>: tegnerne kan ikke komme ind, så I kan vente sikkert på hinanden</li>
+          <li>🎨 Croquis-tegnere stjæler jeres tøj: 🎅🧣👖🧶. Tallet på trøjen er, hvor meget tøj du har på. Mister du trøjen, er du <b>nøgen</b> – find 👕 for at komme med igen. De andre venter ikke på nøgne drenge</li>
+          <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage (kun hvis du mangler noget) · <b>+10</b></li>
+          <li>👩 Jeres <b>koner</b> jagter jer med <b>barnevogn</b>. Alle koner og barnevogne spærrer vejen for alle drenge</li>
+          <li>🌉 Kanalerne kan kun krydses på broerne · duer bremser</li>
+          <li>⭐ <b>+2 point</b> pr. sekund med tøj på (ikke mens du gemmer dig i et gammelt stop)</li>
+        </ul>
+        <div class="controls" id="ctrlHelp"></div>
+        <input id="nameInput" maxlength="16" placeholder="Skriv dit navn" autocomplete="off">
+        <button class="big" id="createBtn">Opret nyt rum</button>
+        <p class="or">– eller deltag i en vens rum –</p>
+        <div class="btnrow" style="margin-top:4px">
+          <input id="codeInput" maxlength="4" placeholder="KODE" autocomplete="off" inputmode="text" style="flex:1">
+          <button class="big alt" id="joinBtn" style="flex:1">Deltag</button>
+        </div>
+        <p class="err" id="startErr"></p>
+      </div>
+    </div>
+
+    <!-- Lobby -->
+    <div class="screen" id="lobbyScreen" hidden>
+      <div class="card">
+        <h2>Rum-kode</h2>
+        <div class="code" id="lobbyCode">----</div>
+        <p class="small">Drengene åbner spillet og skriver koden – eller du sender dem linket.</p>
+        <ul class="plist" id="lobbyList"></ul>
+        <p class="small" id="lobbyInfo"></p>
+        <p class="err" id="lobbyMsg"></p>
+        <button class="big alt2" id="hostStartBtn" hidden>Start turen!</button>
+        <div class="btnrow">
+          <button class="big alt" id="linkBtn">Kopiér link</button>
+          <button class="big grey" id="leaveBtn">Forlad rum</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause / venter -->
+    <div class="screen" id="pauseScreen" hidden>
+      <div class="card">
+        <h2 id="pauseTitle">Pause</h2>
+        <p id="pauseText">Alt står stille, og ingen kan få point.</p>
+        <button class="big" id="resumeBtn">Fortsæt</button>
+      </div>
+    </div>
+
+    <!-- Slutskærm -->
+    <div class="screen" id="endScreen" hidden>
+      <div class="card">
+        <h2 id="endTitle">Turen er slut!</h2>
+        <div id="teamLine"></div>
+        <div class="bigscore"><span id="endScore">0</span> <small>point</small></div>
+        <div id="newBest"></div>
+        <h3>🏁 Denne tur</h3>
+        <table id="roundTable"></table>
+        <div class="stats" id="stats"></div>
+        <div class="btnrow">
+          <button class="big alt2" id="againBtn">Ny tur</button>
+          <button class="big alt" id="copyBtn">Kopiér resultat</button>
+          <button class="big" id="shareBtn" hidden>Del</button>
+        </div>
+        <p class="small" id="endWait"></p>
+        <button class="big grey" id="endLeaveBtn" style="margin-top:8px">Forlad rum</button>
+        <h3>🌍 Fælles rangliste</h3>
+        <table id="faellesTop"></table>
+        <h3>🏆 Top 10 på denne enhed</h3>
+        <table id="topTable"></table>
+      </div>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+
+<script src="../../scores.js"></script>
+<script>
+"use strict";
+
+/* =====================================================================
+   SÅDAN VIRKER MULTIPLAYER (samme opbygning som Pizza Party Multi)
+   - Alle i et rum forbindes via vores WebSocket-server (Laravel Reverb på
+     ws.realtime.gaarde.it). Serveren gemmer intet, den sender kun videre.
+   - Serveren tager kun imod spil fra gaardee.github.io, så multiplayer
+     virker IKKE, når spillet åbnes lokalt.
+   - Den der opretter rummet er "værten". Værtens browser bestemmer alt det
+     fælles: croquis-tegnere, ting på gaden, stop, point og tøj. Den sender
+     det ud 8 gange i sekundet på rummets fælles kanal.
+   - Hver spiller styrer selv sin dreng og sender sin position til værten
+     ~7 gange i sekundet på sin egen kanal (kun spilleren + værten).
+   - Værten kan starte alene, så man kan øve sig solo.
+   ===================================================================== */
+const GAME_NAME = "drengenes-julefrokost-tur"; // = mappenavnet (bruges til ranglisten og kanalnavne)
+const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
+const MAX_PLAYERS = 10;
+const HOST_SEND_MS = 125;
+const CLIENT_SEND_MS = 140;
+const LOBBY_PING_MS = 1500;
+
+/* =====================================================================
+   INDSTILLINGER – pil gerne ved disse tal
+   ===================================================================== */
+const SEED = 20261224;
+const WORLD = 1400;              // København er 1400×1400 enheder
+const VIEW_UNITS = 560;          // så mange enheder kan man se på den korteste led af skærmen
+const VIEW_UNITS_SMALL = 470;    // ... på en lille telefon (lidt mere zoomet ind)
+const PLAYER_R = 16;
+const PLAYER_SPEED = 220;
+const ENEMY_R = 17;
+const STOP_R = 70;               // hvor tæt man skal stå på et stop
+const INV_TIME = 2.0;            // sekunder man er usårlig efter at have mistet tøj
+const DRAW_TIME = 1.6;           // så længe står tegneren og tegner bagefter
+const ALIVE_POINTS = 2;          // point pr. sekund med tøj på
+const STOP_POINTS = 100;         // pr. klaret stop (+50 for hver ekstra omgang)
+const FIRST_BONUS = 25;          // til den første ved stoppet
+const PICKUP_POINTS = 10;
+const TOJ_ON_MAP = 5;             // så mange stykker tøj ligger der altid på kortet
+// Alle stop er fristeder: tegnerne kan ikke komme ind, og man kan ikke tegnes derinde
+const inSafe = p => STOPS.some(st => Math.hypot(p.x - st.x, p.y - st.y) < STOP_R);
+const SING_AT = [35, 80];        // "Syng LAST CHRISTMAS!!!" efter så mange sekunders spil
+const SING_TIME = 10;
+const MAX_TIME = 150;            // nødstop, hvis nogen gemmer sig i fristederne
+const BOOSTS = { horn: { mul: 1.35, time: 3.5 }, pepsi: { mul: 1.7, time: 3.0 } };
+const PIGEON_SLOW = 0.55;
+
+// Tegnerne: flere og hurtigere med tiden – et normalt spil slutter inden for ca. 2 min.
+const enemySpeed = t => 100 + 1.3 * t + Math.max(0, t - 95) * 3.5;
+const enemyCount = (t, n) => Math.min(12, 2 + Math.floor(t / 15) + Math.floor((n - 1) / 2));
+const foodOnMap = n => 3 + Math.floor(n / 3);
+
+// Tøj – mistes i denne rækkefølge
+const CLOTHES = [
+  { emoji: "🎅", name: "nissehuen" },
+  { emoji: "🧣", name: "halstørklædet" },
+  { emoji: "👖", name: "bukserne" },
+  { emoji: "🧶", name: "julesweateren" },
+];
+const wears = (clothes, i) => i >= CLOTHES.length - clothes;
+
+// Farver til de op til 10 drenge (julesweater)
+const COLORS = [
+  "#c8102e", "#2f6fa3", "#1f8a4c", "#8e5ba8", "#f28c28",
+  "#2b2b2b", "#e84393", "#13a89e", "#8b5a2b", "#e6b800",
+];
+
+/* ---------- Kortet over København ---------- */
+// Julefrokost-ruten. Efter Pølsevognen starter den forfra.
+const STOPS = [
+  { name: "Bodega",                short: "Bodega",      emoji: "🍺", x: 200,  y: 190 },
+  { name: "Julemarkedet i Tivoli", short: "Tivoli",      emoji: "🎡", x: 210,  y: 1160 },
+  { name: "Smørrebrød",            short: "Smørrebrød",  emoji: "🥪", x: 1010, y: 930 },
+  { name: "Snapsbaren",            short: "Snapsbaren",  emoji: "🥃", x: 1210, y: 190 },
+  { name: "Natklubben",            short: "Natklubben",  emoji: "🪩", x: 620,  y: 440 },
+  { name: "Pølsevognen kl. 04",    short: "Pølsevognen", emoji: "🌭", x: 1200, y: 1240 },
+];
+const START = { x: 470, y: 560 }; // Hovedbanegården
+
+// Kanaler (vand) – hullerne er broer
+const WATER = [
+  { x: 0,    y: 660, w: 170, h: 75 }, { x: 260, y: 660, w: 350, h: 75 },
+  { x: 700,  y: 660, w: 410, h: 75 }, { x: 1200, y: 660, w: 200, h: 75 },
+  { x: 880,  y: 0,   w: 75,  h: 270 }, { x: 880, y: 360, w: 75, h: 300 },
+  { x: 420,  y: 735, w: 75,  h: 265 }, { x: 420, y: 1090, w: 75, h: 310 },
+];
+const CANALS = [ // hele kanalerne (inkl. broer) – her bygges ingen huse
+  { x: 0, y: 660, w: 1400, h: 75 }, { x: 880, y: 0, w: 75, h: 735 }, { x: 420, y: 660, w: 75, h: 740 },
+];
+const BRIDGES = [
+  { x: 170, y: 660, w: 90, h: 75, v: true }, { x: 610, y: 660, w: 90, h: 75, v: true },
+  { x: 1110, y: 660, w: 90, h: 75, v: true },
+  { x: 880, y: 270, w: 75, h: 90, v: false }, { x: 420, y: 1000, w: 75, h: 90, v: false },
+];
+const PIGEON_R = 38;
+// Konerne: én pr. dreng. Hun jagter sin egen mand og skubber en barnevogn foran sig.
+// Alle koner og barnevogne spærrer vejen for alle drenge.
+const WIFE_R = 14, PRAM_R = 15, PRAM_D = 30;  // barnevognen kører PRAM_D foran konen
+const WIFE_DELAY = 3;                          // sekunder før konerne går i gang
+const wifeSpeed = t => 125 + 0.4 * t;
+const HAIR = ["#6b4423", "#f2c94c", "#2b1d14", "#b5562d", "#8a6e4b", "#d9b46a", "#3b2a20", "#c0392b", "#ece0c8", "#5a3a1a"];
+const HOUSE_COLORS = ["#e8a33d", "#c8553d", "#3d7fd6", "#e6c84f", "#5aa36b", "#d9775b", "#8e5ba8", "#e9dcc4", "#b84a62"];
+
+/* =====================================================================
+   Hjælpefunktioner
+   ===================================================================== */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const inRect = (x, y, r, pad = 0) => x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad;
+const rectDist = (x, y, r) => Math.hypot(x - clamp(x, r.x, r.x + r.w), y - clamp(y, r.y, r.y + r.h));
+const rectsOverlap = (a, b, pad = 0) => a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
+const fmtNum = n => Math.floor(n).toLocaleString("da-DK");
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const r1 = v => Math.round(v);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/* ---------- Byg byen (samme for alle, fordi den er seedet) ---------- */
+const HOUSES = [], TREES = [];
+(function buildCity() {
+  const rnd = mulberry32(SEED);
+  // Klip et hus til, så det holder afstand til en kanal (behold den største del)
+  const clip = (r, c, m) => {
+    if (!rectsOverlap(r, c, m)) return r;
+    const parts = [
+      { x: r.x, y: r.y, w: c.x - m - r.x, h: r.h }, { x: c.x + c.w + m, y: r.y, w: r.x + r.w - (c.x + c.w + m), h: r.h },
+      { x: r.x, y: r.y, w: r.w, h: c.y - m - r.y }, { x: r.x, y: c.y + c.h + m, w: r.w, h: r.y + r.h - (c.y + c.h + m) },
+    ].filter(p => p.w >= 55 && p.h >= 55).sort((a, b) => b.w * b.h - a.w * a.h);
+    return parts[0] || null;
+  };
+  for (let gy = 0; gy < 8; gy++) for (let gx = 0; gx < 8; gx++) {
+    // gaderne er mindst 75 brede, så tegnerne altid kan finde vej
+    const w = 95 + rnd() * 5, h = 95 + rnd() * 5;
+    let r = { x: 45 + gx * 175 + rnd() * 3, y: 45 + gy * 175 + rnd() * 3, w, h };
+    const color = HOUSE_COLORS[Math.floor(rnd() * HOUSE_COLORS.length)];
+    const lights = rnd() < 0.5, skip = rnd() < 0.08;
+    if (r.x + r.w > WORLD - 20 || r.y + r.h > WORLD - 20) continue;
+    for (const c of CANALS) { if (r) r = clip(r, c, 42); }
+    if (!r) continue;
+    if (STOPS.some(s => rectDist(s.x, s.y, r) < STOP_R + 18)) continue;
+    if (rectDist(START.x, START.y, r) < 70) continue;
+    if (skip) { TREES.push({ x: r.x + r.w / 2, y: r.y + r.h / 2 }); continue; } // lille plads med juletræ
+    HOUSES.push({ ...r, color, lights });
+  }
+})();
+const SOLIDS = [...HOUSES, ...WATER];
+
+// Ledige pladser på gaden (til ting og duer)
+function makeSpots(seed, n, pad) {
+  const rnd = mulberry32(seed), out = [];
+  let guard = 0;
+  while (out.length < n && guard++ < 50000) {
+    const x = 40 + rnd() * (WORLD - 80), y = 40 + rnd() * (WORLD - 80);
+    if (SOLIDS.some(s => inRect(x, y, s, pad))) continue;
+    if (STOPS.some(s => Math.hypot(s.x - x, s.y - y) < STOP_R + 15)) continue;
+    if (TREES.some(t => Math.hypot(t.x - x, t.y - y) < 30)) continue;
+    out.push({ x, y });
+  }
+  return out;
+}
+const ITEM_SPOTS = makeSpots(SEED + 1, 300, 28);
+const PIGEONS = makeSpots(SEED + 7, 8, 45).filter(p => Math.hypot(p.x - START.x, p.y - START.y) > 150).slice(0, 7);
+
+const pramOf = w => ({ x: w.x + Math.cos(w.a) * PRAM_D, y: w.y + Math.sin(w.a) * PRAM_D });
+
+function pushOut(e, r) {
+  const cx = clamp(e.x, r.x, r.x + r.w), cy = clamp(e.y, r.y, r.y + r.h);
+  let dx = e.x - cx, dy = e.y - cy;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= e.r * e.r) return false;
+  if (d2 > 0) {
+    const d = Math.sqrt(d2);
+    e.x += dx / d * (e.r - d); e.y += dy / d * (e.r - d);
+  } else {
+    const left = e.x - r.x, right = r.x + r.w - e.x, top = e.y - r.y, bottom = r.y + r.h - e.y;
+    const m = Math.min(left, right, top, bottom);
+    if (m === left) e.x = r.x - e.r; else if (m === right) e.x = r.x + r.w + e.r;
+    else if (m === top) e.y = r.y - e.r; else e.y = r.y + r.h + e.r;
+  }
+  return true;
+}
+function collideWorld(e) {
+  for (const s of SOLIDS) pushOut(e, s);
+  e.x = clamp(e.x, e.r, WORLD - e.r); e.y = clamp(e.y, e.r, WORLD - e.r);
+}
+
+/* ---------- Vej-net til tegnerne (så de finder over broerne) ----------
+   Byen deles i felter på 35×35. For hver dreng regnes afstanden (i felter)
+   fra alle felter hen til drengen, og tegnerne går mod det nabofelt, der er tættest på. */
+const CELL = 35, GN = WORLD / CELL, FAR = 32767;
+const BLOCK = new Uint8Array(GN * GN);
+for (let cy = 0; cy < GN; cy++) for (let cx = 0; cx < GN; cx++) {
+  const x = (cx + 0.5) * CELL, y = (cy + 0.5) * CELL;
+  if (SOLIDS.some(s => inRect(x, y, s, ENEMY_R + 1))) BLOCK[cy * GN + cx] = 1;
+}
+const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const cellOf = (x, y) => clamp(Math.floor(y / CELL), 0, GN - 1) * GN + clamp(Math.floor(x / CELL), 0, GN - 1);
+function nearFree(x, y) {
+  const c = cellOf(x, y);
+  if (!BLOCK[c]) return c;
+  let best = c, bd = 1e9;
+  const cx = c % GN, cy = (c / GN) | 0;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+    const nx = cx + dx, ny = cy + dy;
+    if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || BLOCK[ny * GN + nx]) continue;
+    const d = Math.hypot((nx + 0.5) * CELL - x, (ny + 0.5) * CELL - y);
+    if (d < bd) { bd = d; best = ny * GN + nx; }
+  }
+  return best;
+}
+function canStep(cx, cy, dx, dy) {
+  const nx = cx + dx, ny = cy + dy;
+  if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || BLOCK[ny * GN + nx]) return false;
+  if (dx && dy && (BLOCK[cy * GN + nx] || BLOCK[ny * GN + cx])) return false; // ingen genvej hen over hjørner
+  return true;
+}
+function flowField(x, y) {
+  const d = new Int16Array(GN * GN).fill(FAR), q = new Int16Array(GN * GN);
+  const s = nearFree(x, y); // står drengen i en smal gyde, starter vi fra det nærmeste frie felt
+  d[s] = 0; q[0] = s;
+  let head = 0, tail = 1;
+  while (head < tail) {
+    const cur = q[head++], cx = cur % GN, cy = (cur / GN) | 0;
+    for (const [dx, dy] of NB) {
+      if (!canStep(cx, cy, dx, dy)) continue;
+      const n = (cy + dy) * GN + cx + dx;
+      if (d[n] !== FAR) continue;
+      d[n] = d[cur] + 1; q[tail++] = n;
+    }
+  }
+  return d;
+}
+// Startpladser for tegnerne (i byens yderkanter), flyttet til nærmeste fri felt
+const ENEMY_SPAWNS = [[40, 40], [840, 40], [1360, 40], [1360, 620], [40, 620], [40, 1360], [380, 1360], [1360, 1360], [560, 1360], [1360, 790], [560, 790], [40, 790]]
+  .map(([x, y]) => {
+    let best = null, bd = 1e9;
+    for (let c = 0; c < GN * GN; c++) if (!BLOCK[c]) {
+      const cx = (c % GN + 0.5) * CELL, cy = (((c / GN) | 0) + 0.5) * CELL, d = Math.hypot(cx - x, cy - y);
+      if (d < bd) { bd = d; best = { x: cx, y: cy }; }
+    }
+    return best;
+  });
+
+/* =====================================================================
+   Lyd (Web Audio)
+   ===================================================================== */
+const Sound = {
+  ctx: null,
+  muted: (() => { try { return localStorage.getItem("julefrokost_mute") === "1"; } catch (e) { return false; } })(),
+  unlock() {
+    if (this.ctx) { if (this.ctx.state === "suspended") this.ctx.resume(); return; }
+    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  },
+  tone(freq, dur, type = "square", vol = 0.12, slideTo = null, delay = 0) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+  },
+  pick()  { this.tone(520, 0.08, "square", 0.1, 260); this.tone(700, 0.06, "square", 0.08, 400, 0.07); },
+  slurp() { this.tone(300, 0.25, "sawtooth", 0.07, 900); this.tone(1200, 0.08, "sine", 0.08, null, 0.25); },
+  cloth() { [0, 0.07, 0.14].forEach((d, i) => this.tone(600 + i * 200, 0.1, "triangle", 0.12, null, d)); },
+  rip()   { this.tone(900, 0.25, "sawtooth", 0.1, 120); this.tone(200, 0.15, "square", 0.06, 80, 0.05); },
+  out()   { this.tone(500, 0.6, "sawtooth", 0.1, 80); },
+  skaal() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.16, "triangle", 0.14, null, i * 0.09)); this.bell(0.4); },
+  bell(delay = 0) { this.tone(2637, 0.15, "sine", 0.06, null, delay); this.tone(3136, 0.12, "sine", 0.04, null, delay + 0.03); },
+  // "Jingle Bells" (gammel folkemelodi) når spillet fryser
+  jingle() {
+    const E = 659, G = 784, C = 523, D = 587, seq = [E, E, E, 0, E, E, E, 0, E, G, C, D, E];
+    seq.forEach((f, i) => { if (f) this.tone(f, 0.2, "triangle", 0.13, null, i * 0.2); });
+  },
+  whistle() { this.tone(2200, 0.12, "sine", 0.12); this.tone(2200, 0.35, "sine", 0.12, 2000, 0.16); },
+  end()  { [523, 392, 330, 262].forEach((f, i) => this.tone(f, 0.18, "triangle", 0.15, null, i * 0.16)); },
+  join() { this.tone(660, 0.08, "triangle", 0.1); this.tone(990, 0.12, "triangle", 0.1, null, 0.08); },
+  hey()  { this.tone(300, 0.2, "sawtooth", 0.06, 500); },
+};
+
+/* =====================================================================
+   Netværk: lille klient til Laravel Reverb (Pusher-protokollen) – fra Pizza Party Multi
+   ===================================================================== */
+const Net = {
+  ws: null, want: false, main: "", idle: 0,
+  topics: new Set(), joined: new Set(),
+  onMsg: null, onStatus: null,
+  open(main) {
+    this.close();
+    this.want = true; this.main = main; this.topics = new Set([main]);
+    this._connect();
+  },
+  join(topic) { if (this.topics.has(topic)) return; this.topics.add(topic); this._raw("pusher:subscribe", { channel: topic }); },
+  leave(topic) { if (!this.topics.delete(topic)) return; this.joined.delete(topic); this._raw("pusher:unsubscribe", { channel: topic }); },
+  _raw(event, data) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ event, data })); },
+  _connect() {
+    const ws = new WebSocket(`wss://${RT.host}:${RT.port}/app/${RT.key}?protocol=7&client=js&version=8.4.0&flash=false`);
+    this.ws = ws; this.joined = new Set();
+    const resetIdle = () => { clearTimeout(this.idle); this.idle = setTimeout(() => this._raw("pusher:ping", {}), 20000); };
+    ws.onmessage = e => {
+      if (ws !== this.ws) return;
+      resetIdle();
+      let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+      let d = m.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch (err) {} }
+      if (m.event === "pusher:connection_established") {
+        for (const t of this.topics) this._raw("pusher:subscribe", { channel: t });
+      } else if (m.event === "pusher_internal:subscription_succeeded") {
+        if (this.topics.has(m.channel)) this.joined.add(m.channel);
+        if (m.channel === this.main && this.onStatus) this.onStatus("ok");
+      } else if (m.event === "pusher:ping") {
+        this._raw("pusher:pong", {});
+      } else if (m.event === "pusher:error") {
+        console.warn("Reverb-fejl:", d);
+      } else if (m.channel && m.event && m.event.startsWith("client-") && this.joined.has(m.channel) && this.onMsg) {
+        this.onMsg(m.channel, m.event.slice(7), d || {});
+      }
+    };
+    ws.onclose = () => {
+      clearTimeout(this.idle);
+      if (ws !== this.ws) return;
+      this.joined = new Set();
+      if (this.onStatus) this.onStatus("lukket");
+      if (this.want) setTimeout(() => { if (this.want && this.ws === ws) this._connect(); }, 1500);
+    };
+  },
+  send(topic, event, payload) {
+    if (!this.joined.has(topic) || !this.ws || this.ws.readyState !== 1) return false;
+    this.ws.send(JSON.stringify({ event: "client-" + event, channel: topic, data: payload || {} }));
+    return true;
+  },
+  close() {
+    this.want = false; this.joined = new Set(); this.topics = new Set(); clearTimeout(this.idle);
+    const w = this.ws; this.ws = null;
+    if (w) try { w.close(); } catch (e) {}
+  },
+};
+const mainTopic = () => GAME_NAME + "-" + roomCode;
+const playerTopic = id => mainTopic() + "-" + id;
+const sendMain = (ev, payload) => Net.send(mainTopic(), ev, payload);
+const sendMine = (ev, payload) => Net.send(playerTopic(MY_ID), ev, payload);
+
+/* =====================================================================
+   Tilstand
+   ===================================================================== */
+// state: "start" | "lobby" | "play" | "pause" | "wait" (venter på vært) | "end"
+let state = "start";
+let role = null;           // "host" | "client"
+let roomCode = "";
+const MY_ID = Math.random().toString(36).slice(2, 8);
+let lobby = { players: [], started: false };
+let lastHostMsg = 0;
+let lobbySeen = false;
+
+let G = null;              // værtens fulde spil
+let S = null;              // det der tegnes (hos værten = G, hos spillerne = kopi)
+let ME = null;             // min egen dreng (styres lokalt)
+let myStats = null;
+let roundResult = null;
+
+const ITEM_KINDS = ["horn", "pepsi", "toj"];
+const EMODES = ["walk", "draw", "spawn"];
+
+function startPos(slot, n) {
+  const a = (slot / Math.max(1, n)) * Math.PI * 2, rad = n > 1 ? 45 : 0;
+  return { x: START.x + Math.cos(a) * rad, y: START.y + Math.sin(a) * rad };
+}
+function newMe(slot, n) {
+  const p = startPos(slot, n);
+  return { x: p.x, y: p.y, r: PLAYER_R, stun: 0, kx: 0, ky: 0, fx: 1, moving: false, step: 0, inv: 0, hc: 0, out: false, boost: 0, bmul: 1, bkind: 0 };
+}
+
+/* ---------- Værten: nyt spil ---------- */
+function hostNewGame() {
+  const n = lobby.players.length;
+  G = {
+    t: 0, paused: false, sing: 0, singIdx: 0,
+    players: {}, enemies: [], items: [], nextSpot: 0, tojSpot: 150, itemRnd: mulberry32(SEED + 3),
+    stop: 0, firstAt: null, atStop: 0, need: n, lap: 0,
+    ff: {}, ffT: 0,
+    floaters: [], evq: [], over: false,
+  };
+  lobby.players.forEach((p, slot) => {
+    const sp = startPos(slot, n);
+    G.players[p.id] = {
+      id: p.id, name: p.name, c: p.c, x: sp.x, y: sp.y, dx: sp.x, dy: sp.y, r: PLAYER_R, fx: 1, moving: false, step: 0, stun: 0,
+      score: 0, clothes: CLOTHES.length, inv: 0, hc: 0, kx: 0, ky: 0, out: false, boost: 0, last: performance.now(),
+      st: { stops: 0, first: 0, horn: 0, pepsi: 0, toj: 0, hits: 0, alive: 0 },
+    };
+  });
+  // én kone pr. dreng – de starter på en række nord for Hovedbanegården
+  G.wives = lobby.players.map((p, i) => {
+    const c = nearFree(START.x + (i - (n - 1) / 2) * 45, START.y - 120);
+    const x = (c % GN + 0.5) * CELL + (i - (n - 1) / 2) * 8, y = (((c / GN) | 0) + 0.5) * CELL;
+    return { owner: p.id, c: p.c, i, x, y, dx: x, dy: y, a: Math.PI / 2, r: WIFE_R };
+  });
+  for (let i = 0; i < foodOnMap(n); i++) spawnItem(null);
+  for (let i = 0; i < TOJ_ON_MAP; i++) spawnItem("toj");
+  S = G;
+}
+function spawnItem(kind) {
+  if (kind === "toj") return spawnToj();
+  // næste ledige plads (ikke oven i en anden ting)
+  let s, guard = 0;
+  do { s = ITEM_SPOTS[G.nextSpot++ % ITEM_SPOTS.length]; } while (guard++ < 20 && G.items.some(i => Math.hypot(i.x - s.x, i.y - s.y) < 80));
+  if (!kind) kind = G.itemRnd() < 0.35 ? "pepsi" : "horn";
+  G.items.push({ k: kind, x: s.x, y: s.y });
+}
+// Tøj fordeles jævnt: blandt 60 mulige pladser vælges den, der er længst fra
+// det andet tøj og fra drengene (seedet, så det er ens for alle)
+function spawnToj() {
+  const avoid = [...G.items.filter(i => i.k === "toj"), ...Object.values(G.players).filter(p => !p.out)];
+  let best = null, bd = -1;
+  for (let k = 0; k < 60; k++) {
+    const s = ITEM_SPOTS[(G.tojSpot + k) % ITEM_SPOTS.length];
+    if (G.items.some(i => Math.hypot(i.x - s.x, i.y - s.y) < 60)) continue;
+    const d = avoid.length ? Math.min(...avoid.map(a => Math.hypot(a.x - s.x, a.y - s.y))) : 0;
+    if (d > bd) { bd = d; best = s; }
+  }
+  G.tojSpot += 7;
+  if (best) G.items.push({ k: "toj", x: best.x, y: best.y });
+}
+// Event = svævende tekst (+ evt. lyd og effekt). Værten viser det selv og sender det til alle.
+function hostEvent(x, y, text, color = "#fff", sound = null, pid = null, fx = null) {
+  const ev = [r1(x), r1(y), text, color, sound, pid, fx];
+  G.evq.push(ev);
+  applyEvent(ev);
+}
+function applyEvent([x, y, text, color, sound, pid, fx]) {
+  if (text && S) S.floaters.push({ x, y, text, color, life: 1.4 });
+  if (sound && Sound[sound] && (!pid || pid === MY_ID)) Sound[sound]();
+  if (fx && pid === MY_ID && ME && BOOSTS[fx]) { ME.boost = BOOSTS[fx].time; ME.bmul = BOOSTS[fx].mul; ME.bkind = fx === "pepsi" ? 2 : 1; }
+  if (fx === "sing") Sound.jingle();
+}
+
+/* =====================================================================
+   Input
+   ===================================================================== */
+const keys = {};
+const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+const JOY_MAX = 55;
+
+addEventListener("keydown", e => {
+  Sound.unlock();
+  const ae = document.activeElement;
+  if (ae === $("nameInput") || ae === $("codeInput")) {
+    if (e.key === "Enter") { if (ae === $("codeInput") || $("codeInput").value.trim()) joinRoom(); else createRoom(); }
+    return;
+  }
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") e.preventDefault();
+  if ((e.key === "p" || e.key === "Escape") && role === "host") { if (state === "play") pause(); else if (state === "pause") resume(); }
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("pointerdown", () => Sound.unlock(), { capture: true });
+
+const canvas = $("c");
+canvas.addEventListener("pointerdown", e => {
+  if (state !== "play" || joy.active) return;
+  joy.active = true; joy.id = e.pointerId; joy.ox = e.offsetX; joy.oy = e.offsetY; joy.dx = joy.dy = 0;
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+});
+canvas.addEventListener("pointermove", e => {
+  if (!joy.active || e.pointerId !== joy.id) return;
+  let dx = e.offsetX - joy.ox, dy = e.offsetY - joy.oy;
+  const d = Math.hypot(dx, dy);
+  if (d > JOY_MAX) {
+    joy.ox += dx / d * (d - JOY_MAX); joy.oy += dy / d * (d - JOY_MAX);
+    dx = e.offsetX - joy.ox; dy = e.offsetY - joy.oy;
+  }
+  joy.dx = dx; joy.dy = dy;
+});
+const joyEnd = e => { if (e.pointerId === joy.id) { joy.active = false; joy.dx = joy.dy = 0; } };
+canvas.addEventListener("pointerup", joyEnd);
+canvas.addEventListener("pointercancel", joyEnd);
+function clearInput() { for (const k in keys) keys[k] = false; joy.active = false; joy.dx = joy.dy = 0; }
+
+function readInput() {
+  let x = 0, y = 0;
+  if (keys["arrowleft"] || keys["a"]) x -= 1;
+  if (keys["arrowright"] || keys["d"]) x += 1;
+  if (keys["arrowup"] || keys["w"]) y -= 1;
+  if (keys["arrowdown"] || keys["s"]) y += 1;
+  if (joy.active) {
+    const d = Math.hypot(joy.dx, joy.dy);
+    if (d > 8) { x = joy.dx / JOY_MAX; y = joy.dy / JOY_MAX; }
+  }
+  const len = Math.hypot(x, y);
+  if (len > 1) { x /= len; y /= len; }
+  return { x, y };
+}
+
+/* =====================================================================
+   Kamera: følger min dreng
+   ===================================================================== */
+const view = { s: 1, cw: 0, ch: 0, dpr: 1 };
+const cam = { x: START.x, y: START.y, snap: true };
+function resize() {
+  const r = $("stage").getBoundingClientRect();
+  view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  view.cw = r.width; view.ch = r.height;
+  canvas.width = Math.round(r.width * view.dpr); canvas.height = Math.round(r.height * view.dpr);
+  view.s = Math.min(r.width, r.height) / (Math.min(r.width, r.height) < 500 ? VIEW_UNITS_SMALL : VIEW_UNITS);
+  cam.snap = true;
+}
+addEventListener("resize", resize);
+function updateCamera(dt) {
+  const tx = ME ? ME.x : START.x, ty = ME ? ME.y : START.y;
+  const k = cam.snap ? 1 : 1 - Math.exp(-dt * 8);
+  cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+  cam.snap = false;
+  const hw = view.cw / 2 / view.s, hh = view.ch / 2 / view.s, m = 30;
+  cam.x = hw * 2 > WORLD + m * 2 ? WORLD / 2 : clamp(cam.x, hw - m, WORLD - hw + m);
+  cam.y = hh * 2 > WORLD + m * 2 ? WORLD / 2 : clamp(cam.y, hh - m, WORLD - hh + m);
+}
+const toS = (x, y) => [(x - cam.x) * view.s + view.cw / 2, (y - cam.y) * view.s + view.ch / 2];
+function visible(x, y, pad) {
+  const [sx, sy] = toS(x, y), p = pad * view.s;
+  return sx > -p && sy > -p && sx < view.cw + p && sy < view.ch + p;
+}
+
+/* =====================================================================
+   Min egen dreng – bevæges lokalt hos alle (også værten)
+   ===================================================================== */
+function slowAt(x, y, t) {
+  let k = 1;
+  for (const p of PIGEONS) if (Math.hypot(p.x - x, p.y - y) < PIGEON_R) k = Math.min(k, PIGEON_SLOW);
+  return k;
+}
+// Konerne og deres barnevogne som cirkler (værten bruger de rigtige positioner, spillerne de bløde)
+function blockers() {
+  const out = [];
+  if (!S || !S.wives) return out;
+  for (const w of S.wives) {
+    const pos = role === "client" ? { x: w.dx, y: w.dy, a: w.a } : w;
+    out.push({ x: pos.x, y: pos.y, r: WIFE_R });
+    const p = pramOf(pos); out.push({ x: p.x, y: p.y, r: PRAM_R });
+  }
+  return out;
+}
+function moveMe(dt, t) {
+  const P = ME;
+  const prevX = P.x, prevY = P.y;
+  P.boost = Math.max(0, P.boost - dt);
+  if (P.stun > 0) {
+    P.stun -= dt;
+    P.x += P.kx * dt; P.y += P.ky * dt; P.kx *= 0.9; P.ky *= 0.9;
+    P.moving = false;
+  } else {
+    const inp = readInput();
+    const slow = slowAt(P.x, P.y, t);
+    if (slow < 1 && P.moving && !P.out) myStats.slowed += dt;
+    const sp = PLAYER_SPEED * slow * (P.boost > 0 ? P.bmul : 1);
+    P.x += inp.x * sp * dt; P.y += inp.y * sp * dt;
+    P.moving = Math.hypot(inp.x, inp.y) > 0.1;
+    if (P.moving) { if (Math.abs(inp.x) > 0.15) P.fx = Math.sign(inp.x); P.step += dt * 12; }
+  }
+  // alle koner og barnevogne spærrer vejen
+  for (let k = 0; k < 2; k++) {
+    for (const o of blockers()) {
+      const dx = P.x - o.x, dy = P.y - o.y, d = Math.hypot(dx, dy) || 0.01, m = o.r + P.r;
+      if (d < m) { P.x = o.x + dx / d * m; P.y = o.y + dy / d * m; }
+    }
+    collideWorld(P);
+  }
+  myStats.dist += Math.hypot(P.x - prevX, P.y - prevY);
+}
+
+/* =====================================================================
+   VÆRTEN: hele det fælles spil
+   ===================================================================== */
+const activePlayers = () => Object.values(G.players).filter(p => !p.out && performance.now() - p.last < 4000);
+
+function hostUpdate(dt) {
+  // Værtens egen dreng sendes ind i spillet
+  const hp = G.players[MY_ID];
+
+  // ---- Syng LAST CHRISTMAS: alt står stille ----
+  if (G.sing > 0) {
+    G.sing = Math.max(0, G.sing - dt);
+    Object.assign(hp, { last: performance.now(), moving: false });
+    return;
+  }
+  G.t += dt;
+  const t = G.t;
+  if (G.singIdx < SING_AT.length && t >= SING_AT[G.singIdx]) {
+    G.singIdx++; G.sing = SING_TIME; clearInput(); ME.moving = false;
+    hostEvent(0, 0, "", "", null, null, "sing");
+    return;
+  }
+
+  moveMe(dt, t);
+  Object.assign(hp, { x: ME.x, y: ME.y, fx: ME.fx, moving: ME.moving, step: ME.step, stun: ME.stun, boost: ME.boost > 0 ? ME.bkind : 0, last: performance.now() });
+
+  for (const p of Object.values(G.players)) p.inv = Math.max(0, p.inv - dt);
+  const act = activePlayers();
+  const n = Object.keys(G.players).length;
+
+  // ---- Point for at have tøj på ----
+  // (ingen point for at gemme sig i et af de andre fristeder – kun det næste stop tæller)
+  const nextStop = STOPS[G.stop % STOPS.length];
+  for (const p of act) {
+    p.st.alive += dt;
+    if (!inSafe(p) || Math.hypot(p.x - nextStop.x, p.y - nextStop.y) < STOP_R) p.score += ALIVE_POINTS * dt;
+  }
+
+  // ---- Ting på gaden: hvem kommer først? ----
+  const pickers = Object.values(G.players).filter(p => performance.now() - p.last < 4000);
+  for (const p of pickers) {
+    for (let i = G.items.length - 1; i >= 0; i--) {
+      const it = G.items[i];
+      if (p.out && it.k !== "toj") continue; // nøgne drenge kan kun samle tøj op
+      if (it.k === "toj" && !p.out && p.clothes >= CLOTHES.length) continue; // har allerede alt tøjet på
+      if (Math.hypot(it.x - p.x, it.y - p.y) > p.r + 16) continue;
+      G.items.splice(i, 1);
+      p.score += PICKUP_POINTS;
+      if (it.k === "toj") {
+        p.st.toj++;
+        if (p.out) {
+          p.out = false; p.clothes = 1; p.inv = INV_TIME;
+          hostEvent(p.x, p.y - 30, `🧶 ${p.name} er med igen!`, "#7dffb0", "cloth");
+        } else {
+          p.clothes++;
+          const c = CLOTHES[CLOTHES.length - p.clothes];
+          hostEvent(p.x, p.y - 30, `${c.emoji} Fik ${c.name} igen!`, "#7dffb0", "cloth", p.id);
+        }
+      } else {
+        p.st[it.k]++;
+        hostEvent(p.x, p.y - 30, it.k === "pepsi" ? "+10 PEPSI MAX! ⚡" : "+10 Pølsehorn! 🌭", "#f5c542", it.k === "pepsi" ? "slurp" : "pick", p.id, it.k);
+        spawnItem(null);
+      }
+    }
+  }
+  while (G.items.filter(i => i.k !== "toj").length < foodOnMap(n)) spawnItem(null);
+  while (G.items.filter(i => i.k === "toj").length < TOJ_ON_MAP) spawnItem("toj"); // der ligger altid 5 stykker tøj
+
+  // ---- Stoppet: alle drenge med tøj på skal være der ----
+  const stop = STOPS[G.stop % STOPS.length];
+  const inStop = act.filter(p => Math.hypot(p.x - stop.x, p.y - stop.y) < STOP_R);
+  for (const p of inStop) if (!G.firstAt) G.firstAt = p.id;
+  G.atStop = inStop.length; G.need = act.length;
+  if (act.length && inStop.length === act.length) {
+    const pts = STOP_POINTS + 50 * G.lap;
+    for (const p of act) { p.score += pts; p.st.stops++; }
+    const first = G.players[G.firstAt];
+    if (first && !first.out && act.length > 1) { first.score += FIRST_BONUS; first.st.first++; }
+    hostEvent(stop.x, stop.y - 60, `SKÅL! ${stop.short} klaret +${pts}`, "#f5c542", "skaal");
+    if (first && act.length > 1) hostEvent(stop.x, stop.y - 25, `${first.name} var først +${FIRST_BONUS}`, "#fff");
+    G.stop++; G.firstAt = null;
+    if (G.stop % STOPS.length === 0) { G.lap++; hostEvent(stop.x, stop.y + 10, "Ruten forfra – nu sværere! 🔁", "#ff9f9f"); }
+  }
+
+  hostUpdateEnemies(dt, act, n);
+  hostUpdateWives(dt);
+
+  // ---- Slut ----
+  if (!act.length && Object.values(G.players).every(p => p.out || performance.now() - p.last >= 4000)) hostEnd("Alle drenge er tegnet nøgne! 🙈");
+  else if (t >= MAX_TIME) hostEnd("Pølsevognen er lukket!");
+}
+
+function hostUpdateEnemies(dt, act, n) {
+  const t = G.t;
+  // flow-felter mod hver dreng (genberegnes 4 gange i sekundet)
+  G.ffT -= dt;
+  if (G.ffT <= 0) {
+    G.ffT = 0.25; G.ff = {};
+    for (const p of Object.values(G.players)) G.ff[p.id] = flowField(p.x, p.y); // (også til konerne)
+  }
+  // flere tegnere med tiden – de dukker op langt fra drengene
+  if (G.enemies.length < enemyCount(t, n) && act.length) {
+    let best = ENEMY_SPAWNS[0], bd = -1;
+    for (const s of ENEMY_SPAWNS) {
+      const d = Math.min(...act.map(p => Math.hypot(p.x - s.x, p.y - s.y)));
+      if (d > bd) { bd = d; best = s; }
+    }
+    G.enemies.push({ x: best.x, y: best.y, dx: best.x, dy: best.y, r: ENEMY_R, mode: "spawn", timer: 1.0, fx: 1, target: null, i: G.enemies.length });
+    hostEvent(best.x, best.y - 40, "Croquis-tegner! 🎨", "#ff9f9f", "hey");
+  }
+  const speed = enemySpeed(t);
+  // drenge i et fristed kan ikke tegnes
+  const targets = act.filter(p => p.inv <= 0 && !inSafe(p));
+  for (const e of G.enemies) {
+    if (e.mode === "spawn" || e.mode === "draw") {
+      e.timer -= dt;
+      if (e.timer <= 0) e.mode = "walk";
+      continue;
+    }
+    // vælg den dreng, der er tættest på ad gaderne
+    const c = cellOf(e.x, e.y);
+    let P = null, bd = FAR + 1;
+    for (const p of (targets.length ? targets : act)) {
+      const ff = G.ff[p.id];
+      const d = ff ? ff[c] : Math.hypot(p.x - e.x, p.y - e.y) / CELL;
+      if (d < bd) { bd = d; P = p; }
+    }
+    if (!P) continue;
+    e.target = P.id;
+    let tx = P.x, ty = P.y;
+    const ff = G.ff[P.id];
+    if (ff && ff[c] > 1) {
+      const cx = c % GN, cy = (c / GN) | 0;
+      let best = ff[c], bi = -1;
+      for (const [dx, dy] of NB) {
+        if (!canStep(cx, cy, dx, dy)) continue;
+        const nIdx = (cy + dy) * GN + cx + dx;
+        if (ff[nIdx] < best) { best = ff[nIdx]; bi = nIdx; }
+      }
+      if (bi >= 0) { tx = (bi % GN + 0.5) * CELL; ty = (((bi / GN) | 0) + 0.5) * CELL; }
+    }
+    const dx = tx - e.x, dy = ty - e.y, d = Math.hypot(dx, dy);
+    if (d > 0.5) {
+      const step = Math.min(speed * dt, d);
+      e.x += dx / d * step; e.y += dy / d * step;
+      if (Math.abs(dx) > 2) e.fx = Math.sign(dx);
+    }
+    collideWorld(e);
+    for (const safe of STOPS) { // skub tegneren ud af fristederne
+      const fx = e.x - safe.x, fy = e.y - safe.y, fd = Math.hypot(fx, fy) || 1;
+      if (fd < STOP_R) { e.x = safe.x + fx / fd * STOP_R; e.y = safe.y + fy / fd * STOP_R; collideWorld(e); }
+    }
+    // fanget!
+    for (const p of act) {
+      if (p.inv > 0 || inSafe(p) || Math.hypot(p.x - e.x, p.y - e.y) > p.r + e.r - 2) continue;
+      hitPlayer(e, p);
+      break;
+    }
+  }
+  // tegnerne skubber lidt til hinanden, så de ikke klumper
+  for (let i = 0; i < G.enemies.length; i++) for (let j = i + 1; j < G.enemies.length; j++) {
+    const a = G.enemies[i], b = G.enemies[j];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, o = a.r + b.r - d;
+    if (o > 0) { a.x -= dx / d * o / 2; a.y -= dy / d * o / 2; b.x += dx / d * o / 2; b.y += dy / d * o / 2; }
+  }
+}
+
+// Konerne går efter deres egen mand ad gaderne og stopper, når barnevognen er lige ved ham
+function hostUpdateWives(dt) {
+  if (G.t < WIFE_DELAY) return;
+  const speed = wifeSpeed(G.t);
+  for (const w of G.wives) {
+    const P = G.players[w.owner];
+    if (!P) continue;
+    const pram = pramOf(w);
+    const close = Math.hypot(P.x - pram.x, P.y - pram.y) < PRAM_R + PLAYER_R + 8 || Math.hypot(P.x - w.x, P.y - w.y) < WIFE_R + PLAYER_R + 8;
+    let tx = P.x, ty = P.y;
+    const ff = G.ff[P.id], c = cellOf(w.x, w.y);
+    if (ff && ff[c] > 1) {
+      const cx = c % GN, cy = (c / GN) | 0;
+      let best = ff[c], bi = -1;
+      for (const [ddx, ddy] of NB) {
+        if (!canStep(cx, cy, ddx, ddy)) continue;
+        const nIdx = (cy + ddy) * GN + cx + ddx;
+        if (ff[nIdx] < best) { best = ff[nIdx]; bi = nIdx; }
+      }
+      if (bi >= 0) { tx = (bi % GN + 0.5) * CELL; ty = (((bi / GN) | 0) + 0.5) * CELL; }
+    }
+    const dx = tx - w.x, dy = ty - w.y, d = Math.hypot(dx, dy);
+    // drej blødt mod den retning hun går (barnevognen følger med)
+    if (d > 1) {
+      const want = Math.atan2(dy, dx);
+      let diff = ((want - w.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      w.a += clamp(diff, -6 * dt, 6 * dt);
+    }
+    if (!close && d > 0.5) {
+      const step = Math.min(speed * dt, d);
+      w.x += dx / d * step; w.y += dy / d * step;
+    }
+    collideWorld(w);
+    for (const st of STOPS) { // konerne kan ikke komme ind i fristederne (heller ikke med barnevognen)
+      for (const o of [w, pramOf(w)]) {
+        const fx = o.x - st.x, fy = o.y - st.y, fd = Math.hypot(fx, fy) || 1, m = STOP_R + (o === w ? 0 : PRAM_R);
+        if (fd < m) { const k = m - fd; w.x += fx / fd * k; w.y += fy / fd * k; }
+      }
+    }
+    collideWorld(w);
+  }
+  // konerne skubber lidt til hinanden
+  for (let i = 0; i < G.wives.length; i++) for (let j = i + 1; j < G.wives.length; j++) {
+    const a = G.wives[i], b = G.wives[j];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, o = a.r + b.r + 4 - d;
+    if (o > 0) { a.x -= dx / d * o / 2; a.y -= dy / d * o / 2; b.x += dx / d * o / 2; b.y += dy / d * o / 2; }
+  }
+}
+
+function hitPlayer(e, p) {
+  const lost = CLOTHES[CLOTHES.length - p.clothes];
+  p.clothes--; p.st.hits++;
+  p.inv = INV_TIME; p.hc++;
+  const k = Math.hypot(p.x - e.x, p.y - e.y) || 1;
+  p.kx = (p.x - e.x) / k; p.ky = (p.y - e.y) / k;
+  e.mode = "draw"; e.timer = DRAW_TIME;
+  if (p.clothes <= 0) {
+    p.out = true;
+    hostEvent(p.x, p.y - 40, `${p.name} er tegnet nøgen! 🙈`, "#ff6b6b", "out");
+  } else {
+    hostEvent(p.x, p.y - 35, `${lost.emoji} ${lost.name} røg!`, "#ff6b6b", "rip", p.id);
+  }
+  if (p.id === MY_ID) applyHit(p);
+}
+// Min dreng har mistet tøj: bliv skubbet væk fra tegneren
+function applyHit(p) {
+  ME.hc = p.hc; ME.stun = 0.3; ME.kx = p.kx * 420; ME.ky = p.ky * 420;
+}
+
+function hostSendState() {
+  const pl = Object.values(G.players).map(p => [p.id, r1(p.x), r1(p.y), p.fx, p.moving ? 1 : 0, Math.floor(p.score), p.clothes, r1(p.inv * 10), p.hc, r1(p.kx * 100), r1(p.ky * 100), p.out ? 1 : 0, p.boost || 0]);
+  sendMain("state", {
+    t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0, sg: r1(G.sing * 10),
+    so: G.stop, at: G.atStop, nd: G.need,
+    it: G.items.map(i => [ITEM_KINDS.indexOf(i.k), r1(i.x), r1(i.y)]),
+    en: G.enemies.map(e => [r1(e.x), r1(e.y), EMODES.indexOf(e.mode), e.fx]),
+    wv: G.wives.map(w => [r1(w.x), r1(w.y), r1(w.a * 100)]),
+    pl, ev: G.evq,
+  });
+  G.evq = [];
+}
+
+function hostEnd(reason) {
+  if (G.over) return;
+  G.over = true;
+  const res = Object.values(G.players)
+    .map(p => ({ id: p.id, n: p.name, c: p.c, s: Math.floor(p.score), st: { ...p.st, alive: Math.round(p.st.alive) } }))
+    .sort((a, b) => b.s - a.s);
+  hostSendState();
+  const msg = { reason, res, stops: G.stop };
+  sendMain("end", msg);
+  setTimeout(() => sendMain("end", msg), 800);
+  lobby.started = false;
+  showEnd(msg);
+}
+
+/* =====================================================================
+   SPILLERNE (ikke-vært): modtag værtens tilstand
+   ===================================================================== */
+function clientNewView() {
+  S = { t: 0, paused: false, sing: 0, stop: 0, atStop: 0, need: 1, items: [], enemies: [], wives: [], players: {}, floaters: [], recvAt: performance.now() };
+}
+function clientState(m) {
+  if (!S) return;
+  S.t = m.t; S.recvAt = performance.now(); S.paused = !!m.p;
+  const wasSing = S.sing > 0;
+  S.sing = m.sg / 10; S.stop = m.so; S.atStop = m.at; S.need = m.nd;
+  if (S.sing > 0 && !wasSing) { clearInput(); ME.moving = false; }
+  S.items = m.it.map(([k, x, y]) => ({ k: ITEM_KINDS[k], x, y }));
+  // tegnere: behold de gamle (til blød glidning), tilføj nye
+  m.en.forEach(([x, y, mode, fx], i) => {
+    let e = S.enemies[i];
+    if (!e) e = S.enemies[i] = { x, y, dx: x, dy: y, i };
+    Object.assign(e, { x, y, mode: EMODES[mode], fx });
+  });
+  S.enemies.length = m.en.length;
+  (m.wv || []).forEach(([x, y, a], i) => {
+    let w = S.wives[i];
+    const pl = lobby.players[i] || { id: "", c: 0 };
+    if (!w) w = S.wives[i] = { x, y, dx: x, dy: y, a: a / 100, owner: pl.id, c: pl.c, i };
+    Object.assign(w, { x, y, a: a / 100 });
+  });
+  for (const [id, x, y, fx, mv, score, clothes, inv, hc, kx, ky, out, boost] of m.pl) {
+    let p = S.players[id];
+    const info = lobby.players.find(q => q.id === id) || { name: "?", c: 0 };
+    if (!p) p = S.players[id] = { id, x, y, dx: x, dy: y, step: 0, r: PLAYER_R, name: info.name, c: info.c };
+    Object.assign(p, { x, y, fx, moving: !!mv, score, clothes, inv: inv / 10, hc, out: !!out, boost });
+    if (Math.hypot(p.dx - x, p.dy - y) > 150) { p.dx = x; p.dy = y; }
+    if (id === MY_ID) {
+      ME.inv = p.inv; ME.out = p.out;
+      if (hc !== ME.hc) applyHit({ hc, kx: kx / 100, ky: ky / 100 });
+    }
+  }
+  for (const ev of m.ev || []) applyEvent(ev);
+  if (m.p && state === "play") { state = "pause"; clearInput(); showPause("Pause", "Værten har sat spillet på pause."); }
+  if (!m.p && (state === "pause" || state === "wait")) { state = "play"; showScreen(null); }
+}
+function smoothList(list, dt, skipMe) {
+  const k = 1 - Math.exp(-dt * 14);
+  for (const p of list) {
+    if (skipMe && p.id === MY_ID) continue;
+    const ox = p.dx, oy = p.dy;
+    p.dx += (p.x - p.dx) * k; p.dy += (p.y - p.dy) * k;
+    if (Math.hypot(p.dx - ox, p.dy - oy) > 0.3) p.step = (p.step || 0) + dt * 12;
+  }
+}
+const clientTime = () => S.t + (S.paused || S.sing > 0 ? 0 : Math.min(0.4, (performance.now() - S.recvAt) / 1000));
+const gameTime = () => role === "client" ? clientTime() : (S ? S.t : 0);
+
+/* =====================================================================
+   Beskeder fra netværket
+   ===================================================================== */
+function onNetMsg(topic, ev, m) {
+  if (role === "host") {
+    if (topic !== mainTopic()) m.id = topic.slice(mainTopic().length + 1);
+    if (ev === "hello") hostHello(m);
+    else if (ev === "bye") { hostRemove(m.id); renderLobby(); hostBroadcastLobby(); }
+    else if (ev === "pos" && G && state !== "end") {
+      const p = G.players[m.id];
+      if (!p) return;
+      p.last = performance.now();
+      if (G.sing > 0) return; // står stille mens der synges
+      p.x = clamp(+m.x || 0, 0, WORLD); p.y = clamp(+m.y || 0, 0, WORLD); p.fx = m.fx < 0 ? -1 : 1; p.moving = !!m.m; p.boost = m.b | 0;
+    }
+    return;
+  }
+  if (topic !== mainTopic()) return;
+  if (ev === "lobby" || ev === "state" || ev === "start" || ev === "end") lastHostMsg = performance.now();
+  if (ev === "lobby") {
+    lobbySeen = true;
+    lobby.players = m.pl; lobby.started = !!m.st;
+    const inIt = m.pl.some(p => p.id === MY_ID);
+    if (!m.st && (state === "lobby" || state === "end" || state === "wait")) {
+      if (state !== "lobby") { state = "lobby"; showScreen("lobbyScreen"); showPreview(); }
+      renderLobby();
+      $("lobbyMsg").textContent = inIt ? "" : (m.pl.length >= MAX_PLAYERS ? `Rummet er fyldt (max ${MAX_PLAYERS}).` : "Melder mig ind…");
+    } else if (m.st && state === "lobby") {
+      renderLobby();
+      $("lobbyMsg").textContent = inIt ? "" : "Turen er i gang – du kommer med på den næste.";
+    }
+  } else if (ev === "start") {
+    lobby.players = m.pl;
+    if (m.pl.some(p => p.id === MY_ID) && (state === "lobby" || state === "end")) clientStart();
+  } else if (ev === "state") {
+    if ((state === "play" || state === "pause" || state === "wait") && S) clientState(m);
+  } else if (ev === "end") {
+    if ((state === "play" || state === "pause" || state === "wait") && m.res.some(r => r.id === MY_ID)) showEnd(m);
+  }
+}
+
+function hostHello(m) {
+  let p = lobby.players.find(q => q.id === m.id);
+  if (!p && !lobby.started && lobby.players.length < MAX_PLAYERS) {
+    const used = lobby.players.map(q => q.c);
+    const c = COLORS.findIndex((_, i) => !used.includes(i));
+    let name = String(m.name || "Anonym").slice(0, 16), base = name, k = 2;
+    while (lobby.players.some(q => q.name === name)) name = `${base} ${k++}`;
+    p = { id: m.id, name, c, last: 0 };
+    lobby.players.push(p);
+    Net.join(playerTopic(p.id));
+    Sound.join();
+    renderLobby();
+    hostBroadcastLobby();
+  }
+  if (p) p.last = performance.now();
+  else hostBroadcastLobby();
+}
+function hostRemove(id) {
+  if (id === MY_ID) return;
+  lobby.players = lobby.players.filter(p => p.id !== id);
+  Net.leave(playerTopic(id));
+}
+function hostBroadcastLobby() {
+  sendMain("lobby", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })), st: lobby.started ? 1 : 0 });
+}
+
+/* =====================================================================
+   Rum: opret / deltag / forlad
+   ===================================================================== */
+function getName() { return ($("nameInput").value.trim() || "Anonym").slice(0, 16); }
+function saveName() { try { localStorage.setItem(NAME_KEY, getName()); } catch (e) {} }
+function makeCode() {
+  const A = "ABCDEFGHJKLMNPRSTUVWXYZ";
+  let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
+  return s;
+}
+function createRoom() {
+  Sound.unlock(); saveName();
+  role = "host"; roomCode = makeCode();
+  lobby = { players: [{ id: MY_ID, name: getName(), c: 0, last: Infinity }], started: false };
+  Net.onMsg = onNetMsg;
+  Net.onStatus = st => { if (state === "lobby") $("lobbyMsg").textContent = st === "ok" ? "" : connectHint(); if (st === "ok") hostBroadcastLobby(); };
+  Net.open(mainTopic());
+  enterLobby();
+}
+function joinRoom() {
+  Sound.unlock(); saveName();
+  const code = $("codeInput").value.trim().toUpperCase().replace(/[^A-Z]/g, "");
+  if (code.length !== 4) { $("startErr").textContent = "Koden skal være 4 bogstaver."; return; }
+  role = "client"; roomCode = code;
+  lobby = { players: [], started: false }; lobbySeen = false;
+  Net.onMsg = onNetMsg;
+  Net.onStatus = st => { if (st === "ok") sendMain("hello", { id: MY_ID, name: getName() }); else if (state === "lobby") $("lobbyMsg").textContent = connectHint(); };
+  Net.open(mainTopic());
+  Net.join(playerTopic(MY_ID));
+  enterLobby();
+  setTimeout(() => { if (state === "lobby" && role === "client" && !lobbySeen) $("lobbyMsg").textContent = ON_PAGES ? "Kan ikke finde rummet – er koden rigtig, og har værten spillet åbent?" : connectHint(); }, 5000);
+}
+const ON_PAGES = location.hostname === "gaardee.github.io";
+function connectHint() {
+  return ON_PAGES ? "Forbinder…" : "Multiplayer virker kun på gaardee.github.io – men du kan godt starte alene.";
+}
+function enterLobby() {
+  state = "lobby";
+  $("startErr").textContent = "";
+  $("lobbyCode").textContent = roomCode;
+  $("room").textContent = "Rum " + roomCode;
+  $("lobbyMsg").textContent = !ON_PAGES ? connectHint() : role === "host" ? "Forbinder…" : "Leder efter rummet…";
+  try { history.replaceState(null, "", "#" + roomCode); } catch (e) {}
+  renderLobby();
+  showScreen("lobbyScreen");
+}
+function leaveRoom() {
+  if (role === "client") sendMine("bye", { id: MY_ID });
+  Net.close();
+  role = null; roomCode = ""; G = null; lobby = { players: [], started: false };
+  $("room").textContent = ""; $("pauseBtn").hidden = true;
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+  state = "start";
+  showScreen("startScreen");
+  showPreview();
+}
+function renderLobby() {
+  const list = lobby.players;
+  $("lobbyList").innerHTML = list.length
+    ? list.map((p, i) => `<li><span class="dot" style="background:${COLORS[p.c]}"></span>${esc(p.name)}${i === 0 ? " 👑" : ""}${p.id === MY_ID ? " <small>(dig)</small>" : ""}</li>`).join("")
+    : "<li>…</li>";
+  const n = Math.max(1, list.length);
+  $("lobbyInfo").textContent = `${n} dreng${n === 1 ? "" : "e"} · ${enemyCount(0, n)} croquis-tegnere fra start (flere kommer til)`;
+  $("hostStartBtn").hidden = role !== "host";
+  $("hostStartBtn").textContent = list.length > 1 ? `Start turen! (${list.length} drenge)` : "Start alene (eller vent på drengene)";
+}
+function roomLink() { return location.origin + location.pathname + "#" + roomCode; }
+
+/* ---------- Start af runde ---------- */
+function hostStart() {
+  if (role !== "host" || state !== "lobby") return;
+  lobby.started = true;
+  sendMain("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })) });
+  hostNewGame();
+  beginRound(0);
+}
+function clientStart() {
+  clientNewView();
+  const slot = lobby.players.findIndex(p => p.id === MY_ID);
+  beginRound(slot);
+}
+function beginRound(slot) {
+  ME = newMe(Math.max(0, slot), lobby.players.length);
+  cam.snap = true;
+  myStats = { dist: 0, slowed: 0 };
+  roundResult = null;
+  clearInput();
+  lastHud = ""; lastHostMsg = performance.now();
+  state = "play";
+  $("pauseBtn").hidden = role !== "host";
+  showScreen(null);
+  Sound.whistle();
+  S.floaters.push({ x: ME.x, y: ME.y - 60, text: "Første stop: Bodega! 🍺", color: "#f5c542", life: 2.5 });
+}
+
+/* =====================================================================
+   Tegning
+   ===================================================================== */
+const ctx = canvas.getContext("2d");
+const INK = "#1d1a16";
+function rr(x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function fillStroke(fill, lw = 3) {
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.lineWidth = Math.max(1.2, lw * view.s); ctx.strokeStyle = INK; ctx.stroke();
+}
+function circle(x, y, r, fill, lw = 3) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); fillStroke(fill, lw); }
+function rectS(r) { const [x, y] = toS(r.x, r.y); return [x, y, r.w * view.s, r.h * view.s]; }
+function label(text, x, y, size, fill = "#fff", stroke = INK) {
+  ctx.font = `900 ${size}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.lineWidth = Math.max(3, size / 5); ctx.strokeStyle = stroke; ctx.lineJoin = "round"; ctx.strokeText(text, x, y);
+  ctx.fillStyle = fill; ctx.fillText(text, x, y);
+}
+
+// Faste "tilfældige" detaljer: is-flager i kanalerne og sne på gaden
+const ICE = makeIce();
+function makeIce() {
+  const rnd = mulberry32(SEED + 11), out = [];
+  for (const w of WATER) for (let i = 0; i < Math.max(1, Math.floor((w.w * w.h) / 9000)); i++)
+    out.push({ x: w.x + 10 + rnd() * (w.w - 20), y: w.y + 10 + rnd() * (w.h - 20), r: 6 + rnd() * 10, a: rnd() * 3 });
+  return out;
+}
+const SNOWDOTS = (() => { const rnd = mulberry32(SEED + 12), o = []; for (let i = 0; i < 500; i++) o.push({ x: rnd() * WORLD, y: rnd() * WORLD, r: 2 + rnd() * 5 }); return o; })();
+const FLAKES = Array.from({ length: 70 }, (_, i) => ({ x: Math.random(), y: Math.random(), r: 1 + Math.random() * 2.5, sp: 20 + Math.random() * 40, ph: Math.random() * 6 }));
+
+function draw(now, dt) {
+  const s = view.s;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.fillStyle = "#123524"; ctx.fillRect(0, 0, view.cw, view.ch);
+  const t = S ? gameTime() : 0;
+
+  // gade (sne-belagt brosten)
+  { const [x, y, w, h] = rectS({ x: 0, y: 0, w: WORLD, h: WORLD }); ctx.fillStyle = "#dde4ea"; ctx.fillRect(x, y, w, h); }
+  ctx.fillStyle = "rgba(255,255,255,.75)";
+  for (const d of SNOWDOTS) if (visible(d.x, d.y, 10)) { const [x, y] = toS(d.x, d.y); ctx.beginPath(); ctx.arc(x, y, d.r * s, 0, Math.PI * 2); ctx.fill(); }
+
+  // kanaler
+  for (const w of WATER) {
+    const [x, y, ww, hh] = rectS(w);
+    ctx.fillStyle = "#2f6fa3"; ctx.fillRect(x, y, ww, hh);
+    ctx.strokeStyle = "#1b4a72"; ctx.lineWidth = 3 * s; ctx.strokeRect(x, y, ww, hh);
+  }
+  ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 2 * s;
+  for (const w of WATER) {
+    const horiz = w.w > w.h;
+    for (let k = 0; k < (horiz ? w.w : w.h); k += 60) {
+      const wx = horiz ? w.x + k + ((now / 40) % 60) : w.x + w.w * 0.5, wy = horiz ? w.y + w.h * 0.5 : w.y + k + ((now / 40) % 60);
+      if (!inRect(wx, wy, w) || !visible(wx, wy, 30)) continue;
+      const [x, y] = toS(wx, wy);
+      ctx.beginPath();
+      if (horiz) { ctx.moveTo(x - 12 * s, y); ctx.quadraticCurveTo(x - 6 * s, y - 5 * s, x, y); ctx.quadraticCurveTo(x + 6 * s, y + 5 * s, x + 12 * s, y); }
+      else { ctx.moveTo(x, y - 12 * s); ctx.quadraticCurveTo(x - 5 * s, y - 6 * s, x, y); ctx.quadraticCurveTo(x + 5 * s, y + 6 * s, x, y + 12 * s); }
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = "rgba(240,248,255,.85)";
+  for (const i of ICE) if (visible(i.x, i.y, 20)) { const [x, y] = toS(i.x, i.y); ctx.beginPath(); ctx.ellipse(x, y, i.r * s, i.r * 0.65 * s, i.a, 0, Math.PI * 2); ctx.fill(); }
+
+  // broer
+  for (const b of BRIDGES) {
+    const [x, y, w, h] = rectS(b);
+    ctx.fillStyle = "#a0784f"; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "rgba(60,35,15,.5)"; ctx.lineWidth = 2 * s;
+    if (b.v) { for (let k = 8; k < b.h; k += 12) { ctx.beginPath(); ctx.moveTo(x, y + k * s); ctx.lineTo(x + w, y + k * s); ctx.stroke(); } }
+    else { for (let k = 8; k < b.w; k += 12) { ctx.beginPath(); ctx.moveTo(x + k * s, y); ctx.lineTo(x + k * s, y + h); ctx.stroke(); } }
+    ctx.fillStyle = "#5b3a1e";
+    if (b.v) { ctx.fillRect(x - 3 * s, y, 6 * s, h); ctx.fillRect(x + w - 3 * s, y, 6 * s, h); }
+    else { ctx.fillRect(x, y - 3 * s, w, 6 * s); ctx.fillRect(x, y + h - 3 * s, w, 6 * s); }
+  }
+
+  // stop-pladser
+  const curStop = S ? S.stop % STOPS.length : 0;
+  STOPS.forEach((st, i) => drawStop(st, i === curStop && !!ME, now));
+  // Hovedbanegården (start)
+  if (visible(START.x, START.y, 120)) { const [x, y] = toS(START.x, START.y + 70); label("🚉 Hovedbanegården", x, y, Math.max(10, 13 * s), "#fff"); }
+
+  // juletræer og duer
+  for (const tr of TREES) if (visible(tr.x, tr.y, 60)) drawTree(tr, now);
+  const peopleNear = [];
+  if (S) for (const k of kidsToDraw()) peopleNear.push(k);
+  for (const p of PIGEONS) if (visible(p.x, p.y, 60)) drawPigeons(p, now, peopleNear);
+
+  // ting på gaden
+  if (S) for (const it of S.items) if (visible(it.x, it.y, 40)) drawItem(it, now);
+
+  // huse (tegnet efter gaden, så de står "oven på")
+  for (const h of HOUSES) if (visible(h.x + h.w / 2, h.y + h.h / 2, 120)) drawHouse(h, now);
+
+  // personer sorteret oppefra og ned
+  const people = [];
+  if (S && S.wives) for (const w of S.wives) {
+    const x = role === "client" ? w.dx : w.x, y = role === "client" ? w.dy : w.y;
+    if (visible(x, y, 90)) people.push({ k: "w", o: w, x, y });
+  }
+  if (S) {
+    for (const e of S.enemies) { const x = role === "client" ? e.dx : e.x, y = role === "client" ? e.dy : e.y; if (visible(x, y, 60)) people.push({ k: "e", o: e, x, y }); }
+    for (const k of peopleNear) if (visible(k.x, k.y, 60)) people.push({ k: "p", o: k, y: k.y });
+  }
+  people.sort((a, b) => a.y - b.y);
+  for (const p of people) p.k === "w" ? drawWife(p.o, p.x, p.y, now) : p.k === "e" ? drawTegner(p.o, p.x, p.y, now) : drawDreng(p.o, now);
+
+  // svævende tekst
+  if (S) for (const f of S.floaters) {
+    const [x, y] = toS(f.x, f.y);
+    ctx.globalAlpha = clamp(f.life * 1.5, 0, 1);
+    label(f.text, x, y, Math.max(14, 19 * s), f.color);
+  }
+  ctx.globalAlpha = 1;
+
+  // snefald (på skærmen)
+  ctx.fillStyle = "rgba(255,255,255,.8)";
+  for (const f of FLAKES) {
+    f.y += f.sp * dt / view.ch; if (f.y > 1) { f.y = 0; f.x = Math.random(); }
+    const x = f.x * view.cw + Math.sin(now / 900 + f.ph) * 12, y = f.y * view.ch;
+    ctx.beginPath(); ctx.arc(x, y, f.r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  if (ME && S && state !== "end") { drawMeArrow(now); drawStopArrow(now); drawTeamArrows(); drawStopBanner(); drawScoreboard(); drawMinimap(); }
+
+  if (joy.active && state === "play") {
+    ctx.globalAlpha = 0.35; ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, JOY_MAX, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawHouse(h, now) {
+  const s = view.s, [x, y, w, hh] = rectS(h);
+  const front = 26 * s; // facaden (nederste del af huset)
+  // tag
+  rr(x, y, w, hh, 4 * s); fillStroke(shade(h.color, -0.25), 3);
+  // sne på taget
+  rr(x + 6 * s, y + 5 * s, w - 12 * s, hh - front - 12 * s, 8 * s); ctx.fillStyle = "#f7fbff"; ctx.fill();
+  // facade med vinduer
+  ctx.fillStyle = h.color; ctx.fillRect(x + 1.5 * s, y + hh - front, w - 3 * s, front - 1.5 * s);
+  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.2, 3 * s); ctx.strokeRect(x, y + hh - front, w, front);
+  const nw = Math.max(2, Math.floor(h.w / 26));
+  for (let i = 0; i < nw; i++) {
+    const wx = x + (i + 0.5) * (w / nw) - 5 * s;
+    ctx.fillStyle = ((i + Math.floor(h.x)) % 3) ? "#ffe27a" : "#ffcf4d";
+    ctx.fillRect(wx, y + hh - front + 6 * s, 10 * s, 12 * s);
+  }
+  // julelys langs tagkanten
+  if (h.lights) {
+    const cols = ["#ff4d4d", "#ffd84d", "#4dff88", "#4dc3ff"];
+    const n = Math.max(3, Math.floor(h.w / 14));
+    for (let i = 0; i < n; i++) {
+      const lx = x + (i + 0.5) * (w / n), ly = y + hh - front - 2 * s + Math.sin(i * 1.3) * 2 * s;
+      ctx.fillStyle = cols[(i + Math.floor(now / 400)) % 4];
+      ctx.beginPath(); ctx.arc(lx, ly, 2.6 * s, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const f = v => clamp(Math.round(k < 0 ? v * (1 + k) : v + (255 - v) * k), 0, 255);
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
+}
+
+function drawStop(st, current, now) {
+  if (!visible(st.x, st.y, STOP_R + 80)) return;
+  const s = view.s, [x, y] = toS(st.x, st.y), R = STOP_R * s;
+  ctx.globalAlpha = current ? 1 : 0.55;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.fillStyle = current ? "rgba(245,197,66,.35)" : "rgba(255,255,255,.4)"; ctx.fill();
+  ctx.setLineDash([10 * s, 8 * s]); ctx.lineDashOffset = current ? -now / 40 : 0;
+  ctx.lineWidth = (current ? 5 : 3) * s; ctx.strokeStyle = current ? "#c8102e" : "#7d7468"; ctx.stroke(); ctx.setLineDash([]);
+  if (current) {
+    const pulse = (now / 900) % 1;
+    ctx.globalAlpha = 1 - pulse; ctx.beginPath(); ctx.arc(x, y, R * (1 + pulse * 0.35), 0, Math.PI * 2);
+    ctx.lineWidth = 3 * s; ctx.strokeStyle = "#f5c542"; ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  ctx.font = `${Math.max(18, 38 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(st.emoji, x, y - 4 * s);
+  label(st.name, x, y + R * 0.62, Math.max(10, 14 * s), current ? "#fff" : "#eee");
+  label("🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), current ? "#7dffb0" : "#e6fff0");
+  ctx.globalAlpha = 1;
+}
+
+function drawTree(tr, now) {
+  const s = view.s, [x, y] = toS(tr.x, tr.y);
+  ctx.fillStyle = "rgba(0,0,0,.15)"; ctx.beginPath(); ctx.ellipse(x, y + 22 * s, 22 * s, 7 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#6b4423"; ctx.fillRect(x - 4 * s, y + 10 * s, 8 * s, 12 * s);
+  for (let i = 0; i < 3; i++) {
+    const w = (26 - i * 6) * s, ty = y + (12 - i * 14) * s;
+    ctx.beginPath(); ctx.moveTo(x - w, ty); ctx.lineTo(x + w, ty); ctx.lineTo(x, ty - 22 * s); ctx.closePath(); fillStroke("#1f8a4c", 2.5);
+  }
+  const cols = ["#ff4d4d", "#ffd84d", "#4dc3ff"];
+  [[-12, 6], [10, 2], [-4, -8], [6, -18], [-8, -22]].forEach(([dx, dy], i) => {
+    ctx.fillStyle = cols[(i + Math.floor(now / 500)) % 3]; ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, 2.8 * s, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.font = `${Math.max(10, 14 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⭐", x, y - 34 * s);
+}
+
+function drawPigeons(p, now, people) {
+  const s = view.s, [x, y] = toS(p.x, p.y);
+  const scared = people.some(k => Math.hypot(k.x - p.x, k.y - p.y) < PIGEON_R + 20);
+  ctx.beginPath(); ctx.arc(x, y, PIGEON_R * s, 0, Math.PI * 2); ctx.fillStyle = "rgba(120,120,130,.12)"; ctx.fill();
+  for (let i = 0; i < 6; i++) {
+    const a = i * 1.05 + p.x, r = (10 + (i % 3) * 9) * s;
+    const bx = x + Math.cos(a) * r, by = y + Math.sin(a) * r - (scared ? (6 + Math.sin(now / 60 + i) * 4) * s : 0);
+    const flap = scared ? Math.sin(now / 40 + i) * 6 * s : 0;
+    ctx.fillStyle = "#8a8d99";
+    ctx.beginPath(); ctx.ellipse(bx, by, 6 * s, 4.5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    if (scared) { ctx.beginPath(); ctx.ellipse(bx - 5 * s, by - flap * 0.5, 5 * s, 2 * s, -0.5, 0, Math.PI * 2); ctx.ellipse(bx + 5 * s, by - flap * 0.5, 5 * s, 2 * s, 0.5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = "#5b7a6b"; ctx.beginPath(); ctx.arc(bx + 4 * s, by - 2 * s, 2.6 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#f2a33a"; ctx.fillRect(bx + 6 * s, by - 2.5 * s, 2 * s, 1.4 * s);
+  }
+}
+
+function drawItem(it, now) {
+  const s = view.s, [x, y0] = toS(it.x, it.y), y = y0 + Math.sin(now / 250 + it.x) * 2.5 * s;
+  if (it.k === "toj") {
+    // kraftig grøn ring der pulserer, så tøjet er let at få øje på
+    const pulse = 1 + Math.sin(now / 160) * 0.12;
+    ctx.beginPath(); ctx.arc(x, y, 30 * s * pulse, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,230,90,.35)"; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 21 * s, 0, Math.PI * 2); fillStroke("#00c853", 3);
+    ctx.lineWidth = Math.max(2, 3 * s); ctx.strokeStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, 17 * s, 0, Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.fillStyle = "rgba(245,197,66,.4)";
+    ctx.beginPath(); ctx.arc(x, y, 20 * s, 0, Math.PI * 2); ctx.fill();
+  }
+  if (it.k === "horn") {
+    // pølsehorn: brødhorn med pølse der stikker ud
+    rr(x - 6 * s, y - 4 * s, 22 * s, 8 * s, 4 * s); fillStroke("#c0392b", 2);
+    ctx.beginPath(); ctx.ellipse(x - 3 * s, y, 13 * s, 9 * s, -0.2, 0, Math.PI * 2); fillStroke("#d99a4e", 2.5);
+    ctx.strokeStyle = "rgba(120,70,20,.6)"; ctx.lineWidth = 2 * s;
+    for (const k of [-6, 0, 6]) { ctx.beginPath(); ctx.moveTo(x + (k - 3) * s, y - 7 * s); ctx.lineTo(x + (k - 6) * s, y + 7 * s); ctx.stroke(); }
+  } else if (it.k === "pepsi") {
+    // sort sodavandsdåse med blåt bånd
+    rr(x - 8 * s, y - 13 * s, 16 * s, 26 * s, 4 * s); fillStroke("#111", 2.5);
+    ctx.fillStyle = "#1f5fbf"; ctx.fillRect(x - 7 * s, y - 2 * s, 14 * s, 7 * s);
+    ctx.fillStyle = "#bbb"; ctx.fillRect(x - 6 * s, y - 13 * s, 12 * s, 3 * s);
+    ctx.font = `900 ${Math.max(6, 7 * s)}px sans-serif`; ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("MAX", x, y - 6 * s);
+  } else {
+    // rød julesweater med hvidt mønster
+    const w = 13 * s, h = 13 * s;
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.45, y - h); ctx.lineTo(x - w * 1.25, y - h * 0.55); ctx.lineTo(x - w * 0.95, y - h * 0.05);
+    ctx.lineTo(x - w * 0.6, y - h * 0.25); ctx.lineTo(x - w * 0.6, y + h); ctx.lineTo(x + w * 0.6, y + h); ctx.lineTo(x + w * 0.6, y - h * 0.25);
+    ctx.lineTo(x + w * 0.95, y - h * 0.05); ctx.lineTo(x + w * 1.25, y - h * 0.55); ctx.lineTo(x + w * 0.45, y - h);
+    ctx.quadraticCurveTo(x, y - h * 0.55, x - w * 0.45, y - h); ctx.closePath(); fillStroke("#e8102e", 2.5);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1.5, 2 * s); ctx.beginPath();
+    for (let i = 0; i <= 4; i++) ctx.lineTo(x - w * 0.55 + i * w * 0.275, y + h * 0.15 + (i % 2 ? -h * 0.2 : 0));
+    ctx.stroke();
+  }
+}
+
+// Konen (kjole i samme farve som mandens trøje) med barnevogn
+function drawWife(w, wx, wy, now) {
+  const s = view.s, R = WIFE_R * s;
+  const pram = pramOf({ x: wx, y: wy, a: w.a });
+  const [x, y] = toS(wx, wy), [px, py] = toS(pram.x, pram.y);
+  const f = Math.cos(w.a) >= 0 ? 1 : -1;
+  const drawPram = () => {
+    ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(px, py + PRAM_R * s * 0.9, PRAM_R * s * 1.1, PRAM_R * s * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    for (const [ox, oy] of [[-0.7, 0.75], [0.7, 0.75]]) circle(px + ox * PRAM_R * s, py + oy * PRAM_R * s, PRAM_R * s * 0.32, "#2b2b2b", 2);
+    rr(px - PRAM_R * s, py - PRAM_R * s * 0.55, PRAM_R * s * 2, PRAM_R * s * 1.15, PRAM_R * s * 0.5); fillStroke("#2f4f8f", 2.5);
+    ctx.beginPath(); ctx.arc(px - f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.4, PRAM_R * s * 0.75, Math.PI, 0); ctx.closePath(); fillStroke("#3d66b3", 2); // kaleche
+    circle(px + f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.25, PRAM_R * s * 0.38, "#f7d3b5", 1.5); // babyen
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(px + f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.55, PRAM_R * s * 0.3, Math.PI, 0); ctx.fill(); // hue
+  };
+  const pramBehind = py < y; // tegn det der er længst væk først
+  if (pramBehind) drawPram();
+  // håndtag fra konen til barnevognen
+  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.5, 2.5 * s);
+  ctx.beginPath(); ctx.moveTo(x + Math.cos(w.a) * R * 0.6, y - R * 0.2 + Math.sin(w.a) * R * 0.3); ctx.lineTo(px - Math.cos(w.a) * PRAM_R * s * 0.8, py - PRAM_R * s * 0.5); ctx.stroke();
+  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.95, R * 1.1, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  // kjole
+  ctx.beginPath(); ctx.moveTo(x - R * 0.5, y - R * 0.6); ctx.lineTo(x + R * 0.5, y - R * 0.6); ctx.lineTo(x + R * 0.95, y + R * 0.9); ctx.lineTo(x - R * 0.95, y + R * 0.9); ctx.closePath();
+  fillStroke(COLORS[w.c] || "#c8102e", 2.5);
+  ctx.fillStyle = "#fff"; ctx.fillRect(x - R * 0.85, y + R * 0.55, R * 1.7, R * 0.18);
+  // hoved med langt hår
+  const hy = y - R * 1.1, hair = HAIR[w.i % HAIR.length];
+  ctx.beginPath(); ctx.ellipse(x, hy + R * 0.25, R * 0.82, R * 0.95, 0, 0, Math.PI * 2); fillStroke(hair, 2);
+  circle(x, hy, R * 0.62, "#f7d3b5", 2);
+  ctx.beginPath(); ctx.arc(x, hy - R * 0.12, R * 0.66, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); fillStroke(hair, 1.5);
+  ctx.fillStyle = INK;
+  for (const ex of [-0.22, 0.22]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.1, hy + R * 0.02, R * 0.08, 0, Math.PI * 2); ctx.fill(); }
+  // sur mund (hun leder efter sin mand)
+  ctx.strokeStyle = INK; ctx.lineWidth = 1.8 * s; ctx.beginPath(); ctx.arc(x + f * R * 0.1, hy + R * 0.42, R * 0.17, Math.PI + 0.3, -0.3); ctx.stroke();
+  if (!pramBehind) drawPram();
+  // hvem er hun gift med?
+  const info = lobby.players.find(q => q.id === w.owner);
+  if (info) {
+    let n = info.name; if (n.length > 9) n = n.slice(0, 8) + "…";
+    label("♥ " + n, x, hy - R * 1.25, Math.max(9, 10.5 * s), "#ffb3c7");
+  }
+}
+
+function drawTegner(e, wx, wy, now) {
+  const s = view.s, [x, y] = toS(wx, wy), R = ENEMY_R * s, f = e.fx || 1;
+  const bob = e.mode === "walk" ? Math.abs(Math.sin(now / 90 + e.i)) * 2.5 * s : 0;
+  if (e.mode === "spawn") ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(now / 80));
+  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.9, R * 1.1, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  // staffeli når der tegnes
+  if (e.mode === "draw") {
+    ctx.strokeStyle = "#6b4423"; ctx.lineWidth = 3 * s;
+    ctx.beginPath(); ctx.moveTo(x + f * R * 1.2, y - R * 1.6); ctx.lineTo(x + f * R * 0.8, y + R * 0.9); ctx.moveTo(x + f * R * 1.2, y - R * 1.6); ctx.lineTo(x + f * R * 1.8, y + R * 0.9); ctx.stroke();
+    rr(x + f * R * 1.3 - R * 0.75, y - R * 1.5, R * 1.5, R * 1.2, 2 * s); fillStroke("#fff", 2);
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.5 * s; ctx.beginPath();
+    const cx = x + f * R * 1.3, cy = y - R * 0.9;
+    for (let k = 0; k < 6; k++) { const a = now / 120 + k; ctx.lineTo(cx + Math.cos(a) * R * 0.45, cy + Math.sin(a * 1.3) * R * 0.35); }
+    ctx.stroke();
+  }
+  // krop: stribet bluse
+  rr(x - R * 0.8, y - R * 0.6 - bob, R * 1.6, R * 1.5, R * 0.5); fillStroke("#fff", 2.5);
+  ctx.fillStyle = "#1d1a16";
+  for (let k = 0; k < 3; k++) ctx.fillRect(x - R * 0.75, y - R * 0.35 + k * R * 0.42 - bob, R * 1.5, R * 0.16);
+  // hoved
+  const hy = y - R * 1.15 - bob;
+  circle(x, hy, R * 0.65, "#f2d2b0", 2.5);
+  // overskæg + øjne
+  ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.ellipse(x + f * R * 0.12 - R * 0.18, hy + R * 0.25, R * 0.2, R * 0.08, 0.3, 0, Math.PI * 2); ctx.ellipse(x + f * R * 0.12 + R * 0.18, hy + R * 0.25, R * 0.2, R * 0.08, -0.3, 0, Math.PI * 2); ctx.fill();
+  for (const ex of [-0.22, 0.22]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.12, hy, R * 0.08, 0, Math.PI * 2); ctx.fill(); }
+  // baret
+  ctx.beginPath(); ctx.ellipse(x - f * R * 0.1, hy - R * 0.5, R * 0.75, R * 0.3, -0.15 * f, 0, Math.PI * 2); fillStroke("#1d1a16", 2);
+  ctx.fillRect(x - f * R * 0.1 - 1.5 * s, hy - R * 0.95, 3 * s, R * 0.25);
+  // blyant
+  if (e.mode !== "draw") {
+    ctx.strokeStyle = "#f5c542"; ctx.lineWidth = 3.5 * s; ctx.beginPath();
+    ctx.moveTo(x + f * R * 0.8, y - R * 0.2 - bob); ctx.lineTo(x + f * R * 1.35, y - R * 0.75 - bob); ctx.stroke();
+  }
+  if (e.mode === "spawn") { label("!", x, hy - R * 1.4, Math.max(16, 26 * s), "#f5c542"); }
+  ctx.globalAlpha = 1;
+}
+
+function kidsToDraw() {
+  const out = [];
+  if (!S || !ME) return out;
+  const src = role === "host" ? G.players : S.players;
+  for (const p of Object.values(src)) {
+    const info = lobby.players.find(q => q.id === p.id) || p;
+    const isMe = p.id === MY_ID;
+    const gone = role === "host" && !isMe && performance.now() - p.last >= 4000;
+    out.push({
+      id: p.id, x: isMe ? ME.x : p.dx, y: isMe ? ME.y : p.dy,
+      fx: isMe ? ME.fx : p.fx, moving: isMe ? ME.moving : p.moving, step: isMe ? ME.step : (p.step || 0),
+      inv: isMe ? ME.inv : p.inv, clothes: p.clothes ?? CLOTHES.length, out: p.out, gone,
+      boost: isMe ? (ME.boost > 0 ? ME.bkind : 0) : p.boost, c: info.c ?? 0, name: info.name ?? p.name, isMe,
+    });
+  }
+  if (!src[MY_ID]) out.push({ id: MY_ID, ...ME, clothes: CLOTHES.length, c: (lobby.players.find(q => q.id === MY_ID) || {}).c ?? 0, name: getName(), isMe: true, gone: false });
+  return out;
+}
+
+function drawDreng(k, now) {
+  const s = view.s, [x, y] = toS(k.x, k.y), R = PLAYER_R * s, f = k.fx || 1;
+  const SKIN = "#f2c6a0";
+  if (k.inv > 0 && !k.out && Math.floor(now / 100) % 2) ctx.globalAlpha = 0.45;
+  if (k.out || k.gone) ctx.globalAlpha = 0.6;
+  const bob = k.moving ? Math.abs(Math.sin(k.step)) * 2.5 * s : 0;
+  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.95, R * 1.1, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  // fart-streger
+  if (k.boost) {
+    ctx.strokeStyle = k.boost === 2 ? "#4dc3ff" : "#f5c542"; ctx.lineWidth = 3 * s;
+    for (const dy of [-0.6, 0, 0.6]) { ctx.beginPath(); ctx.moveTo(x - f * R * 1.3, y + dy * R - bob); ctx.lineTo(x - f * R * 2.3, y + dy * R - bob); ctx.stroke(); }
+  }
+  const wHue = wears(k.clothes, 0), wTor = wears(k.clothes, 1), wBuk = wears(k.clothes, 2), wSw = wears(k.clothes, 3);
+  // ben
+  const leg = k.moving ? Math.sin(k.step) * 3 * s : 0;
+  for (const [lx, ly] of [[-0.35, leg], [0.35, -leg]]) { rr(x + lx * R - R * 0.22, y + R * 0.4 + ly - bob * 0.3, R * 0.44, R * 0.65, 3 * s); fillStroke(wBuk ? "#2f3d66" : SKIN, 2); }
+  // krop
+  rr(x - R * 0.8, y - R * 0.55 - bob, R * 1.6, R * 1.35, R * 0.5); fillStroke(wSw ? COLORS[k.c] : SKIN, 2.5);
+  if (wSw) { // julesweater-mønster
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * s; ctx.beginPath();
+    for (let i = 0; i <= 6; i++) ctx.lineTo(x - R * 0.7 + i * R * 0.233, y - R * 0.3 - bob + (i % 2 ? -R * 0.12 : R * 0.06));
+    ctx.stroke();
+    // tallet = hvor mange stykker tøj man har på
+    ctx.font = `900 ${Math.max(15, R * 1.05)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(4, R * 0.25); ctx.strokeStyle = INK; ctx.lineJoin = "round";
+    ctx.strokeText(String(k.clothes), x, y + R * 0.2 - bob); ctx.fillStyle = "#fff"; ctx.fillText(String(k.clothes), x, y + R * 0.2 - bob);
+  } else { // navle
+    ctx.fillStyle = "rgba(120,60,30,.6)"; ctx.beginPath(); ctx.arc(x, y + R * 0.15 - bob, 1.6 * s, 0, Math.PI * 2); ctx.fill();
+  }
+  // underbukser / censur
+  if (!wBuk) {
+    if (k.out) {
+      ctx.fillStyle = "#000"; ctx.fillRect(x - R * 1.15, y + R * 0.25 - bob, R * 2.3, R * 0.6);
+      ctx.font = `900 ${Math.max(6, R * 0.42)}px sans-serif`; ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("CENSUR", x, y + R * 0.56 - bob);
+    } else {
+      rr(x - R * 0.82, y + R * 0.3 - bob, R * 1.64, R * 0.5, 3 * s); fillStroke("#fff", 2);
+      ctx.fillStyle = "#e84393";
+      for (const hx of [-0.45, 0, 0.45]) { ctx.beginPath(); ctx.arc(x + hx * R, y + R * 0.55 - bob, 1.8 * s, 0, Math.PI * 2); ctx.fill(); }
+    }
+  }
+  // hoved
+  const hy = y - R * 1.15 - bob;
+  circle(x, hy, R * 0.68, SKIN, 2.5);
+  // halstørklæde
+  if (wTor) {
+    rr(x - R * 0.7, hy + R * 0.48, R * 1.4, R * 0.32, 3 * s); fillStroke("#c8102e", 2);
+    rr(x - f * R * 0.45 - R * 0.13, hy + R * 0.6, R * 0.26, R * 0.65, 2 * s); fillStroke("#c8102e", 2);
+    ctx.fillStyle = "#fff"; ctx.fillRect(x - R * 0.35, hy + R * 0.52, R * 0.15, R * 0.24); ctx.fillRect(x + R * 0.2, hy + R * 0.52, R * 0.15, R * 0.24);
+  }
+  // ansigt
+  ctx.fillStyle = INK;
+  for (const ex of [-0.24, 0.24]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.12, hy - R * 0.02, R * 0.09, 0, Math.PI * 2); ctx.fill(); }
+  if (k.out || k.clothes <= 1) { // genert / chokeret
+    ctx.fillStyle = "rgba(232,69,44,.5)";
+    for (const ex of [-0.42, 0.42]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.1, hy + R * 0.22, R * 0.13, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(x + f * R * 0.12, hy + R * 0.32, R * 0.1, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.strokeStyle = INK; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.arc(x + f * R * 0.12, hy + R * 0.15, R * 0.22, 0.2, Math.PI - 0.2); ctx.stroke();
+  }
+  // nissehue eller hår
+  if (wHue) {
+    ctx.beginPath(); ctx.moveTo(x - R * 0.72, hy - R * 0.3); ctx.lineTo(x + R * 0.72, hy - R * 0.3);
+    ctx.quadraticCurveTo(x + R * 0.3, hy - R * 1.2, x - f * R * 1.0, hy - R * 1.05); ctx.closePath(); fillStroke("#c8102e", 2);
+    rr(x - R * 0.78, hy - R * 0.45, R * 1.56, R * 0.3, R * 0.15); fillStroke("#fff", 2);
+    circle(x - f * R * 1.0, hy - R * 1.05, R * 0.2, "#fff", 2);
+  } else {
+    ctx.beginPath(); ctx.arc(x, hy - R * 0.15, R * 0.7, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); fillStroke("#6b4423", 2);
+  }
+  ctx.globalAlpha = 1;
+  // navn
+  let n = k.name || ""; if (n.length > 10) n = n.slice(0, 9) + "…";
+  label(k.out ? n + " 🙈" : n, x, y + R * 1.75, Math.max(9, 11 * s), k.isMe ? "#f5c542" : "#fff");
+  if (k.isMe && !k.out) { ctx.fillStyle = "#f5c542"; ctx.beginPath(); ctx.moveTo(x - 6 * s, hy - R * 1.55); ctx.lineTo(x + 6 * s, hy - R * 1.55); ctx.lineTo(x, hy - R * 1.2); ctx.closePath(); ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = INK; ctx.stroke(); }
+}
+
+// Pil ved skærmkanten mod næste stop
+function edgePoint(wx, wy, margin) {
+  const [sx, sy] = toS(wx, wy), cx = view.cw / 2, cy = view.ch / 2;
+  if (sx > margin && sy > margin && sx < view.cw - margin && sy < view.ch - margin) return null;
+  const dx = sx - cx, dy = sy - cy;
+  const k = Math.min((cx - margin) / Math.abs(dx || 1e-6), (cy - margin) / Math.abs(dy || 1e-6));
+  return { x: cx + dx * k, y: cy + dy * k, a: Math.atan2(dy, dx) };
+}
+// Hvad skal pilene pege på? Normalt næste stop – er man nøgen, det nærmeste stykke tøj.
+function arrowTarget() {
+  const me = myPlayerData();
+  if (me && me.out) {
+    let best = null, bd = 1e9;
+    for (const it of S.items) if (it.k === "toj") { const d = Math.hypot(it.x - ME.x, it.y - ME.y); if (d < bd) { bd = d; best = it; } }
+    if (best) return { x: best.x, y: best.y, above: 26, near: 18, color: "#00a844", icon: "👕" };
+  }
+  const st = STOPS[S.stop % STOPS.length];
+  return { x: st.x, y: st.y, above: STOP_R, near: STOP_R * 0.6, color: "#c8102e", icon: st.emoji };
+}
+function drawStopArrow(now) {
+  const tg = arrowTarget();
+  const top = 92, side = 50, bottom = Math.min(view.cw, view.ch) < 500 ? 150 : 180; // plads til banner og minikort
+  let [sx, sy] = toS(tg.x, tg.y);
+  const onScreen = sx > side && sx < view.cw - side && sy > top && sy < view.ch - bottom;
+  const pulse = 1 + Math.sin(now / 150) * 0.08;
+  let x, y, a;
+  if (onScreen) {
+    // over målet, pegende nedad
+    x = sx; y = Math.max(top, sy - tg.above * view.s - 52 - Math.abs(Math.sin(now / 220)) * 12); a = Math.PI / 2;
+  } else {
+    const cx = view.cw / 2, cy = (top + view.ch - bottom) / 2, dx = sx - cx, dy = sy - cy;
+    const k = Math.min((view.cw / 2 - side) / Math.abs(dx || 1e-6), ((dy < 0 ? cy - top : view.ch - bottom - cy)) / Math.abs(dy || 1e-6));
+    x = cx + dx * k; y = cy + dy * k; a = Math.atan2(dy, dx);
+  }
+  const R = 34 * pulse;
+  ctx.save(); ctx.translate(x, y);
+  ctx.save(); ctx.rotate(a);
+  ctx.beginPath(); ctx.moveTo(R + 26, 0); ctx.lineTo(R - 4, -20); ctx.lineTo(R - 4, 20); ctx.closePath();
+  ctx.fillStyle = tg.color; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = tg.color; ctx.stroke();
+  ctx.font = "34px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(tg.icon, 0, 2);
+  ctx.restore();
+}
+// Pil rundt om min egen dreng, der altid peger mod målet (stor og grøn, når man er nøgen)
+function drawMeArrow(now) {
+  const tg = arrowTarget(), naked = tg.icon === "👕";
+  const dx = tg.x - ME.x, dy = tg.y - ME.y;
+  if (Math.hypot(dx, dy) < tg.near) return; // man står lige ved målet
+  const a = Math.atan2(dy, dx), [mx, my] = toS(ME.x, ME.y - PLAYER_R * 0.5);
+  const sc = naked ? 1.8 : 1;
+  const rad = Math.max(46, PLAYER_R * view.s * 3) * (naked ? 1.25 : 1) + Math.sin(now / 150) * 4;
+  ctx.save(); ctx.translate(mx + Math.cos(a) * rad, my + Math.sin(a) * rad); ctx.rotate(a); ctx.scale(sc, sc);
+  ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -14); ctx.lineTo(-4, 0); ctx.lineTo(-10, 14); ctx.closePath();
+  ctx.fillStyle = tg.color; ctx.fill(); ctx.lineWidth = 3 / sc; ctx.strokeStyle = "#fff"; ctx.lineJoin = "round"; ctx.stroke();
+  ctx.restore();
+}
+// Små prikker ved kanten: hvor er de andre drenge?
+function drawTeamArrows() {
+  for (const k of kidsToDraw()) {
+    if (k.isMe || k.out || k.gone) continue;
+    const e = edgePoint(k.x, k.y, 14);
+    if (!e) continue;
+    ctx.beginPath(); ctx.arc(e.x, e.y, 8, 0, Math.PI * 2); ctx.fillStyle = COLORS[k.c]; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+  }
+}
+function drawStopBanner() {
+  const st = STOPS[S.stop % STOPS.length];
+  const lap = Math.floor(S.stop / STOPS.length);
+  const many = S.need > 1;
+  const txt = `📍 ${st.emoji} ${st.short}` + (many ? `  ·  ${S.atStop}/${S.need} drenge er der` : "") + (lap ? `  ·  omgang ${lap + 1}` : "");
+  const fs = view.cw < 420 ? 14 : 16;
+  ctx.font = `900 ${fs}px sans-serif`;
+  const w = ctx.measureText(txt).width + 24, h = fs + 14, x = view.cw / 2 - w / 2, y = 6;
+  ctx.globalAlpha = 0.92; rr(x, y, w, h, h / 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.lineWidth = 2.5; ctx.strokeStyle = "#c8102e"; ctx.stroke();
+  ctx.fillStyle = INK; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(txt, view.cw / 2, y + h / 2 + 1);
+}
+function drawScoreboard() {
+  const src = role === "host" ? G.players : S.players;
+  const rows = Object.values(src).map(p => {
+    const info = lobby.players.find(q => q.id === p.id) || p;
+    return { name: info.name || "?", c: info.c ?? 0, score: Math.floor(p.score || 0), out: p.out, clothes: p.clothes ?? 4, me: p.id === MY_ID };
+  }).sort((a, b) => b.score - a.score);
+  if (rows.length < 2) return;
+  rows.forEach((r, i) => r.rank = i + 1);
+  let shown = rows.slice(0, 5);
+  const meRow = rows.find(r => r.me);
+  if (meRow && !shown.includes(meRow)) shown.push(meRow);
+  const fs = 12, lh = 17, w = 128, h = shown.length * lh + 8, x0 = 4, y0 = 40;
+  ctx.globalAlpha = 0.85; rr(x0, y0, w, h, 8); ctx.fillStyle = "#fffaf0"; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.textBaseline = "middle"; ctx.font = `900 ${fs}px sans-serif`;
+  shown.forEach((r, i) => {
+    const y = y0 + 4 + lh * i + lh / 2;
+    ctx.beginPath(); ctx.arc(x0 + 10, y, 5, 0, Math.PI * 2); ctx.fillStyle = COLORS[r.c]; ctx.fill();
+    ctx.fillStyle = r.out ? "#9a8a7a" : INK; ctx.textAlign = "left";
+    let n = r.name; if (n.length > 7) n = n.slice(0, 6) + "…";
+    ctx.fillText((rows.length > 5 ? r.rank + ". " : "") + (r.me ? "▸" : "") + n, x0 + 19, y);
+    ctx.textAlign = "right"; ctx.fillText(r.out ? `${r.score} 🙈` : `${r.score} ${"•".repeat(r.clothes)}`, x0 + w - 6, y);
+  });
+}
+function drawMinimap() {
+  const M = Math.min(view.cw, view.ch) < 500 ? 92 : 120, k = M / WORLD;
+  const x0 = view.cw - M - 6, y0 = view.ch - M - 6;
+  ctx.save();
+  ctx.globalAlpha = 0.88; rr(x0, y0, M, M, 6); ctx.fillStyle = "#eef2f5"; ctx.fill();
+  ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); rr(x0, y0, M, M, 6); ctx.clip();
+  ctx.fillStyle = "#2f6fa3"; for (const w of WATER) ctx.fillRect(x0 + w.x * k, y0 + w.y * k, w.w * k, w.h * k);
+  ctx.fillStyle = "#b9a58a"; for (const h of HOUSES) ctx.fillRect(x0 + h.x * k, y0 + h.y * k, h.w * k, h.h * k);
+  for (const it of S.items) if (it.k === "toj") { // tøj = grønne prikker
+    ctx.beginPath(); ctx.arc(x0 + it.x * k, y0 + it.y * k, 3, 0, Math.PI * 2); ctx.fillStyle = "#00c853"; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = "#fff"; ctx.stroke();
+  }
+  const st = STOPS[S.stop % STOPS.length];
+  ctx.beginPath(); ctx.arc(x0 + st.x * k, y0 + st.y * k, 6 + Math.sin(performance.now() / 150) * 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = "#f5c542"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#c8102e"; ctx.stroke();
+  for (const e of S.enemies) {
+    const ex = role === "client" ? e.dx : e.x, ey = role === "client" ? e.dy : e.y;
+    ctx.fillStyle = "#1d1a16"; ctx.fillRect(x0 + ex * k - 2, y0 + ey * k - 2, 4, 4);
+  }
+  if (S.wives) for (const w of S.wives) {
+    const wx = role === "client" ? w.dx : w.x, wy = role === "client" ? w.dy : w.y;
+    ctx.beginPath(); ctx.arc(x0 + wx * k, y0 + wy * k, 2.5, 0, Math.PI * 2); ctx.fillStyle = "#ff6fa5"; ctx.fill();
+  }
+  for (const p of kidsToDraw()) {
+    if (p.gone) continue;
+    ctx.beginPath(); ctx.arc(x0 + p.x * k, y0 + p.y * k, p.isMe ? 4 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = p.out ? "#aaa" : COLORS[p.c]; ctx.fill();
+    if (p.isMe) { ctx.lineWidth = 1.5; ctx.strokeStyle = "#fff"; ctx.stroke(); }
+  }
+  ctx.restore();
+}
+
+/* =====================================================================
+   HUD
+   ===================================================================== */
+let lastHud = "";
+function myPlayerData() {
+  if (!S || !ME) return null;
+  return role === "host" ? G.players[MY_ID] : S.players[MY_ID];
+}
+function updateHud() {
+  const me = myPlayerData();
+  if (!me || !ME) return;
+  const score = Math.floor(me.score || 0), cl = me.clothes ?? CLOTHES.length;
+  const txt = `${score}|${cl}|${me.out}`;
+  if (txt === lastHud) return; lastHud = txt;
+  $("score").textContent = `⭐ ${fmtNum(score)}`;
+  $("clothes").innerHTML = me.out ? "🙈 Nøgen – find 👕" : CLOTHES.map((c, i) => `<span class="${wears(cl, i) ? "" : "gone"}">${c.emoji}</span>`).join("");
+}
+function updateSing() {
+  const sing = S && (state === "play" || state === "pause" || state === "wait") ? S.sing : 0;
+  $("sing").hidden = !(sing > 0);
+  if (sing > 0) $("singCount").textContent = Math.ceil(sing);
+}
+
+/* =====================================================================
+   Game loop
+   ===================================================================== */
+let lastNow = performance.now(), lastSend = 0, lastLobbyPing = 0, lastBell = 0;
+function frame(now) {
+  let dt = (now - lastNow) / 1000; lastNow = now;
+  if (dt > 0.25) dt = 0;
+
+  if (role === "host") {
+    if (state === "play" && dt > 0) {
+      let rest = Math.min(dt, 0.1);
+      while (rest > 0 && state === "play") { const step = Math.min(rest, 1 / 60); hostUpdate(step); rest -= step; }
+    }
+    if ((state === "play" || state === "pause") && G && now - lastSend >= HOST_SEND_MS) { lastSend = now; hostSendState(); }
+    if (G && dt > 0) { smoothList(Object.values(G.players), dt, true); }
+    if (state === "lobby" && now - lastLobbyPing >= LOBBY_PING_MS) {
+      lastLobbyPing = now;
+      const gone = lobby.players.filter(p => p.id !== MY_ID && now - p.last >= 6000);
+      for (const p of gone) hostRemove(p.id);
+      if (gone.length) renderLobby();
+      hostBroadcastLobby();
+    }
+  } else if (role === "client") {
+    if (state === "play" && dt > 0 && S) {
+      if (S.sing <= 0) {
+        let rest = Math.min(dt, 0.1);
+        const t0 = clientTime();
+        while (rest > 0) { const step = Math.min(rest, 1 / 60); moveMe(step, t0); rest -= step; }
+      } else ME.moving = false;
+      smoothList(S.enemies, dt, false); smoothList(S.wives, dt, false); smoothList(Object.values(S.players), dt, true);
+      if (now - lastSend >= CLIENT_SEND_MS) {
+        lastSend = now;
+        sendMine("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: ME.fx, m: ME.moving ? 1 : 0, b: ME.boost > 0 ? ME.bkind : 0 });
+      }
+    } else if (state === "pause" && S) {
+      smoothList(S.enemies, dt, false); smoothList(S.wives, dt, false); smoothList(Object.values(S.players), dt, true);
+      if (now - lastSend >= 1000) { lastSend = now; sendMine("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: ME.fx, m: 0, b: 0 }); }
+    }
+    if ((state === "lobby" || state === "end") && now - lastLobbyPing >= LOBBY_PING_MS) {
+      lastLobbyPing = now;
+      const known = lobby.players.some(p => p.id === MY_ID);
+      (known ? sendMine : sendMain)("hello", { id: MY_ID, name: getName() });
+    }
+    if (state === "play" || state === "pause" || state === "wait") {
+      const silent = now - lastHostMsg;
+      if (silent > 2500 && state === "play") { state = "wait"; clearInput(); showPause("Venter på værten…", "Værten svarer ikke lige nu (måske har værten skiftet app)."); }
+      if (silent > 45000) showEnd({ reason: "Forbindelsen til værten blev afbrudt", res: null });
+    }
+    if (state === "lobby" && lobbySeen && now - lastHostMsg > 7000) $("lobbyMsg").textContent = "Værten er væk… venter";
+  }
+  // bjælder mens der synges
+  if (S && S.sing > 0 && state === "play" && now - lastBell > 480) { lastBell = now; Sound.bell(); }
+  if (S) {
+    for (const f of S.floaters) { f.life -= dt; f.y -= 35 * dt; }
+    S.floaters = S.floaters.filter(f => f.life > 0);
+  }
+  updateCamera(dt);
+  draw(now, dt);
+  updateHud();
+  updateSing();
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   Skærme, pause, rangliste og deling
+   ===================================================================== */
+const NAME_KEY = "drengene_navn", TOP_KEY = "julefrokosttur_top10", BEST_KEY = "julefrokosttur_bedste";
+let endedAt = 0, lastEntry = null;
+function loadJSON(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch (e) { return def; } }
+function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function showScreen(id) {
+  for (const s of ["startScreen", "lobbyScreen", "pauseScreen", "endScreen"]) $(s).hidden = s !== id;
+}
+function showPause(title, text) {
+  $("pauseTitle").textContent = title; $("pauseText").textContent = text;
+  $("resumeBtn").hidden = role !== "host";
+  showScreen("pauseScreen");
+}
+function pause() {
+  if (role !== "host" || state !== "play") return;
+  state = "pause"; G.paused = true; clearInput();
+  showPause("Pause", "Alle venter på dig – alt står stille.");
+  hostSendState();
+}
+function resume() {
+  if (role !== "host" || state !== "pause") return;
+  state = "play"; G.paused = false; lastNow = performance.now();
+  showScreen(null);
+  hostSendState();
+}
+
+function showEnd(msg) {
+  state = "end"; endedAt = performance.now(); clearInput();
+  Sound.end();
+  $("pauseBtn").hidden = true;
+  roundResult = msg;
+  const name = getName();
+  const mine = msg.res && msg.res.find(r => r.id === MY_ID);
+  const score = mine ? mine.s : 0;
+  $("endTitle").textContent = msg.reason;
+  $("teamLine").textContent = msg.res ? `🍻 Holdet klarede ${msg.stops || 0} stop` : "";
+  $("endScore").textContent = fmtNum(score);
+
+  if (mine) {
+    const place = msg.res.indexOf(mine) + 1;
+    const bests = loadJSON(BEST_KEY, {});
+    const oldBest = bests[name] ?? null;
+    const isBest = oldBest === null || score > oldBest;
+    if (isBest) { bests[name] = score; saveJSON(BEST_KEY, bests); }
+    const d = new Date();
+    lastEntry = { n: name, s: score, d: `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(2)}`, id: Date.now() };
+    const top = loadJSON(TOP_KEY, []);
+    top.push(lastEntry); top.sort((a, b) => b.s - a.s || a.id - b.id);
+    saveJSON(TOP_KEY, top.slice(0, 10));
+    const medal = ["🥇", "🥈", "🥉"][place - 1] || place + ".";
+    $("newBest").textContent = [
+      msg.res.length > 1 ? `${medal} Nr. ${place} af ${msg.res.length}` : "",
+      isBest && score > 0 ? "🎉 Ny rekord!" : oldBest !== null ? `Din bedste: ${fmtNum(oldBest)}` : "",
+    ].filter(Boolean).join(" · ");
+    $("roundTable").innerHTML = msg.res.map((r, i) =>
+      `<tr class="${r.id === MY_ID ? "me" : ""}"><td>${i + 1}.</td><td><span class="dot" style="display:inline-block;vertical-align:middle;width:12px;height:12px;border-width:2px;background:${COLORS[r.c] || "#ccc"}"></span> ${esc(r.n)}</td><td>${fmtNum(r.s)}</td><td>${r.st.stops}📍 ${r.st.first}🥇 ${r.st.alive}s</td></tr>`).join("");
+    $("stats").innerHTML = [
+      `📍 Stop klaret: <b>${mine.st.stops}</b>`,
+      `🥇 Først ved stop: <b>${mine.st.first}</b>`,
+      `🌭 Pølsehorn: <b>${mine.st.horn}</b>`,
+      `🥤 Pepsi Max: <b>${mine.st.pepsi}</b>`,
+      `👕 Tøj fundet: <b>${mine.st.toj}</b>`,
+      `🎨 Tegnet: <b>${mine.st.hits} gang${mine.st.hits === 1 ? "" : "e"}</b>`,
+      `⏱ Med tøj på: <b>${mine.st.alive} sek.</b>`,
+      `🚶 Gået: <b>${fmtNum(Math.round((myStats ? myStats.dist : 0) / 20))} m</b>`,
+    ].map(x => `<div>${x}</div>`).join("");
+    if (window.gemScore) {
+      $("faellesTop").innerHTML = "<tr><td>Henter fælles rangliste…</td></tr>";
+      gemScore(GAME_NAME, name, score).then(() => visFaellesTop($("faellesTop"), GAME_NAME, name));
+    } else $("faellesTop").innerHTML = "<tr><td>Den fælles rangliste kunne ikke indlæses</td></tr>";
+  } else {
+    $("newBest").textContent = "Turen blev ikke færdig, så scoren er ikke gemt.";
+    $("roundTable").innerHTML = ""; $("stats").innerHTML = "";
+    if (window.visFaellesTop) visFaellesTop($("faellesTop"), GAME_NAME, name);
+  }
+  renderTop();
+  const lost = !msg.res;
+  $("againBtn").hidden = role !== "host";
+  $("copyBtn").hidden = lost;
+  $("shareBtn").hidden = lost || !navigator.share;
+  $("endWait").textContent = role === "host" ? "Ny tur = samme rum, samme drenge." : lost ? "" : "Venter på at værten starter en ny tur…";
+  showScreen("endScreen");
+}
+function renderTop() {
+  const top = loadJSON(TOP_KEY, []);
+  $("topTable").innerHTML = top.length
+    ? top.map((e, i) => `<tr class="${lastEntry && e.id === lastEntry.id ? "me" : ""}"><td>${i + 1}.</td><td>${esc(e.n)}</td><td>${fmtNum(e.s)}</td><td>${esc(e.d)}</td></tr>`).join("")
+    : "<tr><td colspan=4>Ingen resultater endnu</td></tr>";
+}
+function resultText() {
+  const name = getName();
+  const mine = roundResult && roundResult.res && roundResult.res.find(r => r.id === MY_ID);
+  const score = mine ? mine.s : 0;
+  const best = loadJSON(BEST_KEY, {})[name] ?? score;
+  const n = roundResult && roundResult.res ? roundResult.res.length : 1;
+  const place = mine ? roundResult.res.indexOf(mine) + 1 : 0;
+  return `🎅 Drengenes Julefrokost-tur – ${name}: ${fmtNum(score)} point, ${roundResult ? roundResult.stops || 0 : 0} stop` +
+    (n > 1 ? `, nr. ${place} af ${n}` : "") + ` (bedste: ${fmtNum(best)})`;
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 1800);
+}
+async function copyText(txt) {
+  try { await navigator.clipboard.writeText(txt); toast("Kopieret! 📋"); return; } catch (e) {}
+  const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); toast("Kopieret! 📋"); } catch (e) { toast("Kunne ikke kopiere"); }
+  ta.remove();
+}
+async function shareResult() { try { await navigator.share({ text: resultText() }); } catch (e) {} }
+async function shareLink() {
+  const url = roomLink();
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try { await navigator.share({ text: `Kom med på julefrokost-tur! Rum ${roomCode}`, url }); return; } catch (e) {}
+  }
+  copyText(url);
+}
+
+// Skifter man app/fane: værten pauser for alle, spillere står bare stille
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) return;
+  clearInput();
+  if (role === "host") pause();
+});
+addEventListener("blur", clearInput);
+addEventListener("pagehide", () => { if (role === "client") sendMine("bye", { id: MY_ID }); });
+
+$("createBtn").onclick = createRoom;
+$("joinBtn").onclick = joinRoom;
+$("hostStartBtn").onclick = hostStart;
+$("leaveBtn").onclick = leaveRoom;
+$("endLeaveBtn").onclick = leaveRoom;
+$("linkBtn").onclick = shareLink;
+$("againBtn").onclick = () => {
+  if (role !== "host" || performance.now() - endedAt < 600) return;
+  G = null; S = null; ME = null; state = "lobby";
+  lobby.started = false;
+  for (const p of lobby.players) if (p.id !== MY_ID) p.last = performance.now();
+  renderLobby(); showScreen("lobbyScreen"); $("lobbyMsg").textContent = "";
+  hostBroadcastLobby();
+  showPreview();
+};
+$("resumeBtn").onclick = resume;
+$("pauseBtn").onclick = () => { state === "play" ? pause() : resume(); };
+$("copyBtn").onclick = () => copyText(resultText());
+$("shareBtn").onclick = shareResult;
+function updateMuteBtn() { $("muteBtn").textContent = Sound.muted ? "🔇" : "🔊"; }
+$("muteBtn").onclick = () => {
+  Sound.muted = !Sound.muted;
+  try { localStorage.setItem("julefrokost_mute", Sound.muted ? "1" : "0"); } catch (e) {}
+  updateMuteBtn();
+};
+for (const b of document.querySelectorAll(".iconBtn")) b.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") e.preventDefault(); });
+
+// Viser byen bag start-/lobbyskærmen
+function showPreview() {
+  ME = null; S = null; cam.snap = true;
+  $("clothes").innerHTML = CLOTHES.map(c => c.emoji).join(""); $("score").textContent = "⭐ 0"; lastHud = "";
+}
+
+function readHash() {
+  const h = location.hash.replace("#", "").toUpperCase();
+  if (/^[A-Z]{4}$/.test(h)) { $("codeInput").value = h; $("joinBtn").textContent = "Deltag i " + h; }
+}
+
+/* ---------- Opstart ---------- */
+(function init() {
+  try { $("nameInput").value = localStorage.getItem(NAME_KEY) || ""; } catch (e) {}
+  const touch = matchMedia("(pointer: coarse)").matches;
+  $("ctrlHelp").innerHTML = touch
+    ? "👆 <b>Sæt fingeren på skærmen og træk</b> i den retning, du vil gå"
+    : "⌨️ <b>Piletaster / WASD</b> for at gå<br>(eller træk med musen)";
+  readHash();
+  addEventListener("hashchange", () => { if (state === "start") readHash(); });
+  updateMuteBtn();
+  resize();
+  showPreview();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
