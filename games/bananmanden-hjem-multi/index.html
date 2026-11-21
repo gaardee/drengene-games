@@ -46,9 +46,6 @@
     text-shadow: 0 2px 3px #000; gap: 6px; white-space: nowrap; z-index: 3; }
   #hud button { pointer-events: auto; background: rgba(255,255,255,.15); box-shadow: none; padding: 4px 8px; font-size: 18px; min-height: 40px; }
   #tid.hast { color: #ff5a4e; }
-  #batteri { display: flex; align-items: center; gap: 4px; }
-  #batBar { width: clamp(36px, 11vw, 60px); height: 16px; border: 2px solid #fff; border-radius: 4px; }
-  #batFyld { height: 100%; background: #4dff6a; width: 100%; }
   #rang { position: fixed; top: 58px; right: 8px; background: rgba(0,0,0,.55); border-radius: 10px; padding: 6px 8px;
     font-size: 13px; line-height: 1.45; pointer-events: none; z-index: 3; min-width: 110px; }
   #rang[hidden] { display: none; }
@@ -66,9 +63,9 @@
 <canvas id="c"></canvas>
 <div id="hud">
   <span id="score">0 point</span>
-  <span id="tid">🔋 30s</span>
+  <span id="tid">⏱ 1:30</span>
   <span id="info">Bane 1</span>
-  <span id="batteri"><span id="batBar"><span id="batFyld" style="display:block"></span></span></span>
+  <span id="stadie">🙂 Klar</span>
   <span><button id="pauseKnap" aria-label="Pause" hidden>⏸️</button> <button id="lydKnap" aria-label="Lyd til/fra">🔊</button></span>
 </div>
 <div id="rang" hidden></div>
@@ -77,9 +74,9 @@
 <div class="skaerm" id="startSkaerm">
   <div style="font-size:56px">🍌🚲🍌🚲🍌</div>
   <h1>Bananmanden Hjem Multi</h1>
-  <p>Alle bananmænd starter midt i den mørke by. Den første, der finder huset 🏠, får pointene – så starter en ny labyrint. <b>Svirp de andre med bæltet</b> undervejs! Når dit batteri dør, falder du i søvn på gaden 😴 – og kan se de andre spille videre.</p>
+  <p>Alle bananmænd starter midt i den mørke by. Den første, der finder huset 🏠, får pointene – så starter en ny labyrint. <b>Svirp de andre med bæltet</b> undervejs! Runden varer 1:30.</p>
   <p class="styring" id="styringTekst"></p>
-  <p class="lille">Point: 🏠 hjem 300, 400, 500… · 🪢 svirp en anden +50 · 🥸 hemmelig arrangør +50 (viser vej hjem i 5 sek) · 🍺 øl 30, 60, 90… (men du bliver fuld) · 🥙 kebab = +5 sek batteri · 🏠 hjem = +15 sek</p>
+  <p class="lille">Point: 🏠 hjem 300, 400, 500… · 🪢 svirp en anden +50 · 🥸 hemmelig arrangør +50 (viser vej hjem i 5 sek) · 🍺 øl 30, 60, 90… · 🥃 shot +100 · men jo fuldere, jo mindre ser du og jo sværere er det at styre: 🙂 Klar → 😊 Tipsy → 🥴 Snalret → 🤪 Stiv (én øl = ét trin, et shot = direkte til Stiv) · 🥙 kebab gør dig klar igen</p>
   <input id="navnInput" maxlength="16" placeholder="Dit navn" autocomplete="off" aria-label="Dit navn">
   <button id="opretKnap">Opret nyt rum</button>
   <div class="raekke">
@@ -151,10 +148,17 @@ const MAX_PLAYERS = 11;
 const HOST_SEND_MS = 125;    // værten sender tilstanden 8 gange/sek
 const CLIENT_SEND_MS = 130;  // spillerne sender position ~8 gange/sek
 const LOBBY_PING_MS = 1500;
-const MAX_TID = 180;         // nødstop – normalt slutter runden længe før, når alle er faldet i søvn
-const START_BAT = 30;        // batteri (sek) ved start – samme som i Bananmanden Hjem
-const HJEM_BAT = 15, KEBAB_BAT = 5;
-const DRAEN = b => 1 + (b - 1) * 0.2; // batteriet drænes hurtigere for hver ny labyrint
+const GAME_TIME = 90;        // en runde varer 1:30 for alle
+const SHOT_POINT = 100;
+// Hvor fuld er man? 4 stadier: 0 Klar, 1 Tipsy, 2 Snalret, 3 Stiv. Øl +1, shot +3 (max 3).
+// Stadiet styrer både lommelygtens lys og hvor svært det er at styre. Kebab gør én helt klar igen.
+const STADIER = [
+  { navn: "🙂 Klar", lys: 3.0, fuld: 0 },
+  { navn: "😊 Tipsy", lys: 2.4, fuld: 0.35 },
+  { navn: "🥴 Snalret", lys: 1.85, fuld: 0.7 },
+  { navn: "🤪 Stiv", lys: 1.35, fuld: 1 },
+];
+const stadieAf = f => Math.max(0, Math.min(3, f));
 const R = 0.27, VT = 0.18;   // bananmandens radius og murenes tykkelse (i celler)
 const ACC = 16, MAX_FART = 5.5, FRIKTION = 2.2;
 const HOP_TID = 0.65;
@@ -345,6 +349,7 @@ function lavLabyrint(n, bane) {
   let id = 0;
   for (let k = 0; k < Math.floor(n / 2); k++) { const p = find(2, 999); L.ting.push({ id: id++, type: "kebab", x: p.x, y: p.y }); }
   for (let k = 0; k < Math.floor(n / 2); k++) { const p = find(2, 999); L.ting.push({ id: id++, type: "oel", x: p.x, y: p.y }); }
+  for (let k = 0; k < 3; k++) { const p = find(3, 999); L.ting.push({ id: id++, type: "shot", x: p.x, y: p.y }); } // enkelte shots
 
   // Parkerede biler på tværs af vejen: én på korteste vej hjem + nogle tilfældige
   const B = 0.25;
@@ -425,7 +430,7 @@ async function startVip() { // skal kaldes fra et tryk (iPhone kræver tilladels
 let joy = null;
 cv.addEventListener("pointerdown", e => {
   if (state !== "play") return;
-  if (vip.aktiv || e.pointerType === "mouse" || (ME && ME.sover)) { svirp(); return; }
+  if (vip.aktiv || e.pointerType === "mouse") { svirp(); return; }
   joy = { ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId, t: performance.now() };
 });
 cv.addEventListener("pointermove", e => { if (joy && e.pointerId === joy.id) { joy.x = e.clientX; joy.y = e.clientY; } });
@@ -472,8 +477,7 @@ function navnAf(id) { const p = lobby.players.find(q => q.id === id); return p ?
 
 function nyMig() {
   const s = startPos(slotAf(MY_ID), lab);
-  return { x: s.x, y: s.y, vx: 0, vy: 0, vend: 1, gaa: 0, hop: 0, promille: ME ? ME.promille : 0,
-    batteri: ME ? ME.batteri : START_BAT, sover: ME ? ME.sover : false, frz: 0, imm: 0, venter: new Set(), guide: null, sidstStoed: 0, svirpCd: 0,
+  return { x: s.x, y: s.y, vx: 0, vy: 0, vend: 1, gaa: 0, hop: 0, fuld: ME ? ME.fuld : 0, frz: 0, imm: 0, venter: new Map(), guide: null, sidstStoed: 0, svirpCd: 0,
     st: ME ? ME.st : { hjem: 0, svirp: 0, svirpet: 0, oel: 0, kebab: 0, arr: 0 } };
 }
 // Ny labyrint (nr. b) hos alle: alle tilbage til midten
@@ -490,15 +494,14 @@ function nyLabLokalt(b) {
    ===================================================================== */
 const iLuften = () => ME.hop > 0.08 && ME.hop < HOP_TID - 0.05;
 const hopHoejde = h => h > 0 ? Math.sin(Math.PI * (1 - h / HOP_TID)) : 0;
-const fuldhed = () => ME ? Math.min(1, ME.promille / 4) : 0;
+const fuldhed = () => ME ? STADIER[stadieAf(ME.fuld)].fuld : 0; // 0 → 1
 function hop() {
-  if (state !== "play" || !ME || ME.hop > 0 || ME.frz > 0 || ME.sover) return;
+  if (state !== "play" || !ME || ME.hop > 0 || ME.frz > 0) return;
   ME.hop = HOP_TID; bip(520, 0.08, "square", 0.05); bip(780, 0.08, "square", 0.05, 0.06);
 }
 let mineSvirp = []; // svirp-animationer {fra, x, y, t}
 function svirp() {
   if (state !== "play" || !ME) return;
-  if (ME.sover) { skiftTilskuer(); return; } // sover: tryk = se en anden spiller
   if (ME.frz > 0 || ME.svirpCd > 0) return;
   ME.svirpCd = 0.45;
   lydSvirp();
@@ -509,7 +512,7 @@ function svirp() {
 function naermesteMaal() {
   let bedst = null, bd = SVIRP_RAEKKE;
   for (const p of Object.values(S.players)) {
-    if (p.id === MY_ID || p.sov) continue;
+    if (p.id === MY_ID) continue;
     const d = Math.hypot(p.dx - ME.x, p.dy - ME.y);
     if (d < bd) { bd = d; bedst = p.id; }
   }
@@ -517,7 +520,7 @@ function naermesteMaal() {
 }
 // Send en handling til værten (værten selv kalder direkte)
 function sendTilVaert(ev, m) {
-  m.id = MY_ID; m.b = S.bane;
+  m.id = MY_ID; m.b = S.bane; m.x = Math.round(ME.x * 100); m.y = Math.round(ME.y * 100); // min position lige nu
   if (role === "host") hostHandling(MY_ID, ev, m);
   else sendMine(ev, m);
 }
@@ -553,17 +556,6 @@ function kollision() {
 
 function opdaterMig(dt) {
   S.tidLokal += dt;
-  if (ME.sover) { ME.vx = ME.vy = 0; return; } // sover på gaden
-  ME.batteri = Math.max(0, ME.batteri - dt * DRAEN(S.bane));
-  if (ME.batteri <= 0) {
-    ME.sover = true; ME.vx = ME.vy = 0; ME.guide = null; ME.hop = 0;
-    sendTilVaert("sov", {});
-    bip(300, 0.4, "sine", 0.1); bip(200, 0.6, "sine", 0.1, 0.3);
-    visBesked("📵 Telefonen døde! Bananmanden sover på gaden 😴 – tryk for at se de andre");
-    tilskuer = null; skiftTilskuer();
-    return;
-  }
-  ME.promille = Math.max(0, ME.promille - dt * 0.01);
   ME.svirpCd = Math.max(0, ME.svirpCd - dt);
   if (ME.hop > 0) ME.hop = Math.max(0, ME.hop - dt);
 
@@ -587,20 +579,22 @@ function opdaterMig(dt) {
 
   if (ME.frz > 0) return;
   // Ting: spørg værten, om jeg var først
+  // (svarer værten ikke inden 1,5 sek – fx fordi en anden var først – må man prøve igen)
+  const nu = performance.now(), venter = k => ME.venter.has(k) && nu - ME.venter.get(k) < 1500;
   for (const t of lab.ting) {
-    if (S.taget.has(t.id) || ME.venter.has(t.id)) continue;
+    if (S.taget.has(t.id) || venter(t.id)) continue;
     if (Math.hypot(t.x + 0.5 - ME.x, t.y + 0.5 - ME.y) > 0.45) continue;
-    ME.venter.add(t.id);
+    ME.venter.set(t.id, nu);
     sendTilVaert("tag", { i: t.id });
   }
   // Den hemmelige arrangør
-  if (S.arrBy === null && !ME.venter.has("arr") && Math.hypot(lab.arr.x - ME.x, lab.arr.y - ME.y) < 0.6) {
-    ME.venter.add("arr"); sendTilVaert("arr", {});
+  if (S.arrBy === null && !venter("arr") && Math.hypot(lab.arr.x - ME.x, lab.arr.y - ME.y) < 0.6) {
+    ME.venter.set("arr", nu); sendTilVaert("arr", {});
   }
   if (ME.guide) opdaterGuide(dt);
   // Hjemme!
-  if (!ME.venter.has("hjem") && Math.hypot(lab.maal.x + 0.5 - ME.x, lab.maal.y + 0.5 - ME.y) < 0.4) {
-    ME.venter.add("hjem"); sendTilVaert("hjem", {});
+  if (!venter("hjem") && Math.hypot(lab.maal.x + 0.5 - ME.x, lab.maal.y + 0.5 - ME.y) < 0.4) {
+    ME.venter.set("hjem", nu); sendTilVaert("hjem", {});
   }
 }
 // Arrangøren går foran ad korteste vej hjem (kun for den, der fandt ham)
@@ -624,8 +618,8 @@ function hostNytSpil() {
   N = labStoerrelse(lobby.players.length);
   G = { t: 0, paused: false, bane: 1, taget: new Set(), arrBy: null, players: {}, evq: [], over: false, lastTick: 0 };
   for (const lp of lobby.players) {
-    G.players[lp.id] = { id: lp.id, x: 0, y: 0, vend: 1, hop: 0, score: 0, frz: 0, imm: 0, sov: false, last: performance.now(),
-      st: { hjem: 0, svirp: 0, svirpet: 0, oel: 0, kebab: 0, arr: 0 } };
+    G.players[lp.id] = { id: lp.id, x: 0, y: 0, vend: 1, hop: 0, score: 0, frz: 0, imm: 0, last: performance.now(),
+      st: { hjem: 0, svirp: 0, svirpet: 0, oel: 0, shot: 0, kebab: 0, arr: 0 } };
   }
   hostSaetBane(1);
 }
@@ -640,15 +634,18 @@ function hostHandling(id, ev, m) {
   if (!G || G.over || G.paused) return;
   const p = G.players[id];
   if (!p) return;
-  if (ev === "sov") { if (!p.sov) { p.sov = true; p.frz = 0; hostEvent("sov", id); } return; }
-  if (m.b !== G.bane || p.sov) return; // gammel besked fra en tidligere labyrint (eller han sover)
+  if (m.b !== G.bane) return; // gammel besked fra en tidligere labyrint
   const L = lab; // værten har altid den nuværende labyrint i "lab"
+  // Spilleren sender sin position med. Den bruges, hvis den passer nogenlunde med det, værten sidst hørte
+  // (positionerne kommer kun ~8 gange/sek, så værtens kopi kan være lidt bagud).
+  if (typeof m.x === "number" && Math.hypot(m.x / 100 - p.x, m.y / 100 - p.y) < 3) { p.x = m.x / 100; p.y = m.y / 100; }
   if (ev === "tag") {
     const t = L.ting.find(o => o.id === m.i);
     if (!t || G.taget.has(t.id) || p.frz > 0) return;
-    if (Math.hypot(t.x + 0.5 - p.x, t.y + 0.5 - p.y) > 1.8) return; // langt væk ifølge værten? (lidt slæk for forsinkelse)
+    if (Math.hypot(t.x + 0.5 - p.x, t.y + 0.5 - p.y) > 0.9) return; // ikke tæt nok på
     G.taget.add(t.id);
     if (t.type === "oel") { p.st.oel++; const pt = OEL_POINT(p.st.oel); p.score += pt; hostEvent("oel", id, t.id, pt); }
+    else if (t.type === "shot") { p.st.shot++; p.score += SHOT_POINT; hostEvent("shot", id, t.id, SHOT_POINT); }
     else { p.st.kebab++; hostEvent("kebab", id, t.id); }
   } else if (ev === "arr") {
     if (G.arrBy !== null) return;
@@ -664,7 +661,7 @@ function hostHandling(id, ev, m) {
     if (p.frz > 0) return;
     let mål = null, bd = SVIRP_RAEKKE;
     for (const q of Object.values(G.players)) {
-      if (q.id === id || q.sov || q.frz > 0 || q.imm > 0 || performance.now() - q.last > 4000) continue;
+      if (q.id === id || q.frz > 0 || q.imm > 0 || performance.now() - q.last > 4000) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y);
       if (d < bd) { bd = d; mål = q; }
     }
@@ -683,15 +680,14 @@ function hostUpdate(dt) {
     if (p.frz > 0) { p.frz -= dt; if (p.frz <= 0) { p.frz = 0; p.imm = IMMUN_TID; } }
     else if (p.imm > 0) p.imm = Math.max(0, p.imm - dt);
   }
-  // Runden slutter, når alle sover (spillere, der er forsvundet, tæller som sovende)
-  const vaagne = Object.values(G.players).filter(p => !p.sov && (p.id === MY_ID || performance.now() - p.last < 6000));
-  if (!vaagne.length) hostEnd("Alle bananmænd sover! 😴");
-  else if (G.t >= MAX_TID) hostEnd("Solen står op! ☀️");
+  const left = GAME_TIME - G.t, sec = Math.ceil(left);
+  if (sec <= 10 && sec > 0 && sec !== G.lastTick) { G.lastTick = sec; hostEvent("tick"); }
+  if (left <= 0) hostEnd("Tiden er gået!");
 }
 
 function hostSendState() {
   const pl = Object.values(G.players).map(p => [p.id, Math.round(p.x * 100), Math.round(p.y * 100), p.vend, Math.round(p.hop * 100),
-    p.score, Math.round(p.frz * 10), Math.round(p.imm * 10), p.sov ? 1 : 0]);
+    p.score, Math.round(p.frz * 10), Math.round(p.imm * 10)]);
   sendMain("state", { t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0, b: G.bane, n: N, tk: [...G.taget], ab: G.arrBy, pl, ev: G.evq });
   G.evq = [];
   // Værtens egen visning følger samme vej som spillernes
@@ -724,10 +720,10 @@ function modtagState(m) {
   if (m.b !== S.bane) nyLabLokalt(m.b);
   S.t = m.t; S.recvAt = performance.now(); S.paused = !!m.p;
   S.taget = new Set(m.tk); S.arrBy = m.ab ?? null;
-  for (const [id, x, y, vend, hop, score, frz, imm, sov] of m.pl) {
+  for (const [id, x, y, vend, hop, score, frz, imm] of m.pl) {
     let p = S.players[id];
     if (!p) p = S.players[id] = { id, dx: x / 100, dy: y / 100, gaa: 0 };
-    Object.assign(p, { x: x / 100, y: y / 100, vend, hop: hop / 100, score, frz: frz / 10, imm: imm / 10, sov: !!sov });
+    Object.assign(p, { x: x / 100, y: y / 100, vend, hop: hop / 100, score, frz: frz / 10, imm: imm / 10 });
     if (Math.hypot(p.dx - p.x, p.dy - p.y) > 3) { p.dx = p.x; p.dy = p.y; }
     if (id === MY_ID && ME) {
       if (frz > 0 && ME.frz <= 0) { ME.frz = frz / 10; } // jeg er blevet svirpet
@@ -744,9 +740,11 @@ function anvendEvent([type, id, a, b]) {
   const mig = id === MY_ID;
   if (type === "tick") { bip(880, 0.05, "square", 0.05); return; }
   if (type === "oel") {
-    if (mig) { ME.promille += 1; ME.venter.delete(a); bip(300, 0.15, "triangle"); visBesked(`🍺 Skål! +${b} – ${komma(ME.promille)} ‰`); }
+    if (mig) { ME.fuld = Math.min(3, ME.fuld + 1); ME.venter.delete(a); bip(300, 0.15, "triangle"); visBesked(`🍺 Skål! +${b} – ${STADIER[stadieAf(ME.fuld)].navn}`); }
+  } else if (type === "shot") {
+    if (mig) { ME.fuld = 3; ME.venter.delete(a); bip(250, 0.1, "sawtooth"); bip(180, 0.3, "triangle", 0.08, 0.1); visBesked(`🥃 SHOT! +${b} – 🤪 Stiv!`); }
   } else if (type === "kebab") {
-    if (mig) { ME.batteri += KEBAB_BAT; ME.promille = Math.max(0, ME.promille - 0.5); ME.venter.delete(a); bip(660, 0.08); bip(990, 0.12, "square", 0.07, 0.05); visBesked(`🥙 Kebab! +${KEBAB_BAT} sek og lidt mere ædru`); }
+    if (mig) { ME.fuld = 0; ME.venter.delete(a); bip(660, 0.08); bip(990, 0.12, "square", 0.07, 0.05); visBesked("🥙 Kebab! Helt klar igen 🙂"); }
   } else if (type === "arr") {
     if (mig) {
       ME.guide = { x: lab.arr.x, y: lab.arr.y, t: 0, i: 0, sti: kortesteVej(lab, Math.floor(lab.arr.x), Math.floor(lab.arr.y), lab.maal.x, lab.maal.y) };
@@ -754,12 +752,9 @@ function anvendEvent([type, id, a, b]) {
       [392, 494, 587, 784].forEach((f, k) => bip(f, 0.12, "square", 0.06, k * 0.09));
     } else visBesked(`🥸 ${navnAf(id)} fandt den hemmelige arrangør!`);
   } else if (type === "hjem") {
-    visBesked(mig ? `🏠 HJEMME! +${a} point og +${HJEM_BAT} sek – ny labyrint!` : `🏠 ${navnAf(id)} kom hjem først! Ny labyrint…`);
-    if (mig) { ME.st.hjem++; ME.batteri += HJEM_BAT; bip(523, 0.1); bip(659, 0.1, "square", 0.07, 0.1); bip(784, 0.2, "square", 0.07, 0.2); }
+    visBesked(mig ? `🏠 HJEMME! +${a} – ny labyrint!` : `🏠 ${navnAf(id)} kom hjem først! Ny labyrint…`);
+    if (mig) { ME.st.hjem++; bip(523, 0.1); bip(659, 0.1, "square", 0.07, 0.1); bip(784, 0.2, "square", 0.07, 0.2); }
     else bip(330, 0.3, "triangle", 0.08);
-  } else if (type === "sov") {
-    if (!mig) { visBesked(`😴 ${navnAf(id)}s telefon døde – han sover på gaden`); bip(250, 0.3, "sine", 0.06); }
-    if (tilskuer === id) skiftTilskuer();
   } else if (type === "svirp") {
     if (!(id === MY_ID && role === "host")) { if (id !== MY_ID) S.anim.push({ fra: id, til: a, t: 0.35 }); }
     if (a === MY_ID) { lydAv(); visBesked(`💢 AV! ${navnAf(id)} svirpede dig i bagen!`); if (navigator.vibrate) navigator.vibrate(200); }
@@ -782,7 +777,7 @@ function onNetMsg(topic, ev, m) {
       p.last = performance.now();
       if (m.b !== G.bane) return;
       p.x = Math.max(0, Math.min(N, m.x / 100)); p.y = Math.max(0, Math.min(N, m.y / 100)); p.vend = m.v; p.hop = m.h / 100;
-    } else if (["tag", "arr", "hjem", "svirp", "sov"].includes(ev) && G && state !== "end") {
+    } else if (["tag", "arr", "hjem", "svirp"].includes(ev) && G && state !== "end") {
       const p = G.players[m.id]; if (p) p.last = performance.now();
       hostHandling(m.id, ev, m);
     }
@@ -893,7 +888,7 @@ function renderLobby() {
     ? list.map((p, i) => `<li><span class="prik" style="background:${HATTE[p.c]}"></span>${esc(p.name)}${i === 0 ? " 👑" : ""}${p.id === MY_ID ? " <small>(dig)</small>" : ""}</li>`).join("")
     : "<li>…</li>";
   const n = labStoerrelse(Math.max(1, list.length));
-  $("labInfo").textContent = `Labyrint: ${n} × ${n} · runden slutter, når alle sover`;
+  $("labInfo").textContent = `Labyrint: ${n} × ${n} · runden varer 1:30`;
   $("startKnap").hidden = role !== "host";
   $("startKnap").textContent = list.length > 1 ? `Start spillet! (${list.length} spillere)` : "Start alene (eller vent på venner)";
 }
@@ -921,21 +916,12 @@ function startRunde() {
   bip(523, 0.1); bip(784, 0.15, "square", 0.07, 0.12);
 }
 
-/* ---------- Tilskuer: når man sover, følger kameraet en vågen spiller ---------- */
-let tilskuer = null;
-function vaagneAndre() { return Object.values(S ? S.players : {}).filter(p => p.id !== MY_ID && !p.sov).sort((a, b) => (b.score || 0) - (a.score || 0)); }
-function skiftTilskuer() {
-  const v = vaagneAndre();
-  if (!v.length) { tilskuer = null; return; }
-  const i = v.findIndex(p => p.id === tilskuer);
-  tilskuer = v[(i + 1) % v.length].id; // starter med den, der fører
-}
 
 /* =====================================================================
    TEGNING
    ===================================================================== */
 // Bananmanden på cykel. hat = hattens farve. ondt = er blevet svirpet (rød, øm bag)
-function tegnBananmand(x, y, v, skala, hjulFase, nu, vend, hat, ondt, sover) {
+function tegnBananmand(x, y, v, skala, hjulFase, nu, vend, hat, ondt) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(v); ctx.scale(skala * vend, skala);
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   for (const hx of [-34, 34]) {
@@ -989,9 +975,6 @@ function tegnBananmand(x, y, v, skala, hjulFase, nu, vend, hat, ondt, sover) {
     ctx.beginPath(); ctx.moveTo(-9, -121); ctx.lineTo(-2, -117); ctx.lineTo(-9, -113); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(13, -121); ctx.lineTo(6, -117); ctx.lineTo(13, -113); ctx.stroke();
     ctx.fillStyle = "#7a2b20"; ctx.beginPath(); ctx.ellipse(2, -102, 5, 6, 0, 0, 7); ctx.fill();
-  } else if (sover) { // lukkede øjne og savlende mund
-    ctx.beginPath(); ctx.moveTo(-9, -117); ctx.lineTo(-1, -117); ctx.moveTo(5, -117); ctx.lineTo(13, -117); ctx.stroke();
-    ctx.fillStyle = "#7a2b20"; ctx.beginPath(); ctx.ellipse(2, -103, 3, 4, 0, 0, 7); ctx.fill();
   } else {
     ctx.beginPath(); ctx.arc(-5, -117, 3, 0.2, Math.PI - 0.2); ctx.stroke();
     ctx.beginPath(); ctx.arc(9, -117, 3, 0.2, Math.PI - 0.2); ctx.stroke();
@@ -1056,10 +1039,8 @@ function tegn(nu) {
   ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, W, H);
   if (!lab) return;
   const celle = Math.max(40, Math.min(W, H) / 7);
-  if (ME && ME.sover && (!tilskuer || !S.players[tilskuer] || S.players[tilskuer].sov)) skiftTilskuer();
-  const tp = ME && ME.sover && tilskuer && S.players[tilskuer] ? S.players[tilskuer] : null;
-  const fx = tp ? tp.dx : ME ? ME.x : lab.c + 0.5 + Math.sin(nu / 3000) * 2;
-  const fy = tp ? tp.dy : ME ? ME.y : lab.c + 0.5 + Math.cos(nu / 3700) * 2;
+  const fx = ME ? ME.x : lab.c + 0.5 + Math.sin(nu / 3000) * 2;
+  const fy = ME ? ME.y : lab.c + 0.5 + Math.cos(nu / 3700) * 2;
   const slinger = Math.sin(nu / 300) * 0.3 * fuldhed();
   ctx.save();
   ctx.translate(W / 2, H / 2); ctx.rotate(slinger * 0.4); ctx.translate(-W / 2, -H / 2);
@@ -1100,7 +1081,7 @@ function tegn(nu) {
   ctx.font = `${celle * 0.5}px serif`;
   for (const ti of lab.ting) {
     if (S && (S.taget.has(ti.id) || (ME && ME.venter.has(ti.id)))) continue;
-    ctx.fillText(ti.type === "kebab" ? "🥙" : "🍺", (ti.x + 0.5) * celle, (ti.y + 0.5) * celle + Math.sin(nu / 300 + ti.x) * 3);
+    ctx.fillText(ti.type === "kebab" ? "🥙" : ti.type === "shot" ? "🥃" : "🍺", (ti.x + 0.5) * celle, (ti.y + 0.5) * celle + Math.sin(nu / 300 + ti.x) * 3);
   }
   ctx.font = `${celle * 0.75}px serif`;
   ctx.fillText("🏠", (lab.maal.x + 0.5) * celle, (lab.maal.y + 0.5) * celle);
@@ -1109,19 +1090,13 @@ function tegn(nu) {
 
   // Alle bananmænd (de andre glider blødt hen mod værtens positioner)
   if (S) {
-    const liste = Object.values(S.players).filter(p => p.id !== MY_ID).map(p => ({ id: p.id, x: p.dx, y: p.dy, vend: p.vend || 1, hop: p.hop || 0, frz: p.frz, imm: p.imm, gaa: p.gaa, sov: p.sov }));
-    if (ME) liste.push({ id: MY_ID, x: ME.x, y: ME.y, vend: ME.vend, hop: ME.hop, frz: ME.frz, imm: ME.imm, gaa: ME.gaa, sov: ME.sover, mig: true });
+    const liste = Object.values(S.players).filter(p => p.id !== MY_ID).map(p => ({ id: p.id, x: p.dx, y: p.dy, vend: p.vend || 1, hop: p.hop || 0, frz: p.frz, imm: p.imm, gaa: p.gaa }));
+    if (ME) liste.push({ id: MY_ID, x: ME.x, y: ME.y, vend: ME.vend, hop: ME.hop, frz: ME.frz, imm: ME.imm, gaa: ME.gaa, mig: true });
     liste.sort((a, b) => a.y - b.y);
     for (const p of liste) {
       const hh = hopHoejde(p.hop);
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.beginPath(); ctx.ellipse(p.x * celle, p.y * celle + celle * 0.42, celle * 0.42 * (1 - hh * 0.4), celle * 0.1 * (1 - hh * 0.4), 0, 0, 7); ctx.fill();
-      if (p.sov) { // sover: ligger ned ved siden af cyklen med 💤
-        tegnBananmand(p.x * celle + p.vend * celle * 0.3, p.y * celle + celle * 0.3, -1.45 * p.vend, celle * 0.95 / 150, 0, nu, p.vend, HATTE[farveAf(p.id)], false, true);
-        ctx.font = `${celle * 0.35}px serif`; ctx.fillText("💤", p.x * celle + celle * 0.2 + Math.sin(nu / 500) * 4, p.y * celle - celle * 0.35 - (nu / 40 % 12));
-        if (!p.mig) { ctx.font = `bold ${Math.max(11, celle * 0.2)}px system-ui`; ctx.fillStyle = HATTE[farveAf(p.id)]; ctx.fillText(navnAf(p.id), p.x * celle, p.y * celle + celle * 0.7); }
-        continue;
-      }
       ctx.save();
       if (p.imm > 0 && Math.floor(nu / 120) % 2) ctx.globalAlpha = 0.4; // immun: blinker
       const ryst = p.frz > 0 ? Math.sin(nu / 30) * 0.08 : 0;
@@ -1151,25 +1126,18 @@ function tegn(nu) {
   mctx.clearRect(0, 0, W, H);
   mctx.fillStyle = "rgb(2,3,8)"; mctx.fillRect(0, 0, W, H);
   mctx.globalCompositeOperation = "destination-out";
-  const pct = ME ? ME.batteri / START_BAT : 1;
-  let r = celle * (0.9 + 2 * pct) * (1 - 0.3 * fuldhed());
-  r *= 1 + Math.sin(nu / 70) * (pct < 0.25 ? 0.05 : 0);
+  // Lyset skrumper i 3 trin, jo fuldere man er
+  const r = celle * (ME ? STADIER[stadieAf(ME.fuld)].lys : 4) * (1 + Math.sin(nu / 400) * 0.02);
   const hul = (x, y, rr) => {
     const g = mctx.createRadialGradient(x, y, rr * 0.35, x, y, rr);
     g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)");
     mctx.fillStyle = g; mctx.beginPath(); mctx.arc(x, y, rr, 0, 7); mctx.fill();
   };
-  if (tp) hul(W / 2, H / 2, celle * 2.8); // tilskuer: se den vågne spiller
-  else hul(W / 2, H / 2, ME ? (ME.sover ? celle * 1.2 : r) : celle * 4);
-  if (ME && ME.guide && !tp) hul(W / 2 + (ME.guide.x - ME.x) * celle, H / 2 + (ME.guide.y - ME.y) * celle, celle * 1.3);
+  hul(W / 2, H / 2, r);
+  if (ME && ME.guide) hul(W / 2 + (ME.guide.x - ME.x) * celle, H / 2 + (ME.guide.y - ME.y) * celle, celle * 1.3);
   ctx.drawImage(morkCv, 0, 0, W, H);
 
-  if (ME && ME.sover && state === "play") {
-    ctx.font = "bold 18px system-ui"; ctx.textAlign = "center"; ctx.fillStyle = "#fff";
-    ctx.fillText(tp ? `😴 Du sover · 👀 Du ser ${navnAf(tp.id)}` : "😴 Du sover…", W / 2, H - 56);
-    if (tp) { ctx.font = "15px system-ui"; ctx.fillText("Tryk for at se en anden", W / 2, H - 32); }
-  }
-  if (ME && !ME.sover && state === "play") {
+  if (ME && state === "play") {
     const a = Math.atan2(lab.maal.y + 0.5 - ME.y, lab.maal.x + 0.5 - ME.x);
     ctx.save(); ctx.translate(W / 2 + Math.cos(a) * (r + 14), H / 2 + Math.sin(a) * (r + 14)); ctx.rotate(a);
     ctx.fillStyle = "rgba(255,225,77,.7)"; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-8, -8); ctx.lineTo(-8, 8); ctx.fill();
@@ -1196,27 +1164,26 @@ let sidsteHud = "", sidsteRang = 0;
 function opdaterHud(nu) {
   if (!S || !ME) return;
   const mig = S.players[MY_ID] || { score: 0 };
-  const left = Math.ceil(ME.batteri);
-  const pct = Math.min(1, ME.batteri / START_BAT);
-  const txt = `${mig.score}|${left}|${S.bane}|${komma(ME.promille)}|${Math.round(pct * 20)}|${ME.sover}`;
+  const left = Math.max(0, Math.ceil(GAME_TIME - (role === "host" && G ? G.t : S.t + (S.paused ? 0 : Math.min(0.4, (performance.now() - S.recvAt) / 1000)))));
+  const st = stadieAf(ME.fuld);
+  const txt = `${mig.score}|${left}|${S.bane}|${st}`;
   if (txt !== sidsteHud) {
     sidsteHud = txt;
     $("score").textContent = fmt(mig.score) + " point";
-    $("tid").textContent = ME.sover ? "😴 Sover" : `🔋 ${left}s`;
-    $("tid").classList.toggle("hast", left <= 5);
-    $("info").textContent = `Bane ${S.bane} · ${komma(ME.promille)}‰`;
-    $("batFyld").style.width = (pct * 100) + "%";
-    $("batFyld").style.background = pct < 0.25 ? "#ff4d4d" : pct < 0.5 ? "#ffd24d" : "#4dff6a";
+    $("tid").textContent = `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    $("tid").classList.toggle("hast", left <= 10);
+    $("info").textContent = `Bane ${S.bane}`;
+    $("stadie").textContent = STADIER[st].navn;
   }
   if (nu - sidsteRang > 250) { // lille rangliste i hjørnet: hvem fører?
     sidsteRang = nu;
-    const rk = Object.values(S.players).map(p => ({ id: p.id, s: p.score || 0, sov: p.id === MY_ID ? ME.sover : p.sov })).sort((a, b) => b.s - a.s);
+    const rk = Object.values(S.players).map(p => ({ id: p.id, s: p.score || 0 })).sort((a, b) => b.s - a.s);
     let vis = rk.slice(0, 5);
     const minPlads = rk.findIndex(p => p.id === MY_ID);
     if (minPlads >= 5) vis = rk.slice(0, 4).concat([rk[minPlads]]);
     $("rang").innerHTML = vis.map(p => {
       const plads = rk.indexOf(p) + 1;
-      return `<div class="r${p.id === MY_ID ? " mig" : ""}">${plads === 1 ? "👑" : plads + "."} <span class="prik" style="background:${HATTE[farveAf(p.id)]}"></span>${esc(navnAf(p.id).slice(0, 9))}${p.sov ? " 😴" : ""}<b>${fmt(p.s)}</b></div>`;
+      return `<div class="r${p.id === MY_ID ? " mig" : ""}">${plads === 1 ? "👑" : plads + "."} <span class="prik" style="background:${HATTE[farveAf(p.id)]}"></span>${esc(navnAf(p.id).slice(0, 9))}<b>${fmt(p.s)}</b></div>`;
     }).join("");
   }
 }
@@ -1328,7 +1295,7 @@ function showEnd(msg) {
       (rekord && score > 0 ? " · 🎉 Ny rekord!" : gammel !== null ? ` · Din bedste: ${fmt(gammel)}` : "");
     $("rundeTabel").innerHTML = msg.res.map((r, i) =>
       `<tr class="${r.id === MY_ID ? "mig" : ""}"><td>${i + 1}.</td><td><span class="prik" style="background:${HATTE[r.c] || "#ccc"}"></span> ${esc(r.n)}</td><td>${r.st.hjem}🏠 ${r.st.svirp}🪢 ${r.st.svirpet}🍑</td><td>${fmt(r.s)}</td></tr>`).join("");
-    $("slutStat").innerHTML = `🏠 ${mine.st.hjem} gange hjem først · 🪢 ${mine.st.svirp} svirp · 🍑 svirpet ${mine.st.svirpet} gange<br>🥸 ${mine.st.arr} arrangør · 🍺 ${mine.st.oel} øl · 🥙 ${mine.st.kebab} kebab`;
+    $("slutStat").innerHTML = `🏠 ${mine.st.hjem} gange hjem først · 🪢 ${mine.st.svirp} svirp · 🍑 svirpet ${mine.st.svirpet} gange<br>🥸 ${mine.st.arr} arrangør · 🍺 ${mine.st.oel} øl · 🥃 ${mine.st.shot || 0} shots · 🥙 ${mine.st.kebab} kebab`;
     if (window.gemScore) {
       $("faellesTop").innerHTML = "<tr><td>Henter fælles rangliste…</td></tr>";
       gemScore(GAME_NAME, navn, score).then(() => visFaellesTop($("faellesTop"), GAME_NAME, navn));
