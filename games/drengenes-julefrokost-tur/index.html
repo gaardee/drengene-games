@@ -154,11 +154,11 @@
         <ul class="rules">
           <li>📍 Ruten: <b>Bodega → Tivoli → Smørrebrød → Snapsbaren → Natklubben → Pølsevognen</b></li>
           <li>👬 Et stop klares, når <b>alle</b> drenge med tøj på står der: <b>+100</b> til alle (+25 til den første)</li>
-          <li>🛡️ Det næste stop er et <b>fristed</b>: tegnerne kan ikke komme ind, så I kan vente sikkert på hinanden</li>
-          <li>🎨 Croquis-tegnere stjæler jeres tøj: 🎅🧣🧶👖. Mister du bukserne, er du <b>ude</b></li>
+          <li>🛡️ Alle stop er <b>fristeder</b>: tegnerne kan ikke komme ind, så I kan vente sikkert på hinanden</li>
+          <li>🎨 Croquis-tegnere stjæler jeres tøj: 🎅🧣👖🧶. Tallet på trøjen er, hvor meget tøj du har på. Mister du trøjen, er du <b>nøgen</b> – find 👕 for at komme med igen. De andre venter ikke på nøgne drenge</li>
           <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage · <b>+10</b></li>
           <li>🌉 Kanalerne kan kun krydses på broerne · turister og duer står i vejen</li>
-          <li>⭐ <b>+2 point</b> pr. sekund med tøj på</li>
+          <li>⭐ <b>+2 point</b> pr. sekund med tøj på (ikke mens du gemmer dig i et gammelt stop)</li>
         </ul>
         <div class="controls" id="ctrlHelp"></div>
         <input id="nameInput" maxlength="16" placeholder="Skriv dit navn" autocomplete="off">
@@ -265,9 +265,11 @@ const ALIVE_POINTS = 2;          // point pr. sekund med tøj på
 const STOP_POINTS = 100;         // pr. klaret stop (+50 for hver ekstra omgang)
 const FIRST_BONUS = 25;          // til den første ved stoppet
 const PICKUP_POINTS = 10;
+// Alle stop er fristeder: tegnerne kan ikke komme ind, og man kan ikke tegnes derinde
+const inSafe = p => STOPS.some(st => Math.hypot(p.x - st.x, p.y - st.y) < STOP_R);
 const SING_AT = [35, 80];        // "Syng LAST CHRISTMAS!!!" efter så mange sekunders spil
 const SING_TIME = 10;
-const MAX_TIME = 200;            // nødstop (når man aldrig i praksis)
+const MAX_TIME = 150;            // nødstop, hvis nogen gemmer sig i fristederne
 const BOOSTS = { horn: { mul: 1.35, time: 3.5 }, pepsi: { mul: 1.7, time: 3.0 } };
 const TOURIST_SLOW = 0.45, PIGEON_SLOW = 0.55;
 
@@ -280,8 +282,8 @@ const foodOnMap = n => 3 + Math.floor(n / 3);
 const CLOTHES = [
   { emoji: "🎅", name: "nissehuen" },
   { emoji: "🧣", name: "halstørklædet" },
-  { emoji: "🧶", name: "julesweateren" },
   { emoji: "👖", name: "bukserne" },
+  { emoji: "🧶", name: "julesweateren" },
 ];
 const wears = (clothes, i) => i >= CLOTHES.length - clothes;
 
@@ -617,7 +619,7 @@ function hostNewGame() {
   const n = lobby.players.length;
   G = {
     t: 0, paused: false, sing: 0, singIdx: 0,
-    players: {}, enemies: [], items: [], nextSpot: 0, itemRnd: mulberry32(SEED + 3), nextToj: 20,
+    players: {}, enemies: [], items: [], nextSpot: 0, itemRnd: mulberry32(SEED + 3), nextToj: 12,
     stop: 0, firstAt: null, atStop: 0, need: n, lap: 0,
     ff: {}, ffT: 0,
     floaters: [], evq: [], over: false,
@@ -800,18 +802,28 @@ function hostUpdate(dt) {
   const n = Object.keys(G.players).length;
 
   // ---- Point for at have tøj på ----
-  for (const p of act) { p.score += ALIVE_POINTS * dt; p.st.alive += dt; }
+  // (ingen point for at gemme sig i et af de andre fristeder – kun det næste stop tæller)
+  const nextStop = STOPS[G.stop % STOPS.length];
+  for (const p of act) {
+    p.st.alive += dt;
+    if (!inSafe(p) || Math.hypot(p.x - nextStop.x, p.y - nextStop.y) < STOP_R) p.score += ALIVE_POINTS * dt;
+  }
 
   // ---- Ting på gaden: hvem kommer først? ----
-  for (const p of act) {
+  const pickers = Object.values(G.players).filter(p => performance.now() - p.last < 4000);
+  for (const p of pickers) {
     for (let i = G.items.length - 1; i >= 0; i--) {
       const it = G.items[i];
+      if (p.out && it.k !== "toj") continue; // nøgne drenge kan kun samle tøj op
       if (Math.hypot(it.x - p.x, it.y - p.y) > p.r + 16) continue;
       G.items.splice(i, 1);
       p.score += PICKUP_POINTS;
       if (it.k === "toj") {
         p.st.toj++;
-        if (p.clothes < CLOTHES.length) {
+        if (p.out) {
+          p.out = false; p.clothes = 1; p.inv = INV_TIME;
+          hostEvent(p.x, p.y - 30, `🧶 ${p.name} er med igen!`, "#7dffb0", "cloth");
+        } else if (p.clothes < CLOTHES.length) {
           p.clothes++;
           const c = CLOTHES[CLOTHES.length - p.clothes];
           hostEvent(p.x, p.y - 30, `${c.emoji} Fik ${c.name} igen!`, "#7dffb0", "cloth", p.id);
@@ -825,8 +837,8 @@ function hostUpdate(dt) {
   }
   while (G.items.filter(i => i.k !== "toj").length < foodOnMap(n)) spawnItem(null);
   if (t >= G.nextToj) {
-    G.nextToj += 20;
-    if (G.items.filter(i => i.k === "toj").length < 2) { spawnItem("toj"); const it = G.items[G.items.length - 1]; hostEvent(it.x, it.y - 30, "Tøj! 👕", "#7dffb0"); }
+    G.nextToj += 12;
+    if (G.items.filter(i => i.k === "toj").length < 3) { spawnItem("toj"); const it = G.items[G.items.length - 1]; hostEvent(it.x, it.y - 30, "Tøj! 👕", "#7dffb0"); }
   }
 
   // ---- Stoppet: alle drenge med tøj på skal være der ----
@@ -871,9 +883,7 @@ function hostUpdateEnemies(dt, act, n) {
     hostEvent(best.x, best.y - 40, "Croquis-tegner! 🎨", "#ff9f9f", "hey");
   }
   const speed = enemySpeed(t);
-  // det næste stop er et fristed: drenge derinde kan ikke tegnes, og tegnerne kan ikke gå ind
-  const safe = STOPS[G.stop % STOPS.length];
-  const inSafe = p => Math.hypot(p.x - safe.x, p.y - safe.y) < STOP_R;
+  // drenge i et fristed kan ikke tegnes
   const targets = act.filter(p => p.inv <= 0 && !inSafe(p));
   for (const e of G.enemies) {
     if (e.mode === "spawn" || e.mode === "draw") {
@@ -910,7 +920,7 @@ function hostUpdateEnemies(dt, act, n) {
       if (Math.abs(dx) > 2) e.fx = Math.sign(dx);
     }
     collideWorld(e);
-    { // skub tegneren ud af fristedet
+    for (const safe of STOPS) { // skub tegneren ud af fristederne
       const fx = e.x - safe.x, fy = e.y - safe.y, fd = Math.hypot(fx, fy) || 1;
       if (fd < STOP_R) { e.x = safe.x + fx / fd * STOP_R; e.y = safe.y + fy / fd * STOP_R; collideWorld(e); }
     }
@@ -1368,7 +1378,7 @@ function drawStop(st, current, now) {
   ctx.font = `${Math.max(18, 38 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(st.emoji, x, y - 4 * s);
   label(st.name, x, y + R * 0.62, Math.max(10, 14 * s), current ? "#fff" : "#eee");
-  if (current) label("🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), "#7dffb0");
+  label("🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), current ? "#7dffb0" : "#e6fff0");
   ctx.globalAlpha = 1;
 }
 
@@ -1507,7 +1517,7 @@ function drawDreng(k, now) {
     ctx.strokeStyle = k.boost === 2 ? "#4dc3ff" : "#f5c542"; ctx.lineWidth = 3 * s;
     for (const dy of [-0.6, 0, 0.6]) { ctx.beginPath(); ctx.moveTo(x - f * R * 1.3, y + dy * R - bob); ctx.lineTo(x - f * R * 2.3, y + dy * R - bob); ctx.stroke(); }
   }
-  const wHue = wears(k.clothes, 0), wTor = wears(k.clothes, 1), wSw = wears(k.clothes, 2), wBuk = wears(k.clothes, 3);
+  const wHue = wears(k.clothes, 0), wTor = wears(k.clothes, 1), wBuk = wears(k.clothes, 2), wSw = wears(k.clothes, 3);
   // ben
   const leg = k.moving ? Math.sin(k.step) * 3 * s : 0;
   for (const [lx, ly] of [[-0.35, leg], [0.35, -leg]]) { rr(x + lx * R - R * 0.22, y + R * 0.4 + ly - bob * 0.3, R * 0.44, R * 0.65, 3 * s); fillStroke(wBuk ? "#2f3d66" : SKIN, 2); }
@@ -1515,8 +1525,12 @@ function drawDreng(k, now) {
   rr(x - R * 0.8, y - R * 0.55 - bob, R * 1.6, R * 1.35, R * 0.5); fillStroke(wSw ? COLORS[k.c] : SKIN, 2.5);
   if (wSw) { // julesweater-mønster
     ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * s; ctx.beginPath();
-    for (let i = 0; i <= 6; i++) ctx.lineTo(x - R * 0.7 + i * R * 0.233, y - R * 0.05 - bob + (i % 2 ? -R * 0.18 : R * 0.08));
+    for (let i = 0; i <= 6; i++) ctx.lineTo(x - R * 0.7 + i * R * 0.233, y - R * 0.3 - bob + (i % 2 ? -R * 0.12 : R * 0.06));
     ctx.stroke();
+    // tallet = hvor mange stykker tøj man har på
+    ctx.font = `900 ${Math.max(8, R * 0.85)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(2, R * 0.18); ctx.strokeStyle = INK; ctx.lineJoin = "round";
+    ctx.strokeText(String(k.clothes), x, y + R * 0.2 - bob); ctx.fillStyle = "#fff"; ctx.fillText(String(k.clothes), x, y + R * 0.2 - bob);
   } else { // navle
     ctx.fillStyle = "rgba(120,60,30,.6)"; ctx.beginPath(); ctx.arc(x, y + R * 0.15 - bob, 1.6 * s, 0, Math.PI * 2); ctx.fill();
   }
@@ -1577,15 +1591,28 @@ function edgePoint(wx, wy, margin) {
 }
 function drawStopArrow(now) {
   const st = STOPS[S.stop % STOPS.length];
-  const e = edgePoint(st.x, st.y, 46);
-  if (!e) return;
+  const top = 92, side = 50, bottom = Math.min(view.cw, view.ch) < 500 ? 150 : 180; // plads til banner og minikort
+  let [sx, sy] = toS(st.x, st.y);
+  const onScreen = sx > side && sx < view.cw - side && sy > top && sy < view.ch - bottom;
   const pulse = 1 + Math.sin(now / 150) * 0.08;
-  ctx.save(); ctx.translate(e.x, e.y);
-  ctx.beginPath(); ctx.arc(0, 0, 24 * pulse, 0, Math.PI * 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#c8102e"; ctx.stroke();
-  ctx.rotate(e.a);
-  ctx.beginPath(); ctx.moveTo(34 * pulse, 0); ctx.lineTo(22, -10); ctx.lineTo(22, 10); ctx.closePath(); ctx.fillStyle = "#c8102e"; ctx.fill();
+  let x, y, a;
+  if (onScreen) {
+    // over stoppet, pegende nedad
+    x = sx; y = Math.max(top, sy - STOP_R * view.s - 52 - Math.abs(Math.sin(now / 220)) * 12); a = Math.PI / 2;
+  } else {
+    const cx = view.cw / 2, cy = (top + view.ch - bottom) / 2, dx = sx - cx, dy = sy - cy;
+    const k = Math.min((view.cw / 2 - side) / Math.abs(dx || 1e-6), ((dy < 0 ? cy - top : view.ch - bottom - cy)) / Math.abs(dy || 1e-6));
+    x = cx + dx * k; y = cy + dy * k; a = Math.atan2(dy, dx);
+  }
+  const R = 34 * pulse;
+  ctx.save(); ctx.translate(x, y);
+  ctx.save(); ctx.rotate(a);
+  ctx.beginPath(); ctx.moveTo(R + 26, 0); ctx.lineTo(R - 4, -20); ctx.lineTo(R - 4, 20); ctx.closePath();
+  ctx.fillStyle = "#c8102e"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke();
   ctx.restore();
-  ctx.font = "22px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(st.emoji, e.x, e.y + 1);
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = "#c8102e"; ctx.stroke();
+  ctx.font = "34px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(st.emoji, 0, 2);
+  ctx.restore();
 }
 // Små prikker ved kanten: hvor er de andre drenge?
 function drawTeamArrows() {
@@ -1673,7 +1700,7 @@ function updateHud() {
   const txt = `${score}|${cl}|${me.out}`;
   if (txt === lastHud) return; lastHud = txt;
   $("score").textContent = `⭐ ${fmtNum(score)}`;
-  $("clothes").innerHTML = me.out ? "🙈 Ude" : CLOTHES.map((c, i) => `<span class="${wears(cl, i) ? "" : "gone"}">${c.emoji}</span>`).join("");
+  $("clothes").innerHTML = me.out ? "🙈 Nøgen – find 👕" : CLOTHES.map((c, i) => `<span class="${wears(cl, i) ? "" : "gone"}">${c.emoji}</span>`).join("");
 }
 function updateSing() {
   const sing = S && (state === "play" || state === "pause" || state === "wait") ? S.sing : 0;
