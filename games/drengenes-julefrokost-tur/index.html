@@ -156,7 +156,7 @@
           <li>👬 Et stop klares, når <b>alle</b> drenge med tøj på står der: <b>+100</b> til alle (+25 til den første)</li>
           <li>🛡️ Alle stop er <b>fristeder</b>: tegnerne kan ikke komme ind, så I kan vente sikkert på hinanden</li>
           <li>🎨 Croquis-tegnere stjæler jeres tøj: 🎅🧣👖🧶. Tallet på trøjen er, hvor meget tøj du har på. Mister du trøjen, er du <b>nøgen</b> – find 👕 for at komme med igen. De andre venter ikke på nøgne drenge</li>
-          <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage · <b>+10</b></li>
+          <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage (kun hvis du mangler noget) · <b>+10</b></li>
           <li>👩 Jeres <b>koner</b> jagter jer med <b>barnevogn</b>. Alle koner og barnevogne spærrer vejen for alle drenge</li>
           <li>🌉 Kanalerne kan kun krydses på broerne · duer bremser</li>
           <li>⭐ <b>+2 point</b> pr. sekund med tøj på (ikke mens du gemmer dig i et gammelt stop)</li>
@@ -848,6 +848,7 @@ function hostUpdate(dt) {
     for (let i = G.items.length - 1; i >= 0; i--) {
       const it = G.items[i];
       if (p.out && it.k !== "toj") continue; // nøgne drenge kan kun samle tøj op
+      if (it.k === "toj" && !p.out && p.clothes >= CLOTHES.length) continue; // har allerede alt tøjet på
       if (Math.hypot(it.x - p.x, it.y - p.y) > p.r + 16) continue;
       G.items.splice(i, 1);
       p.score += PICKUP_POINTS;
@@ -856,11 +857,11 @@ function hostUpdate(dt) {
         if (p.out) {
           p.out = false; p.clothes = 1; p.inv = INV_TIME;
           hostEvent(p.x, p.y - 30, `🧶 ${p.name} er med igen!`, "#7dffb0", "cloth");
-        } else if (p.clothes < CLOTHES.length) {
+        } else {
           p.clothes++;
           const c = CLOTHES[CLOTHES.length - p.clothes];
           hostEvent(p.x, p.y - 30, `${c.emoji} Fik ${c.name} igen!`, "#7dffb0", "cloth", p.id);
-        } else hostEvent(p.x, p.y - 30, "+10 Ekstra lag tøj!", "#7dffb0", "cloth", p.id);
+        }
       } else {
         p.st[it.k]++;
         hostEvent(p.x, p.y - 30, it.k === "pepsi" ? "+10 PEPSI MAX! ⚡" : "+10 Pølsehorn! 🌭", "#f5c542", it.k === "pepsi" ? "slurp" : "pick", p.id, it.k);
@@ -1725,16 +1726,27 @@ function edgePoint(wx, wy, margin) {
   const k = Math.min((cx - margin) / Math.abs(dx || 1e-6), (cy - margin) / Math.abs(dy || 1e-6));
   return { x: cx + dx * k, y: cy + dy * k, a: Math.atan2(dy, dx) };
 }
-function drawStopArrow(now) {
+// Hvad skal pilene pege på? Normalt næste stop – er man nøgen, det nærmeste stykke tøj.
+function arrowTarget() {
+  const me = myPlayerData();
+  if (me && me.out) {
+    let best = null, bd = 1e9;
+    for (const it of S.items) if (it.k === "toj") { const d = Math.hypot(it.x - ME.x, it.y - ME.y); if (d < bd) { bd = d; best = it; } }
+    if (best) return { x: best.x, y: best.y, above: 26, near: 18, color: "#00a844", icon: "👕" };
+  }
   const st = STOPS[S.stop % STOPS.length];
+  return { x: st.x, y: st.y, above: STOP_R, near: STOP_R * 0.6, color: "#c8102e", icon: st.emoji };
+}
+function drawStopArrow(now) {
+  const tg = arrowTarget();
   const top = 92, side = 50, bottom = Math.min(view.cw, view.ch) < 500 ? 150 : 180; // plads til banner og minikort
-  let [sx, sy] = toS(st.x, st.y);
+  let [sx, sy] = toS(tg.x, tg.y);
   const onScreen = sx > side && sx < view.cw - side && sy > top && sy < view.ch - bottom;
   const pulse = 1 + Math.sin(now / 150) * 0.08;
   let x, y, a;
   if (onScreen) {
-    // over stoppet, pegende nedad
-    x = sx; y = Math.max(top, sy - STOP_R * view.s - 52 - Math.abs(Math.sin(now / 220)) * 12); a = Math.PI / 2;
+    // over målet, pegende nedad
+    x = sx; y = Math.max(top, sy - tg.above * view.s - 52 - Math.abs(Math.sin(now / 220)) * 12); a = Math.PI / 2;
   } else {
     const cx = view.cw / 2, cy = (top + view.ch - bottom) / 2, dx = sx - cx, dy = sy - cy;
     const k = Math.min((view.cw / 2 - side) / Math.abs(dx || 1e-6), ((dy < 0 ? cy - top : view.ch - bottom - cy)) / Math.abs(dy || 1e-6));
@@ -1744,22 +1756,23 @@ function drawStopArrow(now) {
   ctx.save(); ctx.translate(x, y);
   ctx.save(); ctx.rotate(a);
   ctx.beginPath(); ctx.moveTo(R + 26, 0); ctx.lineTo(R - 4, -20); ctx.lineTo(R - 4, 20); ctx.closePath();
-  ctx.fillStyle = "#c8102e"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke();
+  ctx.fillStyle = tg.color; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke();
   ctx.restore();
-  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = "#c8102e"; ctx.stroke();
-  ctx.font = "34px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(st.emoji, 0, 2);
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = tg.color; ctx.stroke();
+  ctx.font = "34px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(tg.icon, 0, 2);
   ctx.restore();
 }
-// Pil rundt om min egen dreng, der altid peger mod næste stop
+// Pil rundt om min egen dreng, der altid peger mod målet (stor og grøn, når man er nøgen)
 function drawMeArrow(now) {
-  const st = STOPS[S.stop % STOPS.length];
-  const dx = st.x - ME.x, dy = st.y - ME.y;
-  if (Math.hypot(dx, dy) < STOP_R * 0.6) return; // man står midt i stoppet
+  const tg = arrowTarget(), naked = tg.icon === "👕";
+  const dx = tg.x - ME.x, dy = tg.y - ME.y;
+  if (Math.hypot(dx, dy) < tg.near) return; // man står lige ved målet
   const a = Math.atan2(dy, dx), [mx, my] = toS(ME.x, ME.y - PLAYER_R * 0.5);
-  const rad = Math.max(46, PLAYER_R * view.s * 3) + Math.sin(now / 150) * 4;
-  ctx.save(); ctx.translate(mx + Math.cos(a) * rad, my + Math.sin(a) * rad); ctx.rotate(a);
+  const sc = naked ? 1.8 : 1;
+  const rad = Math.max(46, PLAYER_R * view.s * 3) * (naked ? 1.25 : 1) + Math.sin(now / 150) * 4;
+  ctx.save(); ctx.translate(mx + Math.cos(a) * rad, my + Math.sin(a) * rad); ctx.rotate(a); ctx.scale(sc, sc);
   ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -14); ctx.lineTo(-4, 0); ctx.lineTo(-10, 14); ctx.closePath();
-  ctx.fillStyle = "#c8102e"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.lineJoin = "round"; ctx.stroke();
+  ctx.fillStyle = tg.color; ctx.fill(); ctx.lineWidth = 3 / sc; ctx.strokeStyle = "#fff"; ctx.lineJoin = "round"; ctx.stroke();
   ctx.restore();
 }
 // Små prikker ved kanten: hvor er de andre drenge?
