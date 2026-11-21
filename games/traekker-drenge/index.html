@@ -156,7 +156,7 @@
     <div class="screen" id="startScreen">
       <div class="card">
         <h1>🧗 TrækkerDrenge</h1>
-        <p class="tagline">2-8 spillere på hver sin telefon eller computer. Kom igennem <b>3 baner</b> – men kun hvis I <b>hjælper hinanden</b>!</p>
+        <p class="tagline">2-10 spillere (op til 5 på hvert hold) på hver sin telefon eller computer. Kom igennem <b>3 baner</b> – men kun hvis I <b>hjælper hinanden</b>!</p>
         <ul class="rules">
           <li>⭐ Stjerne = <b>10 point</b></li>
           <li>🤝 Hjælp en makker = <b>5 point</b>: hiv ham op over en kant (sker af sig selv), lad ham stå på dit hoved, skub en tung kasse sammen, eller hold en dør åben</li>
@@ -252,7 +252,7 @@
    ===================================================================== */
 const GAME_NAME = "traekker-drenge"; // = mappenavnet (bruges til ranglisten og kanalnavne)
 const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 10;   // 5 på hvert hold
 const HOST_SEND_MS = 125;   // værten sender 8 gange/sek
 const CLIENT_SEND_MS = 140; // spillerne sender ~7 gange/sek
 const LOBBY_PING_MS = 1500;
@@ -361,7 +361,7 @@ const TEAMS = [
   { name: "Blåt hold", body: "#3b78c9", dark: "#21487e" },
 ];
 // Hver spiller har sin egen hue-farve
-const HATS = ["#f2c230", "#4dbb5a", "#a259d9", "#ff8a3d", "#2fc4c4", "#ff6fae", "#8b5a2b", "#ffffff"];
+const HATS = ["#f2c230", "#4dbb5a", "#a259d9", "#ff8a3d", "#2fc4c4", "#ff6fae", "#8b5a2b", "#ffffff", "#1f1f1f", "#b8e04a"];
 
 /* =====================================================================
    Hjælpefunktioner
@@ -1258,7 +1258,7 @@ function renderLobby() {
     html += `<div class="team" style="background:${k ? "#d6e6fb" : "#fbdcd6"}"><h4 style="color:${TEAMS[k].dark}">${nt > 1 ? TEAMS[k].name : "Jeres hold"}</h4><ul>${members.map(o => li(o.p, o.i)).join("") || "<li>…</li>"}</ul></div>`;
   }
   $("lobbyTeams").innerHTML = html;
-  $("teamInfo").textContent = n >= 4 ? "Holdene fordeles automatisk. Begge hold kører samme bane – hvem kommer først i mål?"
+  $("teamInfo").textContent = n >= 4 ? "Holdene fordeles automatisk (max 5 på hvert). Begge hold kører samme bane – hvem kommer først i mål?"
     : n >= 2 ? "Med 2-3 spillere er I ét hold mod uret. Fra 4 spillere bliver det Rødt mod Blåt!"
     : "Venter på venner… (I skal være mindst 2 for at hjælpe hinanden)";
   $("hostStartBtn").hidden = role !== "host";
