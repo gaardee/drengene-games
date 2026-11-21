@@ -261,7 +261,8 @@ const VIEW_UNITS_SMALL = 470;    // ... på en lille telefon (lidt mere zoomet i
 const PLAYER_R = 16;
 const PLAYER_SPEED = 220;
 const ENEMY_R = 17;
-const ENEMY_GAP = 110;           // så tæt må to tegnere højst komme på hinanden
+const ENEMY_GAP = 220;           // så tæt må to tegnere højst komme på hinanden
+const LOST_TIME = 2.5;           // så længe går en tegner mod stedet, hvor han sidst så en dreng
 const STOP_R = 70;               // hvor tæt man skal stå på et stop
 const INV_TIME = 2.0;            // sekunder man er usårlig efter at have mistet tøj
 const DRAW_TIME = 1.6;           // så længe står tegneren og tegner bagefter
@@ -434,6 +435,7 @@ const BLOCK = new Uint8Array(GN * GN);
 for (let cy = 0; cy < GN; cy++) for (let cx = 0; cx < GN; cx++) {
   const x = (cx + 0.5) * CELL, y = (cy + 0.5) * CELL;
   if (SOLIDS.some(s => inRect(x, y, s, ENEMY_R + 1))) BLOCK[cy * GN + cx] = 1;
+  if (STOPS.some(st => Math.hypot(st.x - x, st.y - y) < STOP_R + ENEMY_R)) BLOCK[cy * GN + cx] = 1; // fristederne går man udenom
 }
 const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 const cellOf = (x, y) => clamp(Math.floor(y / CELL), 0, GN - 1) * GN + clamp(Math.floor(x / CELL), 0, GN - 1);
@@ -899,6 +901,71 @@ function hostUpdate(dt) {
   else if (t >= MAX_TIME) hostEnd("Pølsevognen er lukket!");
 }
 
+// Sigtelinje: kan tegneren se drengen? Husene blokerer (Liang–Barsky linje/rektangel)
+function segHitsRect(x1, y1, x2, y2, r) {
+  let t0 = 0, t1 = 1;
+  const dx = x2 - x1, dy = y2 - y1;
+  for (const [p, q] of [[-dx, x1 - r.x], [dx, r.x + r.w - x1], [-dy, y1 - r.y], [dy, r.y + r.h - y1]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const t = q / p;
+    if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+  }
+  return true;
+}
+const canSee = (a, b) => !HOUSES.some(h => segHitsRect(a.x, a.y, b.x, b.y, h));
+// Flow-felter til faste punkter (patrulje / sidst set) gemmes, så de kun regnes én gang
+const FF_CACHE = new Map();
+function pointField(x, y) {
+  const key = nearFree(x, y);
+  let ff = FF_CACHE.get(key);
+  if (!ff) { if (FF_CACHE.size > 300) FF_CACHE.clear(); ff = flowField((key % GN + 0.5) * CELL, (((key / GN) | 0) + 0.5) * CELL); FF_CACHE.set(key, ff); }
+  return ff;
+}
+// Patruljepunkter fordelt jævnt over banen (n stk.)
+const PATROL_CACHE = {};
+function patrolPoints(n) {
+  if (PATROL_CACHE[n]) return PATROL_CACHE[n];
+  const k = Math.ceil(Math.sqrt(n)), cand = [];
+  for (let gy = 0; gy < k; gy++) for (let gx = 0; gx < k; gx++) {
+    const c = nearFree((gx + 0.5) * WORLD / k, (gy + 0.5) * WORLD / k);
+    cand.push({ x: (c % GN + 0.5) * CELL, y: (((c / GN) | 0) + 0.5) * CELL });
+  }
+  // vælg n af dem, så de ligger så spredt som muligt
+  const pts = [cand.splice(0, 1)[0]];
+  while (pts.length < n && cand.length) {
+    let bi = 0, bd = -1;
+    cand.forEach((p, i) => { const d = Math.min(...pts.map(q => Math.hypot(p.x - q.x, p.y - q.y))); if (d > bd) { bd = d; bi = i; } });
+    pts.push(cand.splice(bi, 1)[0]);
+  }
+  return (PATROL_CACHE[n] = pts);
+}
+// Gå et skridt ad gaderne mod et punkt (ff = flow-felt mod punktet)
+function stepAlong(e, tx, ty, ff, speed, dt) {
+  const c = cellOf(e.x, e.y);
+  if (e.unstick > 0) { // sad fast: gå først ind til midten af feltet (der er altid fri vej mellem feltmidter)
+    e.unstick -= dt; tx = (c % GN + 0.5) * CELL; ty = (((c / GN) | 0) + 0.5) * CELL;
+  } else if (ff && ff[c] > 1) {
+    const cx = c % GN, cy = (c / GN) | 0;
+    let best = ff[c], bi = -1;
+    for (const [dx, dy] of NB) {
+      if (!canStep(cx, cy, dx, dy)) continue;
+      const nIdx = (cy + dy) * GN + cx + dx;
+      if (ff[nIdx] < best) { best = ff[nIdx]; bi = nIdx; }
+    }
+    if (bi >= 0) { tx = (bi % GN + 0.5) * CELL; ty = (((bi / GN) | 0) + 0.5) * CELL; }
+  }
+  const dx = tx - e.x, dy = ty - e.y, d = Math.hypot(dx, dy);
+  if (d > 0.5) {
+    const step = Math.min(speed * dt, d), ox = e.x, oy = e.y;
+    e.x += dx / d * step; e.y += dy / d * step;
+    if (Math.abs(dx) > 2) e.fx = Math.sign(dx);
+    collideWorld(e);
+    // kommer han ikke frem (fx mod et hushjørne)? så ret ind efter en kort stund
+    if (Math.hypot(e.x - ox, e.y - oy) < step * 0.3) { e.stuckT = (e.stuckT || 0) + dt; if (e.stuckT > 0.25) { e.unstick = 0.4; e.stuckT = 0; } }
+    else e.stuckT = 0;
+  }
+}
+
 function hostUpdateEnemies(dt, act, n) {
   const t = G.t;
   // flow-felter mod hver dreng (genberegnes 4 gange i sekundet)
@@ -920,22 +987,41 @@ function hostUpdateEnemies(dt, act, n) {
   const speed = enemySpeed(t);
   // drenge i et fristed kan ikke tegnes
   const targets = act.filter(p => p.inv <= 0 && !inSafe(p));
-  // Vælg bytte: den dreng der er tættest på ad gaderne – men helst en, som ingen
-  // anden tegner allerede jagter (så de fordeler sig i stedet for at klumpe)
+  // Vælg bytte: kun drenge tegneren KAN SE (husene skygger). Blandt dem den, der er
+  // tættest på ad gaderne – men helst en, som ingen anden tegner allerede jagter.
+  G.visT = (G.visT || 0) - dt;
+  const lookNow = G.visT <= 0;
+  if (lookNow) G.visT = 0.15;
   const chasers = {};
   for (const e of G.enemies) {
     e.td = FAR;
     if (e.mode !== "walk") continue;
+    if (lookNow) e.sees = targets.filter(p => canSee(e, p)).map(p => p.id);
     const c = cellOf(e.x, e.y);
     let P = null, bd = 1e9, real = FAR;
-    for (const p of (targets.length ? targets : act)) {
+    for (const id of e.sees || []) {
+      const p = G.players[id];
+      if (!p || !targets.includes(p)) continue;
       const ff = G.ff[p.id];
       const d = ff ? ff[c] : Math.hypot(p.x - e.x, p.y - e.y) / CELL;
       const score = d + (chasers[p.id] || 0) * 8;
       if (score < bd) { bd = score; P = p; real = d; }
     }
-    e.target = P ? P.id : null; e.td = real;
-    if (P) chasers[P.id] = (chasers[P.id] || 0) + 1;
+    if (P && P.id !== e.target) hostEvent(e.x, e.y - 45, "!", "#ffd36b", "hey", P.id); // har fået øje på en dreng
+    if (P) { e.lost = { x: P.x, y: P.y, t: LOST_TIME }; chasers[P.id] = (chasers[P.id] || 0) + 1; }
+    e.target = P ? P.id : null; e.td = real; e.travel = false;
+  }
+  // Tegnere uden nogen at jagte fordeler sig jævnt over banen
+  const idle = G.enemies.filter(e => e.mode === "walk" && !e.target && !(e.lost && e.lost.t > 0));
+  if (idle.length) {
+    const pts = patrolPoints(G.enemies.length), taken = new Set();
+    for (const e of G.enemies) if (e.patrol != null && !idle.includes(e)) taken.add(e.patrol);
+    for (const e of idle) {
+      if (e.patrol != null && !taken.has(e.patrol) && e.patrol < pts.length) { taken.add(e.patrol); continue; }
+      let bi = -1, bd = 1e9;
+      pts.forEach((p, i) => { if (taken.has(i)) return; const d = Math.hypot(p.x - e.x, p.y - e.y); if (d < bd) { bd = d; bi = i; } });
+      e.patrol = bi; if (bi >= 0) taken.add(bi);
+    }
   }
   for (const e of G.enemies) {
     if (e.mode === "spawn" || e.mode === "draw") {
@@ -943,26 +1029,19 @@ function hostUpdateEnemies(dt, act, n) {
       if (e.timer <= 0) e.mode = "walk";
       continue;
     }
-    const c = cellOf(e.x, e.y);
     const P = G.players[e.target];
-    if (!P) continue;
-    let tx = P.x, ty = P.y;
-    const ff = G.ff[P.id];
-    if (ff && ff[c] > 1) {
-      const cx = c % GN, cy = (c / GN) | 0;
-      let best = ff[c], bi = -1;
-      for (const [dx, dy] of NB) {
-        if (!canStep(cx, cy, dx, dy)) continue;
-        const nIdx = (cy + dy) * GN + cx + dx;
-        if (ff[nIdx] < best) { best = ff[nIdx]; bi = nIdx; }
-      }
-      if (bi >= 0) { tx = (bi % GN + 0.5) * CELL; ty = (((bi / GN) | 0) + 0.5) * CELL; }
-    }
-    const dx = tx - e.x, dy = ty - e.y, d = Math.hypot(dx, dy);
-    if (d > 0.5) {
-      const step = Math.min(speed * dt, d);
-      e.x += dx / d * step; e.y += dy / d * step;
-      if (Math.abs(dx) > 2) e.fx = Math.sign(dx);
+    if (P) {
+      stepAlong(e, P.x, P.y, G.ff[P.id], speed, dt);                 // jagt
+    } else if (e.lost && e.lost.t > 0) {
+      e.lost.t -= dt;                                                   // hen hvor han sidst blev set
+      stepAlong(e, e.lost.x, e.lost.y, pointField(e.lost.x, e.lost.y), speed * 0.85, dt);
+      if (Math.hypot(e.lost.x - e.x, e.lost.y - e.y) < 20) e.lost.t = 0;
+    } else if (e.patrol != null && e.patrol >= 0) {
+      const pt = patrolPoints(G.enemies.length)[e.patrol];          // patruljér sit område
+      const far = pt ? Math.hypot(pt.x - e.x, pt.y - e.y) : 0;
+      if (far > 8) stepAlong(e, pt.x, pt.y, pointField(pt.x, pt.y), speed * 0.7, dt);
+      e.travel = far > 120;
+      if (!e.travel) e.td = FAR - 1; // fremme: holder sin plads
     }
     collideWorld(e);
     for (const safe of STOPS) { // skub tegneren ud af fristederne
@@ -983,6 +1062,7 @@ function hostUpdateEnemies(dt, act, n) {
       const a = G.enemies[i], b = G.enemies[j];
       let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
       if (d >= ENEMY_GAP) continue;
+      if (a.travel || b.travel) continue; // en tegner på vej til sit område må gerne passere de andre
       if (d < 0.01) { dx = 1; dy = 0; d = 1; }
       const o = Math.min(ENEMY_GAP - d, 450 * dt), ux = dx / d, uy = dy / d; // glider fra hinanden (hurtigere end de går)
       if (a.td < b.td) { b.x += ux * o; b.y += uy * o; collideWorld(b); }
