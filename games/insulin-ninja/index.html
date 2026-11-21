@@ -506,8 +506,6 @@ const keys = {};
 const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
 const JOY_MAX = 55;
 const TOUCH = matchMedia("(pointer: coarse)").matches;
-let mouseFire = false;
-let usedTouch = TOUCH;     // auto-kast på telefon/tablet
 
 addEventListener("keydown", e => {
   Sound.unlock();
@@ -526,8 +524,6 @@ addEventListener("pointerdown", () => Sound.unlock(), { capture: true });
 const canvas = $("c");
 canvas.addEventListener("pointerdown", e => {
   if (state !== "play") return;
-  if (e.pointerType === "mouse") { mouseFire = true; return; } // klik med musen = kast
-  usedTouch = true;
   if (joy.active) return;
   joy.active = true; joy.id = e.pointerId; joy.ox = e.offsetX; joy.oy = e.offsetY; joy.dx = joy.dy = 0;
   try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
@@ -542,10 +538,10 @@ canvas.addEventListener("pointermove", e => {
   }
   joy.dx = dx; joy.dy = dy;
 });
-const joyEnd = e => { if (e.pointerType === "mouse") mouseFire = false; if (e.pointerId === joy.id) { joy.active = false; joy.dx = joy.dy = 0; } };
+const joyEnd = e => { if (e.pointerId === joy.id) { joy.active = false; joy.dx = joy.dy = 0; } };
 canvas.addEventListener("pointerup", joyEnd);
 canvas.addEventListener("pointercancel", joyEnd);
-function clearInput() { for (const k in keys) keys[k] = false; joy.active = false; joy.dx = joy.dy = 0; mouseFire = false; }
+function clearInput() { for (const k in keys) keys[k] = false; joy.active = false; joy.dx = joy.dy = 0; }
 
 function screenInput() {
   let x = 0, y = 0;
@@ -561,8 +557,8 @@ function screenInput() {
   if (len > 1) { x /= len; y /= len; }
   return { x, y };
 }
-// Vil jeg kaste lige nu? (telefon: altid automatisk, computer: mellemrum eller klik)
-const wantFire = () => usedTouch || !!keys[" "] || mouseFire;
+// Man kaster altid automatisk (både telefon og computer), når der er et monster inden for rækkevidde
+const wantFire = () => true;
 
 /* =====================================================================
    Kamera (liggende skærm => arenaen drejes 90°)
@@ -1652,7 +1648,7 @@ function readHash() {
   try { $("nameInput").value = localStorage.getItem(NAME_KEY) || ""; } catch (e) {}
   $("ctrlHelp").innerHTML = TOUCH
     ? "👆 <b>Træk med fingeren</b> for at løbe – du <b>kaster automatisk</b> efter det nærmeste monster"
-    : "⌨️ <b>Piletaster / WASD</b> for at løbe<br><b>Mellemrum</b> (eller klik) for at kaste – den sigter selv";
+    : "⌨️ <b>Piletaster / WASD</b> for at løbe (eller træk med musen)<br>Du <b>kaster automatisk</b> efter det nærmeste monster";
   readHash();
   addEventListener("hashchange", () => { if (state === "start") readHash(); });
   updateMuteBtn();
