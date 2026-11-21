@@ -223,7 +223,7 @@
    ===================================================================== */
 const GAME_NAME = "insulin-ninja"; // = mappenavnet (bruges til ranglisten)
 const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 10;
 const HOST_SEND_MS = 125;   // værten sender 8 gange/sek
 const CLIENT_SEND_MS = 140; // spillerne sender ~7 gange/sek
 const LOBBY_PING_MS = 1500;
@@ -284,11 +284,11 @@ const bossHp = n => 30 + 12 * (n - 1);
 const POW_TIMES = Array.from({ length: 19 }, (_, i) => 8 + i * 6);
 const POW_ORDER = POW_TIMES.map((_, i) => i % 2 === 0 ? 1 : [3, 2][(i >> 1) % 2]);
 const POW_TTL = 10, POW_DUR = 8;
-// Flere spillere => flere power-ups ad gangen (1-2 spillere: 1 · 3-4: 2 · 5-6: 3 · 7-8: 4)
+// Flere spillere => flere power-ups ad gangen (1-2 spillere: 1 · 3-4: 2 · 5-6: 3 · 7-8: 4 · 9-10: 5)
 const powPerSpawn = n => Math.ceil(n / 2);
 const POW_EMOJI = { 1: "🥕", 2: "🔱", 3: "👟" };
 
-// Farver til de op til 8 ninjaer (pandebånd, krop)
+// Farver til de op til 10 ninjaer (pandebånd, krop)
 const COLORS = [
   { cap: "#e8457c", body: "#ffb3d1" }, // pink
   { cap: "#3ba7ff", body: "#a8dcff" }, // blå
@@ -298,6 +298,8 @@ const COLORS = [
   { cap: "#f5c400", body: "#fff1a1" }, // gul
   { cap: "#13a89e", body: "#b8f5ee" }, // turkis
   { cap: "#ffffff", body: "#e6e6e6" }, // hvid
+  { cap: "#d62828", body: "#ffa8a0" }, // rød
+  { cap: "#8b5a2b", body: "#e3c39d" }, // brun
 ];
 
 // Indforståede jokes til slutskærmen 😏
@@ -351,7 +353,7 @@ function setArena(n) {
 }
 function startPos(slot, n) {
   const ang = n > 1 ? (slot / n) * Math.PI * 2 : 0;
-  const rad = n > 1 ? 55 : 0;
+  const rad = n > 1 ? Math.max(55, n * 6.5) : 0; // lidt større cirkel ved 9-10 spillere
   return { x: W / 2 + Math.cos(ang) * rad, y: L * 0.6 + Math.sin(ang) * rad };
 }
 
