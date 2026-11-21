@@ -158,6 +158,7 @@
         <div class="code" id="lobbyCode">----</div>
         <p class="small">Vennerne åbner spillet og skriver koden – eller du sender dem linket.</p>
         <ul class="plist" id="lobbyList"></ul>
+        <p class="small" id="arenaInfo"></p>
         <p class="err" id="lobbyMsg"></p>
         <button class="big alt2" id="hostStartBtn" hidden>Start spillet!</button>
         <div class="btnrow">
@@ -232,7 +233,18 @@ const LOBBY_PING_MS = 1500;
    ===================================================================== */
 const GAME_TIME   = 120;    // sekunder
 const SEED        = 20261121;
-const W = 600, L = 900;     // arenaens størrelse (stående). Liggende skærm => drejes 90°
+// Arenaens størrelse (stående). Liggende skærm => drejes 90°.
+// Normal dojo er 600×900. Med flere spillere bliver den større (se ARENA_STEPS),
+// og så følger kameraet ens egen ninja.
+let W = 600, L = 900, AS = 1;
+const ARENA_STEPS = [
+  { min: 1, scale: 1,    name: "Normal dojo" },
+  { min: 3, scale: 1.25, name: "Stor dojo 🏯" },
+  { min: 5, scale: 1.45, name: "Større dojo 🏯" },
+  { min: 7, scale: 1.6,  name: "Kæmpe dojo 🏯🏯" },
+];
+const arenaStep = n => ARENA_STEPS.filter(a => n >= a.min).pop();
+const nextArenaStep = n => ARENA_STEPS.find(a => a.min > n);
 const PLAYER_R = 18;
 const PLAYER_SPEED = 235;
 const SHOE_BOOST = 1.5;
@@ -272,6 +284,8 @@ const bossHp = n => 30 + 12 * (n - 1);
 const POW_TIMES = Array.from({ length: 19 }, (_, i) => 8 + i * 6);
 const POW_ORDER = POW_TIMES.map((_, i) => i % 2 === 0 ? 1 : [3, 2][(i >> 1) % 2]);
 const POW_TTL = 10, POW_DUR = 8;
+// Flere spillere => flere power-ups ad gangen (1-2 spillere: 1 · 3-4: 2 · 5-6: 3 · 7-8: 4)
+const powPerSpawn = n => Math.ceil(n / 2);
 const POW_EMOJI = { 1: "🥕", 2: "🔱", 3: "👟" };
 
 // Farver til de op til 8 ninjaer (pandebånd, krop)
@@ -317,8 +331,9 @@ const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 const r1 = v => Math.round(v);
 const norm = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
 
-// Faste pladser hvor sprøjter dukker op (samme rækkefølge for alle = fair)
-const SPOTS = (() => {
+// Faste pladser hvor sprøjter og power-ups dukker op (samme rækkefølge for alle = fair)
+let SPOTS = makeSpots();
+function makeSpots() {
   const rnd = mulberry32(SEED + 7), out = [];
   while (out.length < 300) {
     const x = 50 + rnd() * (W - 100), y = 60 + rnd() * (L - 120);
@@ -326,7 +341,14 @@ const SPOTS = (() => {
     out.push({ x, y });
   }
   return out;
-})();
+}
+// Sæt arenaens størrelse ud fra antal spillere (gøres hos alle, så alle har samme arena)
+function setArena(n) {
+  AS = arenaStep(Math.max(1, n)).scale;
+  W = Math.round(600 * AS); L = Math.round(900 * AS);
+  SPOTS = makeSpots();
+  resize();
+}
 function startPos(slot, n) {
   const ang = n > 1 ? (slot / n) * Math.PI * 2 : 0;
   const rad = n > 1 ? 55 : 0;
@@ -564,7 +586,11 @@ const wantFire = () => true;
 /* =====================================================================
    Kamera (liggende skærm => arenaen drejes 90°)
    ===================================================================== */
-const view = { rot: false, s: 1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 1 };
+const view = { rot: false, s: 1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 1, follow: false };
+// I en stor dojo zoomer kameraet ind, så figurerne har samme størrelse som i en
+// normal dojo, og følger ens egen ninja. Ellers vises hele arenaen.
+const FOLLOW_ZOOM = 1.1;
+const cam = { snap: true };
 function resize() {
   const r = $("stage").getBoundingClientRect();
   view.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -572,9 +598,25 @@ function resize() {
   canvas.width = Math.round(r.width * view.dpr); canvas.height = Math.round(r.height * view.dpr);
   view.rot = r.width > r.height;
   const pad = 8;
-  const fw = view.rot ? L : W, fh = view.rot ? W : L;
+  view.follow = AS > 1 && !!ME;
+  const bw = view.follow ? 600 * FOLLOW_ZOOM : W, bl = view.follow ? 900 * FOLLOW_ZOOM : L;
+  const fw = view.rot ? bl : bw, fh = view.rot ? bw : bl;
   view.s = Math.min((r.width - pad * 2) / fw, (r.height - pad * 2) / fh);
-  view.ox = (r.width - fw * view.s) / 2; view.oy = (r.height - fh * view.s) / 2;
+  const ww = view.rot ? L : W, wh = view.rot ? W : L;
+  view.ox = (r.width - ww * view.s) / 2; view.oy = (r.height - wh * view.s) / 2;
+  cam.snap = true;
+}
+// Flyt kameraet blødt hen over min ninja (men ikke ud over arenaens kanter)
+function updateCamera(dt) {
+  if (!view.follow || !ME) return;
+  const s = view.s, pad = 8;
+  const hw = (view.rot ? L : W) * s, hh = (view.rot ? W : L) * s;
+  const mx = view.rot ? (L - ME.y) * s : ME.x * s, my = view.rot ? ME.x * s : ME.y * s;
+  const fit = (size, room, center) => size + pad * 2 <= room ? (room - size) / 2 : clamp(room / 2 - center, room - size - pad, pad);
+  const tx = fit(hw, view.cw, mx), ty = fit(hh, view.ch, my);
+  const k = cam.snap ? 1 : 1 - Math.exp(-dt * 6);
+  view.ox += (tx - view.ox) * k; view.oy += (ty - view.oy) * k;
+  cam.snap = false;
 }
 addEventListener("resize", resize);
 function toS(x, y) {
@@ -643,10 +685,12 @@ function hostUpdate(dt) {
   }
   // Power-ups dukker op på faste tidspunkter og forsvinder igen
   if (G.powIdx < POW_TIMES.length && t >= POW_TIMES[G.powIdx]) {
-    const s = SPOTS[(G.powIdx * 37 + 11) % SPOTS.length];
-    const kind = POW_ORDER[G.powIdx];
-    G.items.push({ kind, x: s.x, y: s.y, ttl: POW_TTL });
-    hostEvent(s.x, s.y - 30, POW_EMOJI[kind] + " Power-up!", "#fff");
+    for (let j = 0; j < powPerSpawn(G.n); j++) {
+      const s = SPOTS[(G.powIdx * 37 + j * 101 + 11) % SPOTS.length];
+      const kind = POW_ORDER[(G.powIdx + j) % POW_ORDER.length];
+      G.items.push({ kind, x: s.x, y: s.y, ttl: POW_TTL });
+      hostEvent(s.x, s.y - 30, POW_EMOJI[kind] + " Power-up!", "#fff");
+    }
     G.powIdx++;
   }
   for (let i = G.items.length - 1; i >= 0; i--) { const it = G.items[i]; it.ttl -= dt; if (it.ttl <= 0) G.items.splice(i, 1); }
@@ -1046,6 +1090,9 @@ function renderLobby() {
     ? list.map((p, i) => `<li><span class="dot" style="background:${COLORS[p.c].cap}"></span>${esc(p.name)}${i === 0 ? " 👑" : ""}${p.id === MY_ID ? " <small>(dig)</small>" : ""}</li>`).join("")
     : "<li>…</li>";
   $("hostStartBtn").hidden = role !== "host";
+  const n = Math.max(1, list.length), a = arenaStep(n), nx = nextArenaStep(n);
+  $("arenaInfo").textContent = `${a.name} · ${powPerSpawn(n)} power-up${powPerSpawn(n) > 1 ? "s" : ""} ad gangen` +
+    (nx ? ` · fra ${nx.min} spillere: ${nx.name}` : "");
   $("hostStartBtn").textContent = list.length > 1 ? `Start spillet! (${list.length} spillere)` : "Start alene (eller vent på venner)";
 }
 function roomLink() { return location.origin + location.pathname + "#" + roomCode; }
@@ -1055,16 +1102,19 @@ function hostStart() {
   if (role !== "host" || state !== "lobby") return;
   lobby.started = true;
   sendMain("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })) });
+  setArena(lobby.players.length);
   hostNewGame();
   beginRound(0, lobby.players.length);
 }
 function clientStart() {
+  setArena(lobby.players.length);
   clientNewView();
   const slot = lobby.players.findIndex(p => p.id === MY_ID);
   beginRound(slot, lobby.players.length);
 }
 function beginRound(slot, n) {
   ME = newMe(Math.max(0, slot), n);
+  resize(); // nu hvor min ninja findes: følg den, hvis arenaen er stor
   myStats = { dist: 0 };
   roundResult = null;
   clearInput();
@@ -1074,6 +1124,7 @@ function beginRound(slot, n) {
   showScreen(null);
   Sound.whistle();
   S.floaters.push({ x: ME.x, y: ME.y - 60, text: "SAML SPRØJTER! 💉", color: "#7fd3ff", life: 2 });
+  if (AS > 1) S.floaters.push({ x: ME.x, y: ME.y - 95, text: arenaStep(n).name.toUpperCase() + "!", color: "#ffd34d", life: 2.2 });
 }
 
 /* =====================================================================
@@ -1266,6 +1317,7 @@ function draw(now) {
   const s = view.s;
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   ctx.clearRect(0, 0, view.cw, view.ch);
+  ctx.lineJoin = "round"; // ellers får tekstkanter spidse takker (fx på M og A)
   if (!S) return;
   const isClient = role === "client";
   const t = isClient ? clientTime() : S.t;
@@ -1332,7 +1384,7 @@ function draw(now) {
   }
   ctx.globalAlpha = 1;
 
-  if (ME && state !== "end") { drawBsMeter(); drawScoreboard(); }
+  if (ME && state !== "end") { drawBsMeter(); drawScoreboard(); if (view.follow) drawMinimap(); }
 
   if (joy.active && state === "play") {
     ctx.globalAlpha = 0.35; ctx.fillStyle = "#fff";
@@ -1358,6 +1410,36 @@ function drawBsMeter() {
   ctx.font = "900 11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
   ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.strokeText("HIGH", x + w / 2, y - 5); ctx.fillStyle = "#ff5a4e"; ctx.fillText("HIGH", x + w / 2, y - 5);
   ctx.textBaseline = "top"; ctx.font = "13px sans-serif"; ctx.fillText("🩸", x + w / 2, y + h + 4);
+}
+
+// Lille kort over hele arenaen (kun når kameraet følger mig)
+function drawMinimap() {
+  const LONG = Math.min(view.cw, view.ch) < 500 ? 84 : 110, short = Math.round(LONG * W / L);
+  const mw = view.rot ? LONG : short, mh = view.rot ? short : LONG;
+  const x0 = view.cw - mw - 6, y0 = 6;
+  const isClient = role === "client";
+  const mm = (x, y) => view.rot ? [x0 + (L - y) / L * mw, y0 + x / W * mh] : [x0 + x / W * mw, y0 + y / L * mh];
+  const dot = (x, y, r, col) => { const [px, py] = mm(x, y); ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); };
+  ctx.save();
+  ctx.globalAlpha = 0.85; rr(x0, y0, mw, mh, 6); ctx.fillStyle = "#cdeccf"; ctx.fill();
+  ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); rr(x0, y0, mw, mh, 6); ctx.clip();
+  // det, skærmen viser lige nu
+  const s = view.s;
+  const w2 = (sx, sy) => view.rot ? [(sy - view.oy) / s, L - (sx - view.ox) / s] : [(sx - view.ox) / s, (sy - view.oy) / s];
+  ctx.beginPath();
+  [[0, 0], [view.cw, 0], [view.cw, view.ch], [0, view.ch]].forEach(([sx, sy], i) => { const [wx, wy] = w2(sx, sy); const [px, py] = mm(wx, wy); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+  ctx.closePath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(45,47,69,.6)"; ctx.stroke();
+  for (const it of S.items) dot(it.x, it.y, it.kind ? 3 : 2, it.kind ? "#f5a300" : "#3ba7ff");
+  for (const m of S.monsters) dot(isClient ? m.dx : m.x, isClient ? m.dy : m.y, 2, "#e8302c");
+  if (S.boss) dot(isClient ? S.boss.dx : S.boss.x, isClient ? S.boss.dy : S.boss.y, 5, "#ff7eb6");
+  for (const n of ninjasToDraw()) {
+    if (n.out) continue;
+    const [px, py] = mm(n.x, n.y);
+    ctx.beginPath(); ctx.arc(px, py, n.isMe ? 4 : 3, 0, Math.PI * 2); ctx.fillStyle = COLORS[n.c].cap; ctx.fill();
+    if (n.isMe) { ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke(); }
+  }
+  ctx.restore();
 }
 
 // Lille stilling i hjørnet: hvem fører?
@@ -1462,6 +1544,7 @@ function frame(now) {
     for (const f of S.floaters) { f.life -= dt; f.y -= 40 * dt; }
     S.floaters = S.floaters.filter(f => f.life > 0);
   }
+  updateCamera(dt);
   draw(now);
   updateHud();
   requestAnimationFrame(frame);
@@ -1632,6 +1715,7 @@ for (const b of document.querySelectorAll(".iconBtn")) b.addEventListener("keydo
 // Viser arenaen med et par monstre og sprøjter bag start-/lobbyskærmen
 function showPreview() {
   ME = null;
+  setArena(1);
   S = { t: 0, players: {}, proj: [], boss: null, floaters: [],
     items: SPOTS.slice(0, 4).map(s => ({ kind: 0, x: s.x, y: s.y, ttl: 99 })),
     monsters: [[0, 120, 150], [1, 470, 220], [2, 300, 760], [0, 520, 640], [1, 90, 520]].map(([type, x, y], i) => ({ id: i, type, x, y, dx: x, dy: y, r: TYPES[type].r, hp: TYPES[type].hp, wob: i * 2 })),
