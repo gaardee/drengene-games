@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Bananmanden Hjem Multi</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05060f; overflow: hidden;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .skaerm { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: safe center; text-align: center; padding: 20px; box-sizing: border-box;
+    background: rgba(3, 4, 12, .87); gap: 10px; overflow-y: auto; z-index: 5; }
+  .skaerm * { touch-action: pan-y; }
+  .skaerm[hidden] { display: none; }
+  h1 { margin: 0; font-size: clamp(26px, 7vw, 48px); color: #ffe14d; text-shadow: 0 3px 0 #b8860b; }
+  h2 { margin: 0; font-size: clamp(24px, 6vw, 38px); color: #ffe14d; }
+  h3 { margin: 6px 0 0; font-size: 17px; color: #ffe14d; }
+  p { margin: 0; max-width: 480px; line-height: 1.4; font-size: clamp(14px, 3.8vw, 17px); }
+  .styring { background: rgba(255,255,255,.08); border-radius: 12px; padding: 10px 14px; }
+  button { font: inherit; font-size: 18px; font-weight: 700; min-width: 44px; min-height: 44px;
+    padding: 10px 22px; border: 0; border-radius: 14px; background: #ffe14d; color: #3b2a00;
+    box-shadow: 0 4px 0 #b8860b; cursor: pointer; }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b8860b; }
+  button.alt { background: #2a3160; color: #fff; box-shadow: 0 4px 0 #151a3a; }
+  button[hidden] { display: none; }
+  input { font: inherit; font-size: 18px; padding: 10px 14px; min-height: 44px; box-sizing: border-box; border-radius: 12px;
+    border: 2px solid #ffe14d; background: #111633; color: #fff; text-align: center; width: min(280px, 80vw);
+    user-select: text; -webkit-user-select: text; }
+  .raekke { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .kode { font-size: 50px; font-weight: 900; letter-spacing: 10px; color: #ffe14d; }
+  .plist { list-style: none; padding: 0; margin: 4px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(380px, 90vw); }
+  .plist li { background: rgba(255,255,255,.1); border-radius: 10px; padding: 6px 8px; display: flex; align-items: center; gap: 6px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; }
+  .prik { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #000; flex: 0 0 auto; display: inline-block; vertical-align: middle; }
+  .fejl { color: #ff7a7a; font-weight: 700; min-height: 1.2em; }
+  .lille { font-size: 13px; opacity: .8; }
+  table { width: min(380px, 92vw); border-collapse: collapse; font-size: 14px; }
+  td { padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,.1); text-align: left; }
+  td:last-child { text-align: right; }
+  tr.mig td { color: #ffe14d; font-weight: 700; }
+  .stor { font-size: 44px; font-weight: 800; color: #ffe14d; }
+  #hud { position: fixed; top: 8px; left: 10px; right: 10px; display: flex; justify-content: space-between;
+    align-items: center; pointer-events: none; font-weight: 700; font-size: clamp(13px, 3.8vw, 18px);
+    text-shadow: 0 2px 3px #000; gap: 6px; white-space: nowrap; z-index: 3; }
+  #hud button { pointer-events: auto; background: rgba(255,255,255,.15); box-shadow: none; padding: 4px 8px; font-size: 18px; min-height: 40px; }
+  #tid.hast { color: #ff5a4e; }
+  #rang { position: fixed; top: 58px; right: 8px; background: rgba(0,0,0,.55); border-radius: 10px; padding: 6px 8px;
+    font-size: 13px; line-height: 1.45; pointer-events: none; z-index: 3; min-width: 110px; }
+  #rang[hidden] { display: none; }
+  #rang .r { display: flex; gap: 5px; align-items: center; white-space: nowrap; }
+  #rang .r b { margin-left: auto; padding-left: 8px; }
+  #rang .mig { color: #ffe14d; }
+  #besked { position: fixed; top: 22%; left: 0; right: 0; text-align: center; font-size: clamp(18px, 5vw, 28px); padding: 0 16px;
+    font-weight: 800; color: #ffe14d; text-shadow: 0 2px 4px #000; pointer-events: none; opacity: 0; transition: opacity .3s; z-index: 4; }
+  #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #ffe14d; color: #3b2a00;
+    padding: 10px 18px; border-radius: 12px; font-weight: 700; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 10; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <span id="score">0 point</span>
+  <span id="tid">⏱ 1:30</span>
+  <span id="info">Bane 1</span>
+  <span id="stadie">🙂 Klar</span>
+  <span><button id="pauseKnap" aria-label="Pause" hidden>⏸️</button> <button id="lydKnap" aria-label="Lyd til/fra">🔊</button></span>
+</div>
+<div id="rang" hidden></div>
+<div id="besked"></div>
+
+<div class="skaerm" id="startSkaerm">
+  <div style="font-size:56px">🍌🚲🍌🚲🍌</div>
+  <h1>Bananmanden Hjem Multi</h1>
+  <p>Alle bananmænd starter midt i den mørke by. Den første, der finder huset 🏠, får pointene – så starter en ny labyrint. <b>Svirp de andre med bæltet</b> undervejs! Runden varer 1:30.</p>
+  <p class="styring" id="styringTekst"></p>
+  <p class="lille">Point: 🏠 hjem 300, 400, 500… · 🪢 svirp en anden +50 · 🥸 hemmelig arrangør +50 (viser vej hjem i 5 sek) · 🍺 øl 30, 60, 90… · 🥃 shot +100 · men jo fuldere, jo mindre ser du og jo sværere er det at styre: 🙂 Klar → 😊 Tipsy → 🥴 Snalret → 🤪 Stiv (én øl = ét trin, et shot = direkte til Stiv) · 🥙 kebab gør dig klar igen</p>
+  <input id="navnInput" maxlength="16" placeholder="Dit navn" autocomplete="off" aria-label="Dit navn">
+  <button id="opretKnap">Opret nyt rum</button>
+  <div class="raekke">
+    <input id="kodeInput" maxlength="4" placeholder="KODE" autocomplete="off" style="width:130px" aria-label="Rumkode">
+    <button id="deltagKnap" class="alt">Deltag</button>
+  </div>
+  <p class="fejl" id="startFejl"></p>
+</div>
+
+<div class="skaerm" id="lobbySkaerm" hidden>
+  <h2>Rum</h2>
+  <div class="kode" id="lobbyKode">----</div>
+  <p class="lille">Del koden eller linket med de andre.</p>
+  <ul class="plist" id="lobbyListe"></ul>
+  <p class="lille" id="labInfo"></p>
+  <p class="fejl" id="lobbyBesked"></p>
+  <button id="startKnap" hidden>Start spillet!</button>
+  <div class="raekke">
+    <button id="linkKnap" class="alt">Kopiér link</button>
+    <button id="forladKnap" class="alt">Forlad rum</button>
+  </div>
+</div>
+
+<div class="skaerm" id="pauseSkaerm" hidden>
+  <h2 id="pauseTitel">Pause</h2>
+  <p id="pauseTekst"></p>
+  <button id="fortsaetKnap">Fortsæt</button>
+</div>
+
+<div class="skaerm" id="slutSkaerm" hidden>
+  <h2 id="slutTitel">Tiden er gået!</h2>
+  <div class="stor" id="slutScore">0</div>
+  <p id="slutPlads"></p>
+  <table id="rundeTabel"></table>
+  <p id="slutStat"></p>
+  <div class="raekke">
+    <button id="igenKnap">Ny runde</button>
+    <button id="kopierKnap" class="alt">Kopiér resultat</button>
+    <button id="delKnap" class="alt" hidden>Del</button>
+  </div>
+  <p class="lille" id="slutVent"></p>
+  <button id="slutForladKnap" class="alt">Forlad rum</button>
+  <h3>🌍 Fælles rangliste</h3>
+  <table id="faellesTop"></table>
+  <h3>🏆 Top 10 på denne enhed</h3>
+  <table id="lokalTop"></table>
+</div>
+<div id="toast"></div>
+
+<script src="../../scores.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   BANANMANDEN HJEM MULTI
+   Samme spil som Bananmanden Hjem, men op til 11 spillere på hver sin
+   telefon i én stor fælles labyrint. Alle starter i midten. Den første,
+   der når huset, får point, og så starter en ny labyrint.
+   Tryk på skærmen = svirp med bæltet: den nærmeste anden spiller står
+   stille i 3 sek (og er derefter immun i 2 sek).
+
+   Netværk: Laravel Reverb (se PROMPT.md). Værten bestemmer (tid, point,
+   hvem tog øllen, hvem blev svirpet). Hver spiller styrer sin egen
+   bananmand lokalt og sender sin position til værten.
+   ===================================================================== */
+
+const GAME_NAME = "bananmanden-hjem-multi"; // = mappenavnet (rangliste + kanalnavne)
+const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
+const MAX_PLAYERS = 11;
+const HOST_SEND_MS = 125;    // værten sender tilstanden 8 gange/sek
+const CLIENT_SEND_MS = 130;  // spillerne sender position ~8 gange/sek
+const LOBBY_PING_MS = 1500;
+const GAME_TIME = 90;        // en runde varer 1:30 for alle
+const SHOT_POINT = 100;
+// Hvor fuld er man? 4 stadier: 0 Klar, 1 Tipsy, 2 Snalret, 3 Stiv. Øl +1, shot +3 (max 3).
+// Stadiet styrer både lommelygtens lys og hvor svært det er at styre. Kebab gør én helt klar igen.
+const STADIER = [
+  { navn: "🙂 Klar", lys: 3.0, fuld: 0 },
+  { navn: "😊 Tipsy", lys: 2.4, fuld: 0.35 },
+  { navn: "🥴 Snalret", lys: 1.85, fuld: 0.7 },
+  { navn: "🤪 Stiv", lys: 1.35, fuld: 1 },
+];
+const stadieAf = f => Math.max(0, Math.min(3, f));
+const R = 0.27, VT = 0.18;   // bananmandens radius og murenes tykkelse (i celler)
+const ACC = 16, MAX_FART = 5.5, FRIKTION = 2.2;
+const HOP_TID = 0.65;
+const SVIRP_RAEKKE = 1.35;   // hvor tæt man skal være for at svirpe (celler)
+const FRYS_TID = 3, IMMUN_TID = 2, SVIRP_POINT = 50, ARR_POINT = 50;
+const HJEM_POINT = b => 200 + 100 * b;   // 300, 400, 500 …
+const OEL_POINT = k => 30 * k;           // 30, 60, 90 … (k = antal øl)
+const ARR_TID = 5, ARR_FART = 3;
+const HATTE = ["#e63946", "#1d4ed8", "#2a9d8f", "#9b5de5", "#f77f00", "#222222", "#ff70a6", "#00b4d8", "#70e000", "#8d5524", "#ffffff"];
+const HAT_NAVNE = ["rød", "blå", "grøn", "lilla", "orange", "sort", "lyserød", "lyseblå", "limegrøn", "brun", "hvid"];
+
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = n => Math.floor(n).toLocaleString("da-DK");
+const komma = v => v.toFixed(1).replace(".", ",");
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ---------- Lærred ---------- */
+const cv = $("c"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener("resize", resize); resize();
+
+/* ---------- Lyd ---------- */
+let actx = null, lydTil = true;
+try { lydTil = localStorage.getItem("bananmanden_lyd") !== "0"; } catch (e) { }
+function bip(freq, dur = 0.1, type = "square", vol = 0.07, delay = 0) {
+  if (!lydTil) return;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t0 = actx.currentTime + delay;
+    o.type = type; o.frequency.setValueAtTime(freq, t0); g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + dur);
+  } catch (e) { }
+}
+function lydSvirp() { bip(1800, 0.06, "sawtooth", 0.06); bip(600, 0.08, "square", 0.08, 0.05); }
+function lydAv() { bip(700, 0.12, "square", 0.09); bip(420, 0.25, "square", 0.09, 0.1); }
+function opdaterLydKnap() { $("lydKnap").textContent = lydTil ? "🔊" : "🔇"; }
+
+/* =====================================================================
+   NETVÆRK – lille Reverb-klient (samme som i Pizza Party Multi)
+   ===================================================================== */
+const Net = {
+  ws: null, want: false, main: "", idle: 0,
+  topics: new Set(), joined: new Set(),
+  onMsg: null, onStatus: null,
+  open(main) { this.close(); this.want = true; this.main = main; this.topics = new Set([main]); this._connect(); },
+  join(topic) { if (this.topics.has(topic)) return; this.topics.add(topic); this._raw("pusher:subscribe", { channel: topic }); },
+  leave(topic) { if (!this.topics.delete(topic)) return; this.joined.delete(topic); this._raw("pusher:unsubscribe", { channel: topic }); },
+  _raw(event, data) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ event, data })); },
+  _connect() {
+    const ws = new WebSocket(`wss://${RT.host}:${RT.port}/app/${RT.key}?protocol=7&client=js&version=8.4.0&flash=false`);
+    this.ws = ws; this.joined = new Set();
+    const resetIdle = () => { clearTimeout(this.idle); this.idle = setTimeout(() => this._raw("pusher:ping", {}), 20000); };
+    ws.onmessage = e => {
+      if (ws !== this.ws) return;
+      resetIdle();
+      let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+      let d = m.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch (err) { } }
+      if (m.event === "pusher:connection_established") {
+        for (const t of this.topics) this._raw("pusher:subscribe", { channel: t });
+      } else if (m.event === "pusher_internal:subscription_succeeded") {
+        if (this.topics.has(m.channel)) this.joined.add(m.channel);
+        if (m.channel === this.main && this.onStatus) this.onStatus("ok");
+      } else if (m.event === "pusher:ping") {
+        this._raw("pusher:pong", {});
+      } else if (m.event === "pusher:error") {
+        console.warn("Reverb-fejl:", d);
+      } else if (m.channel && m.event && m.event.startsWith("client-") && this.joined.has(m.channel) && this.onMsg) {
+        this.onMsg(m.channel, m.event.slice(7), d || {});
+      }
+    };
+    ws.onclose = () => {
+      clearTimeout(this.idle);
+      if (ws !== this.ws) return;
+      this.joined = new Set();
+      if (this.onStatus) this.onStatus("lukket");
+      if (this.want) setTimeout(() => { if (this.want && this.ws === ws) this._connect(); }, 1500);
+    };
+  },
+  send(topic, event, payload) {
+    if (!this.joined.has(topic) || !this.ws || this.ws.readyState !== 1) return false;
+    this.ws.send(JSON.stringify({ event: "client-" + event, channel: topic, data: payload || {} }));
+    return true;
+  },
+  close() {
+    this.want = false; this.joined = new Set(); this.topics = new Set(); clearTimeout(this.idle);
+    const w = this.ws; this.ws = null;
+    if (w) try { w.close(); } catch (e) { }
+  },
+};
+const mainTopic = () => GAME_NAME + "-" + roomCode;
+const playerTopic = id => mainTopic() + "-" + id;
+const sendMain = (ev, payload) => Net.send(mainTopic(), ev, payload);
+const sendMine = (ev, payload) => Net.send(playerTopic(MY_ID), ev, payload);
+
+/* =====================================================================
+   LABYRINT – samme for alle (seedet ud fra banens nummer)
+   Vægge pr. celle: bit 1=op, 2=højre, 4=ned, 8=venstre
+   ===================================================================== */
+const DIR = [{ dx: 0, dy: -1, bit: 1, mod: 4 }, { dx: 1, dy: 0, bit: 2, mod: 8 }, { dx: 0, dy: 1, bit: 4, mod: 1 }, { dx: -1, dy: 0, bit: 8, mod: 2 }];
+function labStoerrelse(antal) { return antal <= 3 ? 15 : antal <= 6 ? 17 : 19; } // altid ulige, så der er en midte
+
+function kortesteVej(L, fx, fy, tx, ty) {
+  const n = L.n, forrige = new Map(), koe = [[fx, fy]];
+  forrige.set(fx + "," + fy, null);
+  for (let qi = 0; qi < koe.length; qi++) {
+    const [x, y] = koe[qi];
+    if (x === tx && y === ty) break;
+    for (const d of DIR) {
+      if (L.vaeg[y][x] & d.bit) continue;
+      const nx = x + d.dx, ny = y + d.dy, k = nx + "," + ny;
+      if (nx < 0 || ny < 0 || nx >= n || ny >= n || forrige.has(k)) continue;
+      forrige.set(k, [x, y]); koe.push([nx, ny]);
+    }
+  }
+  const sti = []; let c = [tx, ty];
+  while (c) { sti.unshift({ x: c[0], y: c[1] }); c = forrige.get(c[0] + "," + c[1]); }
+  return sti;
+}
+// Afstand (antal skridt) fra én celle til alle andre
+function afstande(L, fx, fy) {
+  const n = L.n, d = Array.from({ length: n }, () => Array(n).fill(-1)), koe = [[fx, fy]];
+  d[fy][fx] = 0;
+  for (let qi = 0; qi < koe.length; qi++) {
+    const [x, y] = koe[qi];
+    for (const r of DIR) {
+      if (L.vaeg[y][x] & r.bit) continue;
+      const nx = x + r.dx, ny = y + r.dy;
+      if (nx < 0 || ny < 0 || nx >= n || ny >= n || d[ny][nx] >= 0) continue;
+      d[ny][nx] = d[y][x] + 1; koe.push([nx, ny]);
+    }
+  }
+  return d;
+}
+
+function lavLabyrint(n, bane) {
+  const r = mulberry32(20261224 + bane * 977 + n);
+  const vaeg = Array.from({ length: n }, () => Array(n).fill(15));
+  const set = Array.from({ length: n }, () => Array(n).fill(false));
+  const stak = [[0, 0]]; set[0][0] = true;
+  while (stak.length) {
+    const [x, y] = stak[stak.length - 1];
+    const mulige = [0, 1, 2, 3].filter(i => {
+      const nx = x + DIR[i].dx, ny = y + DIR[i].dy;
+      return nx >= 0 && ny >= 0 && nx < n && ny < n && !set[ny][nx];
+    });
+    if (!mulige.length) { stak.pop(); continue; }
+    const d = DIR[mulige[Math.floor(r() * mulige.length)]];
+    vaeg[y][x] &= ~d.bit; vaeg[y + d.dy][x + d.dx] &= ~d.mod;
+    set[y + d.dy][x + d.dx] = true; stak.push([x + d.dx, y + d.dy]);
+  }
+  // Ekstra åbninger, så der er flere veje (og flere steder at møde hinanden)
+  for (let k = 0; k < n * n / 6; k++) {
+    const x = 1 + Math.floor(r() * (n - 2)), y = 1 + Math.floor(r() * (n - 2)), d = DIR[Math.floor(r() * 4)];
+    vaeg[y][x] &= ~d.bit; vaeg[y + d.dy][x + d.dx] &= ~d.mod;
+  }
+  const c = (n - 1) / 2;
+  // Åben pladsen i midten (3×3), hvor alle starter
+  for (let y = c - 1; y <= c + 1; y++) for (let x = c - 1; x <= c + 1; x++) {
+    if (x < c + 1) { vaeg[y][x] &= ~2; vaeg[y][x + 1] &= ~8; }
+    if (y < c + 1) { vaeg[y][x] &= ~4; vaeg[y + 1][x] &= ~1; }
+  }
+  const L = { n, c, vaeg, ting: [], biler: [] };
+  const dist = afstande(L, c, c);
+  let maxD = 0; for (const row of dist) for (const v of row) maxD = Math.max(maxD, v);
+  const brugt = new Set();
+  for (let y = c - 1; y <= c + 1; y++) for (let x = c - 1; x <= c + 1; x++) brugt.add(x + "," + y);
+  function find(minD, maxDD) {
+    for (let t = 0; t < 500; t++) {
+      const x = Math.floor(r() * n), y = Math.floor(r() * n);
+      if (brugt.has(x + "," + y) || dist[y][x] < minD || dist[y][x] > maxDD) continue;
+      brugt.add(x + "," + y); return { x, y };
+    }
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!brugt.has(x + "," + y)) { brugt.add(x + "," + y); return { x, y }; }
+  }
+  L.maal = find(Math.floor(maxD * 0.7), 999);                 // huset: langt fra midten
+  const a = find(Math.floor(maxD * 0.25), Math.floor(maxD * 0.6)); // den hemmelige arrangør
+  L.arr = { x: a.x + 0.5, y: a.y + 0.5 };
+  let id = 0;
+  for (let k = 0; k < Math.floor(n / 2); k++) { const p = find(2, 999); L.ting.push({ id: id++, type: "kebab", x: p.x, y: p.y }); }
+  for (let k = 0; k < Math.floor(n / 2); k++) { const p = find(2, 999); L.ting.push({ id: id++, type: "oel", x: p.x, y: p.y }); }
+  for (let k = 0; k < 3; k++) { const p = find(3, 999); L.ting.push({ id: id++, type: "shot", x: p.x, y: p.y }); } // enkelte shots
+
+  // Parkerede biler på tværs af vejen: én på korteste vej hjem + nogle tilfældige
+  const B = 0.25;
+  function bilMellem(a, b, farveI) {
+    const vandret = a.x !== b.x;
+    const rekt = vandret
+      ? [Math.max(a.x, b.x) - B, a.y + VT / 2, Math.max(a.x, b.x) + B, a.y + 1 - VT / 2]
+      : [a.x + VT / 2, Math.max(a.y, b.y) - B, a.x + 1 - VT / 2, Math.max(a.y, b.y) + B];
+    L.biler.push({ vandret, rekt, farve: ["#c1121f", "#1d4ed8", "#f5f5f5", "#2b2d42", "#e9c46a", "#2a9d8f"][farveI % 6] });
+  }
+  const vej = kortesteVej(L, c, c, L.maal.x, L.maal.y);
+  const ki = Math.max(2, Math.floor(vej.length * 0.6));
+  if (vej.length > 3) bilMellem(vej[ki - 1], vej[ki], bane);
+  for (let k = 0, t = 0; k < Math.floor(n / 5) && t < 300; t++) {
+    const x = Math.floor(r() * n), y = Math.floor(r() * n), d = DIR[1 + Math.floor(r() * 2)]; // højre eller ned
+    const nx = x + d.dx, ny = y + d.dy;
+    if (nx >= n || ny >= n || (vaeg[y][x] & d.bit)) continue;
+    if (Math.abs(x - c) <= 2 && Math.abs(y - c) <= 2) continue;
+    bilMellem({ x, y }, { x: nx, y: ny }, bane + k + 1); k++;
+  }
+  return L;
+}
+
+/* =====================================================================
+   STYRING
+   Telefon: vip telefonen (kuglespil). Løft telefonen hurtigt = hop.
+            Tryk på skærmen = svirp med bæltet.
+   Computer: piletaster/WASD, mellemrum = hop, F / Enter / klik = svirp.
+   ===================================================================== */
+const erTouch = matchMedia("(pointer: coarse)").matches;
+const taster = {};
+addEventListener("keydown", e => {
+  if (e.target && e.target.tagName === "INPUT") {
+    if (e.key === "Enter") (e.target.id === "kodeInput" ? joinRoom : createRoom)();
+    return;
+  }
+  if (e.key.startsWith("Arrow") || e.key === " ") e.preventDefault();
+  taster[e.key.toLowerCase()] = true;
+  if (state !== "play") return;
+  if (e.key === " ") hop();
+  if ((e.key === "f" || e.key === "F" || e.key === "Enter") && !e.repeat) svirp();
+});
+addEventListener("keyup", e => { taster[e.key.toLowerCase()] = false; });
+function clearInput() { for (const k in taster) taster[k] = false; joy = null; }
+
+const vip = { aktiv: false, x: 0, y: 0, nulX: 0, nulY: 0, kalibrer: true, startet: false };
+function vipRaa(e) {
+  const b = e.beta || 0, g = e.gamma || 0;
+  const v = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  if (v === 90) return [b, -g];
+  if (v === -90 || v === 270) return [-b, g];
+  if (v === 180) return [-g, -b];
+  return [g, b];
+}
+function paaVip(e) {
+  if (e.beta == null && e.gamma == null) return;
+  vip.aktiv = true;
+  const [x, y] = vipRaa(e);
+  if (vip.kalibrer) { vip.nulX = x; vip.nulY = y; vip.kalibrer = false; }
+  vip.x = x - vip.nulX; vip.y = y - vip.nulY;
+}
+function paaBevaegelse(e) { const a = e.acceleration; if (a && a.z != null && a.z > 7) hop(); }
+async function startVip() { // skal kaldes fra et tryk (iPhone kræver tilladelse)
+  if (vip.startet) return; vip.startet = true;
+  try {
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+      if (await DeviceOrientationEvent.requestPermission() !== "granted") { vip.startet = false; return; }
+    }
+    addEventListener("deviceorientation", paaVip);
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      try { await DeviceMotionEvent.requestPermission(); } catch (e) { }
+    }
+    addEventListener("devicemotion", paaBevaegelse);
+  } catch (e) { vip.startet = false; }
+}
+
+// Tryk = svirp. Uden vip-styring kan man trække med fingeren som joystick (kort tryk = svirp).
+let joy = null;
+cv.addEventListener("pointerdown", e => {
+  if (state !== "play") return;
+  if (vip.aktiv || e.pointerType === "mouse") { svirp(); return; }
+  joy = { ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId, t: performance.now() };
+});
+cv.addEventListener("pointermove", e => { if (joy && e.pointerId === joy.id) { joy.x = e.clientX; joy.y = e.clientY; } });
+["pointerup", "pointercancel"].forEach(n => cv.addEventListener(n, e => {
+  if (!joy || e.pointerId !== joy.id) return;
+  if (performance.now() - joy.t < 250 && Math.hypot(joy.x - joy.ox, joy.y - joy.oy) < 12) svirp();
+  joy = null;
+}));
+function haeldning() {
+  let ax = 0, ay = 0;
+  if (taster.arrowleft || taster.a) ax -= 1;
+  if (taster.arrowright || taster.d) ax += 1;
+  if (taster.arrowup || taster.w) ay -= 1;
+  if (taster.arrowdown || taster.s) ay += 1;
+  if (joy) { ax += (joy.x - joy.ox) / 50; ay += (joy.y - joy.oy) / 50; }
+  else if (vip.aktiv) { ax += vip.x / 18; ay += vip.y / 18; }
+  const l = Math.hypot(ax, ay);
+  if (l > 1) { ax /= l; ay /= l; }
+  return [ax, ay];
+}
+
+/* =====================================================================
+   TILSTAND
+   ===================================================================== */
+// state: "start" | "lobby" | "play" | "pause" | "wait" | "end"
+let state = "start", role = null, roomCode = "";
+const MY_ID = Math.random().toString(36).slice(2, 8);
+let lobby = { players: [], started: false };
+let lastHostMsg = 0, lobbySeen = false;
+let N = 15;          // labyrintens størrelse i denne runde
+let lab = null;      // nuværende labyrint (alle har den samme)
+let G = null;        // værtens fulde spil
+let S = null;        // det der tegnes (fælles tilstand fra værten)
+let ME = null;       // min egen bananmand (styres lokalt)
+let roundResult = null, endedAt = 0;
+
+function startPos(slot, L) { // lidt spredt i midten, så man kan se hinanden
+  const a = slot * 2.4, rr = slot ? 0.55 : 0;
+  return { x: L.c + 0.5 + Math.cos(a) * rr, y: L.c + 0.5 + Math.sin(a) * rr };
+}
+function slotAf(id) { return Math.max(0, lobby.players.findIndex(p => p.id === id)); }
+function farveAf(id) { const p = lobby.players.find(q => q.id === id); return p ? p.c : 0; }
+function navnAf(id) { const p = lobby.players.find(q => q.id === id); return p ? p.name : "?"; }
+
+function nyMig() {
+  const s = startPos(slotAf(MY_ID), lab);
+  return { x: s.x, y: s.y, vx: 0, vy: 0, vend: 1, gaa: 0, hop: 0, fuld: ME ? ME.fuld : 0, frz: 0, imm: 0, venter: new Map(), guide: null, sidstStoed: 0, svirpCd: 0,
+    st: ME ? ME.st : { hjem: 0, svirp: 0, svirpet: 0, oel: 0, kebab: 0, arr: 0 } };
+}
+// Ny labyrint (nr. b) hos alle: alle tilbage til midten
+function nyLabLokalt(b) {
+  lab = lavLabyrint(N, b);
+  S.bane = b; S.taget = new Set(); S.arrBy = null;
+  ME = nyMig();
+  vip.kalibrer = true;
+  for (const p of Object.values(S.players)) { const s = startPos(slotAf(p.id), lab); p.x = p.dx = s.x; p.y = p.dy = s.y; }
+}
+
+/* =====================================================================
+   MIN BANANMAND (kører hos alle, også værten)
+   ===================================================================== */
+const iLuften = () => ME.hop > 0.08 && ME.hop < HOP_TID - 0.05;
+const hopHoejde = h => h > 0 ? Math.sin(Math.PI * (1 - h / HOP_TID)) : 0;
+const fuldhed = () => ME ? STADIER[stadieAf(ME.fuld)].fuld : 0; // 0 → 1
+function hop() {
+  if (state !== "play" || !ME || ME.hop > 0 || ME.frz > 0) return;
+  ME.hop = HOP_TID; bip(520, 0.08, "square", 0.05); bip(780, 0.08, "square", 0.05, 0.06);
+}
+let mineSvirp = []; // svirp-animationer {fra, x, y, t}
+function svirp() {
+  if (state !== "play" || !ME) return;
+  if (ME.frz > 0 || ME.svirpCd > 0) return;
+  ME.svirpCd = 0.45;
+  lydSvirp();
+  S.anim.push({ fra: MY_ID, til: naermesteMaal(), t: 0.35 });
+  sendTilVaert("svirp", {});
+}
+// Hvem ville et svirp ramme (kun til animationen – værten afgør det)
+function naermesteMaal() {
+  let bedst = null, bd = SVIRP_RAEKKE;
+  for (const p of Object.values(S.players)) {
+    if (p.id === MY_ID) continue;
+    const d = Math.hypot(p.dx - ME.x, p.dy - ME.y);
+    if (d < bd) { bd = d; bedst = p.id; }
+  }
+  return bedst;
+}
+// Send en handling til værten (værten selv kalder direkte)
+function sendTilVaert(ev, m) {
+  m.id = MY_ID; m.b = S.bane; m.x = Math.round(ME.x * 100); m.y = Math.round(ME.y * 100); // min position lige nu
+  if (role === "host") hostHandling(MY_ID, ev, m);
+  else sendMine(ev, m);
+}
+
+function naereMure(cx, cy) {
+  const n = lab.n, h = VT / 2, ud = [];
+  for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++) {
+    if (x < 0 || y < 0 || x >= n || y >= n) continue;
+    const v = lab.vaeg[y][x];
+    if (v & 1) ud.push([x - h, y - h, x + 1 + h, y + h]);
+    if (v & 8) ud.push([x - h, y - h, x + h, y + 1 + h]);
+    if (y === n - 1 && (v & 4)) ud.push([x - h, y + 1 - h, x + 1 + h, y + 1 + h]);
+    if (x === n - 1 && (v & 2)) ud.push([x + 1 - h, y - h, x + 1 + h, y + 1 + h]);
+  }
+  return ud;
+}
+function kollision() {
+  const mure = naereMure(Math.floor(ME.x), Math.floor(ME.y));
+  if (!iLuften()) for (const b of lab.biler) mure.push(b.rekt); // i luften kan man hoppe over bilerne
+  for (const [x1, y1, x2, y2] of mure) {
+    const qx = Math.max(x1, Math.min(ME.x, x2)), qy = Math.max(y1, Math.min(ME.y, y2));
+    let dx = ME.x - qx, dy = ME.y - qy; const d = Math.hypot(dx, dy);
+    if (d >= R) continue;
+    if (d > 1e-6) { dx /= d; dy /= d; } else { dx = 0; dy = -1; }
+    ME.x = qx + dx * R; ME.y = qy + dy * R;
+    const vn = ME.vx * dx + ME.vy * dy;
+    if (vn < 0) {
+      ME.vx -= 1.3 * vn * dx; ME.vy -= 1.3 * vn * dy;
+      if (-vn > 2.5 && S.tidLokal - ME.sidstStoed > 0.15) { ME.sidstStoed = S.tidLokal; bip(100, 0.08, "triangle", 0.1); }
+    }
+  }
+}
+
+function opdaterMig(dt) {
+  S.tidLokal += dt;
+  ME.svirpCd = Math.max(0, ME.svirpCd - dt);
+  if (ME.hop > 0) ME.hop = Math.max(0, ME.hop - dt);
+
+  if (ME.frz > 0) { ME.vx = ME.vy = 0; } // svirpet: står stille og gnider sig i bagen
+  else {
+    let [ax, ay] = haeldning();
+    const fh = fuldhed(), t = S.tidLokal;
+    if (fh > 0) {
+      const v = Math.sin(t * 1.7) * 1.1 * fh, c = Math.cos(v), s = Math.sin(v);
+      [ax, ay] = [ax * c - ay * s + Math.sin(t * 3.1) * 0.35 * fh, ax * s + ay * c + Math.cos(t * 2.3) * 0.35 * fh];
+    }
+    ME.vx += ax * ACC * dt; ME.vy += ay * ACC * dt;
+  }
+  const f = Math.exp(-FRIKTION * dt); ME.vx *= f; ME.vy *= f;
+  const fart = Math.hypot(ME.vx, ME.vy);
+  if (fart > MAX_FART) { ME.vx *= MAX_FART / fart; ME.vy *= MAX_FART / fart; }
+  const skridt = Math.max(1, Math.ceil(fart * dt / 0.06));
+  for (let i = 0; i < skridt; i++) { ME.x += ME.vx * dt / skridt; ME.y += ME.vy * dt / skridt; kollision(); }
+  if (Math.abs(ME.vx) > 0.3) ME.vend = ME.vx > 0 ? 1 : -1;
+  ME.gaa += fart * dt * 6;
+
+  if (ME.frz > 0) return;
+  // Ting: spørg værten, om jeg var først
+  // (svarer værten ikke inden 1,5 sek – fx fordi en anden var først – må man prøve igen)
+  const nu = performance.now(), venter = k => ME.venter.has(k) && nu - ME.venter.get(k) < 1500;
+  for (const t of lab.ting) {
+    if (S.taget.has(t.id) || venter(t.id)) continue;
+    if (Math.hypot(t.x + 0.5 - ME.x, t.y + 0.5 - ME.y) > 0.45) continue;
+    ME.venter.set(t.id, nu);
+    sendTilVaert("tag", { i: t.id });
+  }
+  // Den hemmelige arrangør
+  if (S.arrBy === null && !venter("arr") && Math.hypot(lab.arr.x - ME.x, lab.arr.y - ME.y) < 0.6) {
+    ME.venter.set("arr", nu); sendTilVaert("arr", {});
+  }
+  if (ME.guide) opdaterGuide(dt);
+  // Hjemme!
+  if (!venter("hjem") && Math.hypot(lab.maal.x + 0.5 - ME.x, lab.maal.y + 0.5 - ME.y) < 0.4) {
+    ME.venter.set("hjem", nu); sendTilVaert("hjem", {});
+  }
+}
+// Arrangøren går foran ad korteste vej hjem (kun for den, der fandt ham)
+function opdaterGuide(dt) {
+  const g = ME.guide;
+  g.t += dt;
+  const venter = Math.hypot(g.x - ME.x, g.y - ME.y) > 2.2;
+  let rest = venter ? 0 : ARR_FART * dt;
+  while (rest > 0 && g.i < g.sti.length) {
+    const m = g.sti[g.i], tx = m.x + 0.5, ty = m.y + 0.5, d = Math.hypot(tx - g.x, ty - g.y);
+    if (d <= rest) { g.x = tx; g.y = ty; rest -= d; g.i++; }
+    else { g.x += (tx - g.x) / d * rest; g.y += (ty - g.y) / d * rest; rest = 0; }
+  }
+  if (g.t >= ARR_TID) { ME.guide = null; visBesked("🥸 …og så forsvandt arrangøren ud i natten."); bip(200, 0.3, "sine"); }
+}
+
+/* =====================================================================
+   VÆRTEN: afgør hvem der var først, svirp, point og tid
+   ===================================================================== */
+function hostNytSpil() {
+  N = labStoerrelse(lobby.players.length);
+  G = { t: 0, paused: false, bane: 1, taget: new Set(), arrBy: null, players: {}, evq: [], over: false, lastTick: 0 };
+  for (const lp of lobby.players) {
+    G.players[lp.id] = { id: lp.id, x: 0, y: 0, vend: 1, hop: 0, score: 0, frz: 0, imm: 0, last: performance.now(),
+      st: { hjem: 0, svirp: 0, svirpet: 0, oel: 0, shot: 0, kebab: 0, arr: 0 } };
+  }
+  hostSaetBane(1);
+}
+function hostSaetBane(b) {
+  G.bane = b; G.taget = new Set(); G.arrBy = null;
+  const L = lavLabyrint(N, b);
+  for (const p of Object.values(G.players)) { const s = startPos(slotAf(p.id), L); p.x = s.x; p.y = s.y; p.frz = 0; p.imm = 0; }
+}
+function hostEvent(...ev) { G.evq.push(ev); if (role === "host") anvendEvent(ev); }
+
+function hostHandling(id, ev, m) {
+  if (!G || G.over || G.paused) return;
+  const p = G.players[id];
+  if (!p) return;
+  if (m.b !== G.bane) return; // gammel besked fra en tidligere labyrint
+  const L = lab; // værten har altid den nuværende labyrint i "lab"
+  // Spilleren sender sin position med. Den bruges, hvis den passer nogenlunde med det, værten sidst hørte
+  // (positionerne kommer kun ~8 gange/sek, så værtens kopi kan være lidt bagud).
+  if (typeof m.x === "number" && Math.hypot(m.x / 100 - p.x, m.y / 100 - p.y) < 3) { p.x = m.x / 100; p.y = m.y / 100; }
+  if (ev === "tag") {
+    const t = L.ting.find(o => o.id === m.i);
+    if (!t || G.taget.has(t.id) || p.frz > 0) return;
+    if (Math.hypot(t.x + 0.5 - p.x, t.y + 0.5 - p.y) > 0.9) return; // ikke tæt nok på
+    G.taget.add(t.id);
+    if (t.type === "oel") { p.st.oel++; const pt = OEL_POINT(p.st.oel); p.score += pt; hostEvent("oel", id, t.id, pt); }
+    else if (t.type === "shot") { p.st.shot++; p.score += SHOT_POINT; hostEvent("shot", id, t.id, SHOT_POINT); }
+    else { p.st.kebab++; hostEvent("kebab", id, t.id); }
+  } else if (ev === "arr") {
+    if (G.arrBy !== null) return;
+    G.arrBy = id; p.st.arr++; p.score += ARR_POINT;
+    hostEvent("arr", id);
+  } else if (ev === "hjem") {
+    const pt = HJEM_POINT(G.bane);
+    p.st.hjem++; p.score += pt;
+    hostEvent("hjem", id, pt);
+    hostSaetBane(G.bane + 1);
+    hostSendState(); // alle får den nye labyrint med det samme
+  } else if (ev === "svirp") {
+    if (p.frz > 0) return;
+    let mål = null, bd = SVIRP_RAEKKE;
+    for (const q of Object.values(G.players)) {
+      if (q.id === id || q.frz > 0 || q.imm > 0 || performance.now() - q.last > 4000) continue;
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bd) { bd = d; mål = q; }
+    }
+    if (!mål) return;
+    mål.frz = FRYS_TID; mål.st.svirpet++;
+    p.st.svirp++; p.score += SVIRP_POINT;
+    hostEvent("svirp", id, mål.id);
+  }
+}
+
+function hostUpdate(dt) {
+  G.t += dt;
+  const hp = G.players[MY_ID];
+  Object.assign(hp, { x: ME.x, y: ME.y, vend: ME.vend, hop: ME.hop, last: performance.now() });
+  for (const p of Object.values(G.players)) {
+    if (p.frz > 0) { p.frz -= dt; if (p.frz <= 0) { p.frz = 0; p.imm = IMMUN_TID; } }
+    else if (p.imm > 0) p.imm = Math.max(0, p.imm - dt);
+  }
+  const left = GAME_TIME - G.t, sec = Math.ceil(left);
+  if (sec <= 10 && sec > 0 && sec !== G.lastTick) { G.lastTick = sec; hostEvent("tick"); }
+  if (left <= 0) hostEnd("Tiden er gået!");
+}
+
+function hostSendState() {
+  const pl = Object.values(G.players).map(p => [p.id, Math.round(p.x * 100), Math.round(p.y * 100), p.vend, Math.round(p.hop * 100),
+    p.score, Math.round(p.frz * 10), Math.round(p.imm * 10)]);
+  sendMain("state", { t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0, b: G.bane, n: N, tk: [...G.taget], ab: G.arrBy, pl, ev: G.evq });
+  G.evq = [];
+  // Værtens egen visning følger samme vej som spillernes
+  modtagState({ t: G.t, p: G.paused ? 1 : 0, b: G.bane, n: N, tk: [...G.taget], ab: G.arrBy, pl, ev: [] });
+}
+
+function hostEnd(reason) {
+  if (G.over) return;
+  G.over = true;
+  const res = Object.values(G.players)
+    .map(p => ({ id: p.id, n: navnAf(p.id), c: farveAf(p.id), s: p.score, st: p.st }))
+    .sort((a, b) => b.s - a.s);
+  hostSendState();
+  const msg = { reason, res };
+  sendMain("end", msg);
+  setTimeout(() => sendMain("end", msg), 800);
+  lobby.started = false;
+  showEnd(msg);
+}
+
+/* =====================================================================
+   ALLE: modtag værtens tilstand og hændelser
+   ===================================================================== */
+function nyVisning() {
+  S = { t: 0, recvAt: performance.now(), paused: false, bane: 0, taget: new Set(), arrBy: null, players: {}, anim: [], tidLokal: 0 };
+}
+function modtagState(m) {
+  if (!S) return;
+  if (m.n) N = m.n;
+  if (m.b !== S.bane) nyLabLokalt(m.b);
+  S.t = m.t; S.recvAt = performance.now(); S.paused = !!m.p;
+  S.taget = new Set(m.tk); S.arrBy = m.ab ?? null;
+  for (const [id, x, y, vend, hop, score, frz, imm] of m.pl) {
+    let p = S.players[id];
+    if (!p) p = S.players[id] = { id, dx: x / 100, dy: y / 100, gaa: 0 };
+    Object.assign(p, { x: x / 100, y: y / 100, vend, hop: hop / 100, score, frz: frz / 10, imm: imm / 10 });
+    if (Math.hypot(p.dx - p.x, p.dy - p.y) > 3) { p.dx = p.x; p.dy = p.y; }
+    if (id === MY_ID && ME) {
+      if (frz > 0 && ME.frz <= 0) { ME.frz = frz / 10; } // jeg er blevet svirpet
+      ME.frz = frz / 10; ME.imm = imm / 10;
+    }
+  }
+  for (const ev of m.ev || []) anvendEvent(ev);
+  if (role === "client") {
+    if (m.p && state === "play") { state = "pause"; clearInput(); showPause("Pause", "Værten har sat spillet på pause."); }
+    if (!m.p && (state === "pause" || state === "wait")) { state = "play"; showScreen(null); }
+  }
+}
+function anvendEvent([type, id, a, b]) {
+  const mig = id === MY_ID;
+  if (type === "tick") { bip(880, 0.05, "square", 0.05); return; }
+  if (type === "oel") {
+    if (mig) { ME.fuld = Math.min(3, ME.fuld + 1); ME.venter.delete(a); bip(300, 0.15, "triangle"); visBesked(`🍺 Skål! +${b} – ${STADIER[stadieAf(ME.fuld)].navn}`); }
+  } else if (type === "shot") {
+    if (mig) { ME.fuld = 3; ME.venter.delete(a); bip(250, 0.1, "sawtooth"); bip(180, 0.3, "triangle", 0.08, 0.1); visBesked(`🥃 SHOT! +${b} – 🤪 Stiv!`); }
+  } else if (type === "kebab") {
+    if (mig) { ME.fuld = 0; ME.venter.delete(a); bip(660, 0.08); bip(990, 0.12, "square", 0.07, 0.05); visBesked("🥙 Kebab! Helt klar igen 🙂"); }
+  } else if (type === "arr") {
+    if (mig) {
+      ME.guide = { x: lab.arr.x, y: lab.arr.y, t: 0, i: 0, sti: kortesteVej(lab, Math.floor(lab.arr.x), Math.floor(lab.arr.y), lab.maal.x, lab.maal.y) };
+      visBesked("🥸 Den hemmelige arrangør: \"Følg mig, banan…\" +50");
+      [392, 494, 587, 784].forEach((f, k) => bip(f, 0.12, "square", 0.06, k * 0.09));
+    } else visBesked(`🥸 ${navnAf(id)} fandt den hemmelige arrangør!`);
+  } else if (type === "hjem") {
+    visBesked(mig ? `🏠 HJEMME! +${a} – ny labyrint!` : `🏠 ${navnAf(id)} kom hjem først! Ny labyrint…`);
+    if (mig) { ME.st.hjem++; bip(523, 0.1); bip(659, 0.1, "square", 0.07, 0.1); bip(784, 0.2, "square", 0.07, 0.2); }
+    else bip(330, 0.3, "triangle", 0.08);
+  } else if (type === "svirp") {
+    if (!(id === MY_ID && role === "host")) { if (id !== MY_ID) S.anim.push({ fra: id, til: a, t: 0.35 }); }
+    if (a === MY_ID) { lydAv(); visBesked(`💢 AV! ${navnAf(id)} svirpede dig i bagen!`); if (navigator.vibrate) navigator.vibrate(200); }
+    else if (mig) { bip(1200, 0.08, "square", 0.06, 0.1); visBesked(`🪢 Svirp! ${navnAf(a)} har ondt i bagen. +${SVIRP_POINT}`); }
+    else lydSvirp();
+  }
+}
+
+/* =====================================================================
+   BESKEDER FRA NETVÆRKET
+   ===================================================================== */
+function onNetMsg(topic, ev, m) {
+  if (role === "host") {
+    if (topic !== mainTopic()) m.id = topic.slice(mainTopic().length + 1); // på spillerens egen kanal stoler vi kun på kanalen
+    if (ev === "hello") hostHello(m);
+    else if (ev === "bye") { hostRemove(m.id); renderLobby(); hostBroadcastLobby(); }
+    else if (ev === "pos" && G && state !== "end") {
+      const p = G.players[m.id];
+      if (!p) return;
+      p.last = performance.now();
+      if (m.b !== G.bane) return;
+      p.x = Math.max(0, Math.min(N, m.x / 100)); p.y = Math.max(0, Math.min(N, m.y / 100)); p.vend = m.v; p.hop = m.h / 100;
+    } else if (["tag", "arr", "hjem", "svirp"].includes(ev) && G && state !== "end") {
+      const p = G.players[m.id]; if (p) p.last = performance.now();
+      hostHandling(m.id, ev, m);
+    }
+    return;
+  }
+  if (topic !== mainTopic()) return;
+  if (ev === "lobby" || ev === "state" || ev === "start" || ev === "end") lastHostMsg = performance.now();
+  if (ev === "lobby") {
+    lobbySeen = true;
+    lobby.players = m.pl; lobby.started = !!m.st;
+    const inIt = m.pl.some(p => p.id === MY_ID);
+    if (!m.st && (state === "lobby" || state === "end" || state === "wait")) {
+      if (state !== "lobby") { state = "lobby"; showScreen("lobbySkaerm"); visBaggrund(); }
+      renderLobby();
+      $("lobbyBesked").textContent = inIt ? "" : (m.pl.length >= MAX_PLAYERS ? `Rummet er fyldt (max ${MAX_PLAYERS}).` : "Melder mig ind…");
+    } else if (m.st && state === "lobby") {
+      renderLobby();
+      $("lobbyBesked").textContent = inIt ? "" : "Spillet er i gang – du kommer med i næste runde.";
+    }
+  } else if (ev === "start") {
+    lobby.players = m.pl;
+    if (m.pl.some(p => p.id === MY_ID) && (state === "lobby" || state === "end")) { N = m.n; startRunde(); }
+  } else if (ev === "state") {
+    if ((state === "play" || state === "pause" || state === "wait") && S) modtagState(m);
+  } else if (ev === "end") {
+    if ((state === "play" || state === "pause" || state === "wait") && m.res.some(r => r.id === MY_ID)) showEnd(m);
+  }
+}
+function hostHello(m) {
+  let p = lobby.players.find(q => q.id === m.id);
+  if (!p && !lobby.started && lobby.players.length < MAX_PLAYERS) {
+    const used = lobby.players.map(q => q.c);
+    const c = HATTE.findIndex((_, i) => !used.includes(i));
+    let name = String(m.name || "Anonym").slice(0, 16), base = name, k = 2;
+    while (lobby.players.some(q => q.name === name)) name = `${base} ${k++}`;
+    p = { id: m.id, name, c, last: 0 };
+    lobby.players.push(p);
+    Net.join(playerTopic(p.id));
+    bip(660, 0.08); bip(880, 0.1, "square", 0.07, 0.08);
+    renderLobby(); hostBroadcastLobby();
+  }
+  if (p) p.last = performance.now();
+  else hostBroadcastLobby();
+}
+function hostRemove(id) {
+  if (id === MY_ID) return;
+  lobby.players = lobby.players.filter(p => p.id !== id);
+  Net.leave(playerTopic(id));
+}
+function hostBroadcastLobby() {
+  sendMain("lobby", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })), st: lobby.started ? 1 : 0 });
+}
+
+/* =====================================================================
+   RUM: opret / deltag / forlad
+   ===================================================================== */
+const NAVN_KEY = "drengene_navn", TOP_KEY = "bananmandenmulti_top10", BEDSTE_KEY = "bananmandenmulti_bedste";
+function hentNavn() { return ($("navnInput").value.trim() || "Anonym").slice(0, 16); }
+function gemNavn() { try { localStorage.setItem(NAVN_KEY, hentNavn()); } catch (e) { } }
+function lavKode() { const A = "ABCDEFGHJKLMNPRSTUVWXYZ"; let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
+const ON_PAGES = location.hostname === "gaardee.github.io";
+function forbindHint() { return ON_PAGES ? "Forbinder…" : "Multiplayer virker kun på gaardee.github.io – ikke når spillet er åbnet lokalt."; }
+
+function createRoom() {
+  bip(440, 0.05); startVip(); gemNavn();
+  role = "host"; roomCode = lavKode();
+  lobby = { players: [{ id: MY_ID, name: hentNavn(), c: 0, last: Infinity }], started: false };
+  Net.onMsg = onNetMsg;
+  Net.onStatus = st => { if (state === "lobby") $("lobbyBesked").textContent = st === "ok" ? "" : forbindHint(); if (st === "ok") hostBroadcastLobby(); };
+  Net.open(mainTopic());
+  enterLobby();
+}
+function joinRoom() {
+  bip(440, 0.05); startVip(); gemNavn();
+  const code = $("kodeInput").value.trim().toUpperCase().replace(/[^A-Z]/g, "");
+  if (code.length !== 4) { $("startFejl").textContent = "Koden skal være 4 bogstaver."; return; }
+  role = "client"; roomCode = code;
+  lobby = { players: [], started: false }; lobbySeen = false;
+  Net.onMsg = onNetMsg;
+  Net.onStatus = st => { if (st === "ok") sendMain("hello", { id: MY_ID, name: hentNavn() }); else if (state === "lobby") $("lobbyBesked").textContent = forbindHint(); };
+  Net.open(mainTopic());
+  Net.join(playerTopic(MY_ID));
+  enterLobby();
+  setTimeout(() => { if (state === "lobby" && role === "client" && !lobbySeen) $("lobbyBesked").textContent = ON_PAGES ? "Kan ikke finde rummet – er koden rigtig, og har værten spillet åbent?" : forbindHint(); }, 5000);
+}
+function enterLobby() {
+  state = "lobby";
+  $("startFejl").textContent = "";
+  $("lobbyKode").textContent = roomCode;
+  $("lobbyBesked").textContent = !ON_PAGES ? forbindHint() : role === "host" ? "Forbinder…" : "Leder efter rummet…";
+  try { history.replaceState(null, "", "#" + roomCode); } catch (e) { }
+  renderLobby();
+  showScreen("lobbySkaerm");
+}
+function leaveRoom() {
+  if (role === "client") sendMine("bye", { id: MY_ID });
+  Net.close();
+  role = null; roomCode = ""; G = null; lobby = { players: [], started: false };
+  $("pauseKnap").hidden = true; $("rang").hidden = true;
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { }
+  state = "start";
+  showScreen("startSkaerm");
+  visBaggrund();
+}
+function renderLobby() {
+  const list = lobby.players;
+  $("lobbyListe").innerHTML = list.length
+    ? list.map((p, i) => `<li><span class="prik" style="background:${HATTE[p.c]}"></span>${esc(p.name)}${i === 0 ? " 👑" : ""}${p.id === MY_ID ? " <small>(dig)</small>" : ""}</li>`).join("")
+    : "<li>…</li>";
+  const n = labStoerrelse(Math.max(1, list.length));
+  $("labInfo").textContent = `Labyrint: ${n} × ${n} · runden varer 1:30`;
+  $("startKnap").hidden = role !== "host";
+  $("startKnap").textContent = list.length > 1 ? `Start spillet! (${list.length} spillere)` : "Start alene (eller vent på venner)";
+}
+function roomLink() { return location.origin + location.pathname + "#" + roomCode; }
+
+function hostStart() {
+  if (role !== "host" || state !== "lobby") return;
+  lobby.started = true;
+  hostNytSpil();
+  sendMain("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })), n: N });
+  startRunde();
+}
+function startRunde() {
+  ME = null;
+  nyVisning();
+  nyLabLokalt(1);
+  for (const lp of lobby.players) { const s = startPos(slotAf(lp.id), lab); S.players[lp.id] = { id: lp.id, x: s.x, y: s.y, dx: s.x, dy: s.y, vend: 1, hop: 0, score: 0, frz: 0, imm: 0, gaa: 0 }; }
+  roundResult = null; clearInput(); vip.kalibrer = true;
+  lastHostMsg = performance.now();
+  state = "play";
+  $("pauseKnap").hidden = role !== "host";
+  $("rang").hidden = false;
+  showScreen(null);
+  visBesked("Hvor fanden bor jeg? 🤔 Find huset først!");
+  bip(523, 0.1); bip(784, 0.15, "square", 0.07, 0.12);
+}
+
+
+/* =====================================================================
+   TEGNING
+   ===================================================================== */
+// Bananmanden på cykel. hat = hattens farve. ondt = er blevet svirpet (rød, øm bag)
+function tegnBananmand(x, y, v, skala, hjulFase, nu, vend, hat, ondt) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(v); ctx.scale(skala * vend, skala);
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const hx of [-34, 34]) {
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(hx, -22, 20, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "#aaa"; ctx.lineWidth = 1.5;
+    for (let k = 0; k < 4; k++) {
+      const a = hjulFase + k * Math.PI / 4;
+      ctx.beginPath(); ctx.moveTo(hx + Math.cos(a) * 18, -22 + Math.sin(a) * 18); ctx.lineTo(hx - Math.cos(a) * 18, -22 - Math.sin(a) * 18); ctx.stroke();
+    }
+  }
+  ctx.strokeStyle = "#d62828"; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-34, -22); ctx.lineTo(-6, -24); ctx.lineTo(24, -56); ctx.lineTo(-12, -56); ctx.lineTo(-6, -24);
+  ctx.moveTo(-34, -22); ctx.lineTo(-12, -56); ctx.moveTo(34, -22); ctx.lineTo(24, -56); ctx.lineTo(22, -66); ctx.stroke();
+  ctx.strokeStyle = "#222"; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(16, -68); ctx.lineTo(30, -66); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-22, -60); ctx.lineTo(-4, -60); ctx.stroke();
+  ctx.fillStyle = "#222"; ctx.fillRect(28, -74, 8, 12); ctx.fillStyle = "#fffbe0"; ctx.fillRect(34, -72, 3, 8);
+  const pa = hjulFase * 0.8;
+  ctx.strokeStyle = "#2b2b5a"; ctx.lineWidth = 8;
+  for (const ph of [0, Math.PI]) {
+    const px = -6 + Math.cos(pa + ph) * 10, py = -24 + Math.sin(pa + ph) * 10;
+    ctx.beginPath(); ctx.moveTo(-12, -64); ctx.lineTo((px - 12) / 2 + 8, (py - 64) / 2 - 4); ctx.lineTo(px, py); ctx.stroke();
+    ctx.fillStyle = "#111"; ctx.fillRect(px - 5, py - 2, 12, 5);
+  }
+  ctx.save(); ctx.translate(-10, -26); ctx.rotate(ondt ? 0.05 : 0.22);
+  ctx.fillStyle = "#ffe14d"; ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-4, -165); ctx.bezierCurveTo(30, -150, 34, -70, 18, -36);
+  ctx.bezierCurveTo(4, -28, -16, -30, -24, -38); ctx.bezierCurveTo(-36, -80, -30, -140, -4, -165);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "rgba(120,80,20,.5)";
+  ctx.beginPath(); ctx.arc(14, -70, 4, 0, 7); ctx.arc(-18, -100, 3, 0, 7); ctx.fill();
+  // Øm, rød bag med bæltemærker
+  if (ondt) {
+    const puls = 1 + Math.sin(nu / 80) * 0.12;
+    ctx.fillStyle = "rgba(255,40,40,.85)";
+    ctx.beginPath(); ctx.ellipse(-22, -52, 13 * puls, 18 * puls, 0.3, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#8b0000"; ctx.lineWidth = 3;
+    for (const o of [-8, 0, 8]) { ctx.beginPath(); ctx.moveTo(-33, -56 + o); ctx.lineTo(-12, -48 + o); ctx.stroke(); }
+  }
+  // Hat i spillerens farve
+  ctx.fillStyle = hat; ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(-3, -158, 17, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(-21, -160, 36, 6);
+  ctx.fillStyle = hat; ctx.beginPath(); ctx.arc(-3, -177, 6, 0, 7); ctx.fill(); ctx.stroke();
+  // Ansigt
+  ctx.fillStyle = "#f2c49b"; ctx.beginPath(); ctx.ellipse(2, -112, 15, 18, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#222"; ctx.lineWidth = 3;
+  if (ondt) { // knebne øjne og åben mund: AV!
+    ctx.beginPath(); ctx.moveTo(-9, -121); ctx.lineTo(-2, -117); ctx.lineTo(-9, -113); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13, -121); ctx.lineTo(6, -117); ctx.lineTo(13, -113); ctx.stroke();
+    ctx.fillStyle = "#7a2b20"; ctx.beginPath(); ctx.ellipse(2, -102, 5, 6, 0, 0, 7); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.arc(-5, -117, 3, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(9, -117, 3, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.strokeStyle = "#7a2b20"; ctx.beginPath(); ctx.arc(2, -104, 6, 0.3, Math.PI - 0.3); ctx.stroke();
+  }
+  ctx.fillStyle = "#e0453a"; ctx.beginPath(); ctx.arc(2, -110, 4, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = "#ffe14d"; ctx.lineWidth = 8;
+  if (ondt) { ctx.beginPath(); ctx.moveTo(-6, -100); ctx.lineTo(-30, -70); ctx.stroke(); } // hånd på bagen
+  else { ctx.beginPath(); ctx.moveTo(4, -110); ctx.lineTo(18, -68); ctx.stroke(); }
+  ctx.restore();
+}
+
+function tegnBil(b, celle, nu) {
+  const [x1, y1, x2, y2] = b.rekt;
+  const L = celle * 0.95, Bb = celle * 0.5;
+  ctx.save(); ctx.translate((x1 + x2) / 2 * celle, (y1 + y2) / 2 * celle); if (b.vandret) ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = "#111";
+  for (const [wx, wy] of [[-L * 0.3, -Bb / 2], [L * 0.3, -Bb / 2], [-L * 0.3, Bb / 2], [L * 0.3, Bb / 2]]) ctx.fillRect(wx - L * 0.08, wy - Bb * 0.08, L * 0.16, Bb * 0.16);
+  ctx.fillStyle = b.farve; ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 2;
+  ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(-L / 2, -Bb / 2, L, Bb, Bb * 0.3); else ctx.rect(-L / 2, -Bb / 2, L, Bb); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#9ecae1";
+  ctx.fillRect(-L * 0.22, -Bb * 0.38, L * 0.12, Bb * 0.76); ctx.fillRect(L * 0.12, -Bb * 0.38, L * 0.1, Bb * 0.76);
+  ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(-L * 0.1, -Bb * 0.38, L * 0.22, Bb * 0.76);
+  ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(-L * 0.08, -Bb * 0.3, L * 0.18, Bb * 0.25);
+  ctx.fillStyle = "#ffe9a8"; ctx.fillRect(L / 2 - 4, -Bb * 0.38, 4, Bb * 0.18); ctx.fillRect(L / 2 - 4, Bb * 0.2, 4, Bb * 0.18);
+  ctx.fillStyle = Math.floor(nu / 500) % 2 ? "#ff8c00" : "#7a4300";
+  ctx.fillRect(-L / 2, -Bb * 0.38, 4, Bb * 0.14); ctx.fillRect(-L / 2, Bb * 0.24, 4, Bb * 0.14);
+  ctx.restore();
+}
+
+function tegnArrangoer(x, y, s, nu) {
+  ctx.save(); ctx.translate(x, y + Math.sin(nu / 200) * s * 0.04);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `${s * 0.65}px serif`; ctx.fillText("🥸", 0, 0);
+  ctx.fillStyle = "#d62828";
+  ctx.beginPath(); ctx.moveTo(-s * 0.27, -s * 0.22); ctx.lineTo(s * 0.27, -s * 0.22); ctx.lineTo(s * 0.16, -s * 0.62); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.fillRect(-s * 0.29, -s * 0.27, s * 0.58, s * 0.08);
+  ctx.beginPath(); ctx.arc(s * 0.16, -s * 0.62, s * 0.06, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+// Bæltet svirper fra den ene til den anden
+function tegnSvirp(a, celle) {
+  const fra = a.fra === MY_ID ? ME : S.players[a.fra];
+  if (!fra) return;
+  const fx = (a.fra === MY_ID ? ME.x : fra.dx) * celle, fy = (a.fra === MY_ID ? ME.y : fra.dy) * celle - celle * 0.55;
+  let tx, ty;
+  const til = a.til === MY_ID ? { dx: ME.x, dy: ME.y } : a.til ? S.players[a.til] : null;
+  if (til) { tx = til.dx * celle; ty = til.dy * celle - celle * 0.25; }
+  else { const vend = a.fra === MY_ID ? ME.vend : (fra.vend || 1); tx = fx + vend * celle * 1.2; ty = fy + celle * 0.3; }
+  const k = 1 - a.t / 0.35; // 0 → 1
+  const ex = fx + (tx - fx) * Math.min(1, k * 1.6), ey = fy + (ty - fy) * Math.min(1, k * 1.6);
+  ctx.strokeStyle = "#5a3a1a"; ctx.lineWidth = Math.max(3, celle * 0.07); ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo((fx + ex) / 2, Math.min(fy, ey) - celle * 0.6 * (1 - k), ex, ey); ctx.stroke();
+  ctx.fillStyle = "#d4af37"; ctx.fillRect(ex - celle * 0.07, ey - celle * 0.07, celle * 0.14, celle * 0.14); // spænde
+  if (k > 0.6 && til) { ctx.font = `bold ${celle * 0.4}px system-ui`; ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.fillText("SVIIIRP!", (fx + tx) / 2, Math.min(fy, ty) - celle * 0.4); }
+}
+
+const morkCv = document.createElement("canvas"), mctx = morkCv.getContext("2d");
+function tegn(nu) {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, W, H);
+  if (!lab) return;
+  const celle = Math.max(40, Math.min(W, H) / 7);
+  const fx = ME ? ME.x : lab.c + 0.5 + Math.sin(nu / 3000) * 2;
+  const fy = ME ? ME.y : lab.c + 0.5 + Math.cos(nu / 3700) * 2;
+  const slinger = Math.sin(nu / 300) * 0.3 * fuldhed();
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.rotate(slinger * 0.4); ctx.translate(-W / 2, -H / 2);
+  ctx.translate(W / 2 - fx * celle, H / 2 - fy * celle);
+
+  ctx.fillStyle = "#23283f"; ctx.fillRect(0, 0, lab.n * celle, lab.n * celle);
+  ctx.fillStyle = "rgba(255,255,255,.07)";
+  for (let y = 0; y < lab.n; y++) for (let x = 0; x < lab.n; x++) if ((x * 7 + y * 13) % 3 === 0) ctx.fillRect(x * celle + celle * 0.3, y * celle + celle * 0.6, 3, 3);
+  // Startpladsen i midten
+  ctx.fillStyle = "rgba(255,225,77,.08)"; ctx.fillRect((lab.c - 1) * celle, (lab.c - 1) * celle, 3 * celle, 3 * celle);
+
+  if (ME && ME.guide) {
+    ctx.fillStyle = "rgba(255,80,80,.55)";
+    for (let k = ME.guide.i; k < Math.min(ME.guide.sti.length, ME.guide.i + 8); k++) {
+      const m = ME.guide.sti[k]; ctx.beginPath(); ctx.arc((m.x + 0.5) * celle, (m.y + 0.5) * celle, celle * 0.08, 0, 7); ctx.fill();
+    }
+  }
+  const t = VT * celle;
+  for (let y = 0; y < lab.n; y++) for (let x = 0; x < lab.n; x++) {
+    const v = lab.vaeg[y][x], px = x * celle, py = y * celle;
+    ctx.fillStyle = "#1d5e3a";
+    if (v & 1) ctx.fillRect(px - t / 2, py - t / 2, celle + t, t);
+    if (v & 8) ctx.fillRect(px - t / 2, py - t / 2, t, celle + t);
+    if (y === lab.n - 1 && (v & 4)) ctx.fillRect(px - t / 2, py + celle - t / 2, celle + t, t);
+    if (x === lab.n - 1 && (v & 2)) ctx.fillRect(px + celle - t / 2, py - t / 2, t, celle + t);
+  }
+  for (let y = 0; y < lab.n; y++) for (let x = 0; x < lab.n; x++) {
+    const v = lab.vaeg[y][x], px = x * celle, py = y * celle;
+    ctx.fillStyle = "rgba(240,246,255,.85)";
+    if (v & 1) ctx.fillRect(px - t / 2, py - t / 2, celle + t, t * 0.35);
+    if ((v & 1) && (x + y) % 3 === 0) {
+      for (let k = 0; k < 4; k++) { ctx.fillStyle = ["#ff4d4d", "#4dff6a", "#4db8ff", "#ffe14d"][(k + x + Math.floor(nu / 400)) % 4];
+        ctx.beginPath(); ctx.arc(px + (k + 0.5) * celle / 4, py, 2.5, 0, 7); ctx.fill(); }
+    }
+  }
+  for (const b of lab.biler) tegnBil(b, celle, nu);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `${celle * 0.5}px serif`;
+  for (const ti of lab.ting) {
+    if (S && (S.taget.has(ti.id) || (ME && ME.venter.has(ti.id)))) continue;
+    ctx.fillText(ti.type === "kebab" ? "🥙" : ti.type === "shot" ? "🥃" : "🍺", (ti.x + 0.5) * celle, (ti.y + 0.5) * celle + Math.sin(nu / 300 + ti.x) * 3);
+  }
+  ctx.font = `${celle * 0.75}px serif`;
+  ctx.fillText("🏠", (lab.maal.x + 0.5) * celle, (lab.maal.y + 0.5) * celle);
+  if (ME && ME.guide) tegnArrangoer(ME.guide.x * celle, ME.guide.y * celle, celle, nu);
+  else if (!S || S.arrBy === null) tegnArrangoer(lab.arr.x * celle, lab.arr.y * celle, celle, nu);
+
+  // Alle bananmænd (de andre glider blødt hen mod værtens positioner)
+  if (S) {
+    const liste = Object.values(S.players).filter(p => p.id !== MY_ID).map(p => ({ id: p.id, x: p.dx, y: p.dy, vend: p.vend || 1, hop: p.hop || 0, frz: p.frz, imm: p.imm, gaa: p.gaa }));
+    if (ME) liste.push({ id: MY_ID, x: ME.x, y: ME.y, vend: ME.vend, hop: ME.hop, frz: ME.frz, imm: ME.imm, gaa: ME.gaa, mig: true });
+    liste.sort((a, b) => a.y - b.y);
+    for (const p of liste) {
+      const hh = hopHoejde(p.hop);
+      ctx.fillStyle = "rgba(0,0,0,.35)";
+      ctx.beginPath(); ctx.ellipse(p.x * celle, p.y * celle + celle * 0.42, celle * 0.42 * (1 - hh * 0.4), celle * 0.1 * (1 - hh * 0.4), 0, 0, 7); ctx.fill();
+      ctx.save();
+      if (p.imm > 0 && Math.floor(nu / 120) % 2) ctx.globalAlpha = 0.4; // immun: blinker
+      const ryst = p.frz > 0 ? Math.sin(nu / 30) * 0.08 : 0;
+      const vugge = (p.mig ? Math.sin(nu / 170) * 0.25 * fuldhed() : 0) + ryst;
+      tegnBananmand(p.x * celle, p.y * celle + celle * 0.42 - hh * celle * 0.55, vugge, celle * 1.05 / 150 * (1 + hh * 0.25),
+        p.frz > 0 ? 0 : p.gaa, nu, p.vend, HATTE[farveAf(p.id)], p.frz > 0);
+      ctx.restore();
+      if (p.frz > 0) {
+        ctx.font = `${celle * 0.4}px serif`; ctx.fillText("💢", p.x * celle - p.vend * celle * 0.35, p.y * celle - celle * 0.65 + Math.sin(nu / 100) * 3);
+        ctx.font = `bold ${celle * 0.28}px system-ui`; ctx.fillStyle = "#ff5a5a"; ctx.fillText("AV!", p.x * celle + p.vend * celle * 0.35, p.y * celle - celle * 0.95);
+      }
+      if (!p.mig) {
+        ctx.font = `bold ${Math.max(11, celle * 0.22)}px system-ui`; ctx.fillStyle = HATTE[farveAf(p.id)];
+        ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.lineWidth = 3;
+        ctx.strokeText(navnAf(p.id), p.x * celle, p.y * celle - celle * 1.25 - hh * celle * 0.55);
+        ctx.fillText(navnAf(p.id), p.x * celle, p.y * celle - celle * 1.25 - hh * celle * 0.55);
+      }
+    }
+    for (const a of S.anim) tegnSvirp(a, celle);
+  }
+  ctx.restore();
+
+  // Mørket: kun lommelygtens lys (og arrangørens lygte) kan ses
+  if (morkCv.width !== cv.width || morkCv.height !== cv.height) { morkCv.width = cv.width; morkCv.height = cv.height; }
+  mctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  mctx.globalCompositeOperation = "source-over";
+  mctx.clearRect(0, 0, W, H);
+  mctx.fillStyle = "rgb(2,3,8)"; mctx.fillRect(0, 0, W, H);
+  mctx.globalCompositeOperation = "destination-out";
+  // Lyset skrumper i 3 trin, jo fuldere man er
+  const r = celle * (ME ? STADIER[stadieAf(ME.fuld)].lys : 4) * (1 + Math.sin(nu / 400) * 0.02);
+  const hul = (x, y, rr) => {
+    const g = mctx.createRadialGradient(x, y, rr * 0.35, x, y, rr);
+    g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    mctx.fillStyle = g; mctx.beginPath(); mctx.arc(x, y, rr, 0, 7); mctx.fill();
+  };
+  hul(W / 2, H / 2, r);
+  if (ME && ME.guide) hul(W / 2 + (ME.guide.x - ME.x) * celle, H / 2 + (ME.guide.y - ME.y) * celle, celle * 1.3);
+  ctx.drawImage(morkCv, 0, 0, W, H);
+
+  if (ME && state === "play") {
+    const a = Math.atan2(lab.maal.y + 0.5 - ME.y, lab.maal.x + 0.5 - ME.x);
+    ctx.save(); ctx.translate(W / 2 + Math.cos(a) * (r + 14), H / 2 + Math.sin(a) * (r + 14)); ctx.rotate(a);
+    ctx.fillStyle = "rgba(255,225,77,.7)"; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-8, -8); ctx.lineTo(-8, 8); ctx.fill();
+    ctx.restore();
+    if (ME.frz > 0) { // svirpet: rød kant og nedtælling
+      ctx.fillStyle = `rgba(255,0,0,${0.15 + Math.sin(nu / 90) * 0.05})`; ctx.fillRect(0, 0, W, H);
+      ctx.font = "bold 22px system-ui"; ctx.textAlign = "center"; ctx.fillStyle = "#fff";
+      ctx.fillText(`Øm bag… ${Math.ceil(ME.frz)}`, W / 2, H * 0.72);
+    }
+  }
+  if (joy && state === "play") {
+    ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 50, 0, 7); ctx.stroke();
+    const dx = joy.x - joy.ox, dy = joy.y - joy.oy, l = Math.min(50, Math.hypot(dx, dy)), an = Math.atan2(dy, dx);
+    ctx.fillStyle = "rgba(255,225,77,.6)"; ctx.beginPath(); ctx.arc(joy.ox + Math.cos(an) * l, joy.oy + Math.sin(an) * l, 18, 0, 7); ctx.fill();
+  }
+  if (fuldhed() > 0) { ctx.fillStyle = `rgba(255,120,200,${0.1 * fuldhed()})`; ctx.fillRect(0, 0, W, H); }
+}
+
+/* ---------- HUD og rangliste i hjørnet ---------- */
+let besTid = 0;
+function visBesked(t) { const el = $("besked"); el.textContent = t; el.style.opacity = 1; besTid = 2; }
+let sidsteHud = "", sidsteRang = 0;
+function opdaterHud(nu) {
+  if (!S || !ME) return;
+  const mig = S.players[MY_ID] || { score: 0 };
+  const left = Math.max(0, Math.ceil(GAME_TIME - (role === "host" && G ? G.t : S.t + (S.paused ? 0 : Math.min(0.4, (performance.now() - S.recvAt) / 1000)))));
+  const st = stadieAf(ME.fuld);
+  const txt = `${mig.score}|${left}|${S.bane}|${st}`;
+  if (txt !== sidsteHud) {
+    sidsteHud = txt;
+    $("score").textContent = fmt(mig.score) + " point";
+    $("tid").textContent = `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    $("tid").classList.toggle("hast", left <= 10);
+    $("info").textContent = `Bane ${S.bane}`;
+    $("stadie").textContent = STADIER[st].navn;
+  }
+  if (nu - sidsteRang > 250) { // lille rangliste i hjørnet: hvem fører?
+    sidsteRang = nu;
+    const rk = Object.values(S.players).map(p => ({ id: p.id, s: p.score || 0 })).sort((a, b) => b.s - a.s);
+    let vis = rk.slice(0, 5);
+    const minPlads = rk.findIndex(p => p.id === MY_ID);
+    if (minPlads >= 5) vis = rk.slice(0, 4).concat([rk[minPlads]]);
+    $("rang").innerHTML = vis.map(p => {
+      const plads = rk.indexOf(p) + 1;
+      return `<div class="r${p.id === MY_ID ? " mig" : ""}">${plads === 1 ? "👑" : plads + "."} <span class="prik" style="background:${HATTE[farveAf(p.id)]}"></span>${esc(navnAf(p.id).slice(0, 9))}<b>${fmt(p.s)}</b></div>`;
+    }).join("");
+  }
+}
+
+/* =====================================================================
+   GAME LOOP
+   ===================================================================== */
+let lastNow = performance.now(), lastSend = 0, lastLobbyPing = 0;
+function frame(now) {
+  let dt = (now - lastNow) / 1000; lastNow = now;
+  if (dt > 0.25) dt = 0;
+  const dts = Math.min(dt, 0.05);
+
+  if (state === "play" && ME && dts > 0) {
+    let rest = dts;
+    while (rest > 0) { const step = Math.min(rest, 1 / 60); opdaterMig(step); rest -= step; }
+  }
+  if (role === "host") {
+    if (state === "play" && G && dts > 0) hostUpdate(dts);
+    if ((state === "play" || state === "pause") && G && !G.over && now - lastSend >= HOST_SEND_MS) { lastSend = now; hostSendState(); }
+    if (state === "lobby" && now - lastLobbyPing >= LOBBY_PING_MS) {
+      lastLobbyPing = now;
+      const gone = lobby.players.filter(p => p.id !== MY_ID && now - p.last >= 6000);
+      for (const p of gone) hostRemove(p.id);
+      if (gone.length) renderLobby();
+      hostBroadcastLobby();
+    }
+  } else if (role === "client") {
+    if ((state === "play" || state === "pause") && ME && now - lastSend >= (state === "play" ? CLIENT_SEND_MS : 1000)) {
+      lastSend = now;
+      sendMine("pos", { id: MY_ID, b: S.bane, x: Math.round(ME.x * 100), y: Math.round(ME.y * 100), v: ME.vend, h: Math.round(ME.hop * 100) });
+    }
+    if ((state === "lobby" || state === "end") && now - lastLobbyPing >= LOBBY_PING_MS) {
+      lastLobbyPing = now;
+      const known = lobby.players.some(p => p.id === MY_ID);
+      (known ? sendMine : sendMain)("hello", { id: MY_ID, name: hentNavn() });
+    }
+    if (state === "play" || state === "pause" || state === "wait") {
+      const silent = now - lastHostMsg;
+      if (silent > 2500 && state === "play") { state = "wait"; clearInput(); showPause("Venter på værten…", "Værten svarer ikke lige nu (måske har værten skiftet app)."); }
+      if (silent > 45000) showEnd({ reason: "Forbindelsen til værten blev afbrudt", res: null });
+    }
+    if (state === "lobby" && lobbySeen && now - lastHostMsg > 7000) $("lobbyBesked").textContent = "Værten er væk… venter";
+  }
+  if (S && dt > 0) {
+    const k = 1 - Math.exp(-dt * 12);
+    for (const p of Object.values(S.players)) {
+      if (p.id === MY_ID) continue;
+      const ox = p.dx, oy = p.dy;
+      p.dx += (p.x - p.dx) * k; p.dy += (p.y - p.dy) * k;
+      p.gaa += Math.hypot(p.dx - ox, p.dy - oy) * 6;
+    }
+    for (const a of S.anim) a.t -= dt;
+    S.anim = S.anim.filter(a => a.t > 0);
+  }
+  if (besTid > 0) { besTid -= dt; if (besTid <= 0) $("besked").style.opacity = 0; }
+  tegn(now);
+  opdaterHud(now);
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   SKÆRME, PAUSE, SLUT OG DELING
+   ===================================================================== */
+function hentJSON(k, std) { try { return JSON.parse(localStorage.getItem(k)) ?? std; } catch (e) { return std; } }
+function gemJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+function showScreen(id) { for (const s of ["startSkaerm", "lobbySkaerm", "pauseSkaerm", "slutSkaerm"]) $(s).hidden = s !== id; }
+function showPause(titel, tekst) {
+  $("pauseTitel").textContent = titel; $("pauseTekst").textContent = tekst;
+  $("fortsaetKnap").hidden = role !== "host";
+  showScreen("pauseSkaerm");
+}
+function pause() {
+  if (role !== "host" || state !== "play") return;
+  state = "pause"; G.paused = true; clearInput();
+  showPause("Pause", "Alle venter på dig – tiden står stille.");
+  hostSendState();
+}
+function resume() {
+  if (role !== "host" || state !== "pause") return;
+  state = "play"; G.paused = false; lastNow = performance.now(); vip.kalibrer = true;
+  showScreen(null);
+  hostSendState();
+}
+let sidsteResultat = null;
+function showEnd(msg) {
+  state = "end"; endedAt = performance.now(); clearInput();
+  bip(523, 0.15); bip(392, 0.15, "square", 0.07, 0.15); bip(262, 0.3, "square", 0.07, 0.3);
+  $("pauseKnap").hidden = true; $("rang").hidden = true;
+  roundResult = msg;
+  const navn = hentNavn();
+  const mine = msg.res && msg.res.find(r => r.id === MY_ID);
+  const score = mine ? mine.s : 0;
+  $("slutTitel").textContent = msg.reason;
+  $("slutScore").textContent = fmt(score) + " point";
+  if (mine) {
+    const plads = msg.res.indexOf(mine) + 1;
+    const bedste = hentJSON(BEDSTE_KEY, {});
+    const gammel = bedste[navn] ?? null;
+    const rekord = gammel === null || score > gammel;
+    if (rekord) { bedste[navn] = score; gemJSON(BEDSTE_KEY, bedste); }
+    const d = new Date();
+    sidsteResultat = { n: navn, s: score, d: `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(2)}`, id: Date.now() };
+    const top = hentJSON(TOP_KEY, []);
+    top.push(sidsteResultat); top.sort((a, b) => b.s - a.s || a.id - b.id);
+    gemJSON(TOP_KEY, top.slice(0, 10));
+    const medalje = ["🥇", "🥈", "🥉"][plads - 1] || plads + ".";
+    $("slutPlads").textContent = (msg.res.length > 1 ? `${medalje} Nr. ${plads} af ${msg.res.length}` : "") +
+      (rekord && score > 0 ? " · 🎉 Ny rekord!" : gammel !== null ? ` · Din bedste: ${fmt(gammel)}` : "");
+    $("rundeTabel").innerHTML = msg.res.map((r, i) =>
+      `<tr class="${r.id === MY_ID ? "mig" : ""}"><td>${i + 1}.</td><td><span class="prik" style="background:${HATTE[r.c] || "#ccc"}"></span> ${esc(r.n)}</td><td>${r.st.hjem}🏠 ${r.st.svirp}🪢 ${r.st.svirpet}🍑</td><td>${fmt(r.s)}</td></tr>`).join("");
+    $("slutStat").innerHTML = `🏠 ${mine.st.hjem} gange hjem først · 🪢 ${mine.st.svirp} svirp · 🍑 svirpet ${mine.st.svirpet} gange<br>🥸 ${mine.st.arr} arrangør · 🍺 ${mine.st.oel} øl · 🥃 ${mine.st.shot || 0} shots · 🥙 ${mine.st.kebab} kebab`;
+    if (window.gemScore) {
+      $("faellesTop").innerHTML = "<tr><td>Henter fælles rangliste…</td></tr>";
+      gemScore(GAME_NAME, navn, score).then(() => visFaellesTop($("faellesTop"), GAME_NAME, navn));
+    } else $("faellesTop").innerHTML = "<tr><td>Den fælles rangliste kunne ikke indlæses</td></tr>";
+  } else {
+    $("slutPlads").textContent = "Runden blev ikke færdig, så scoren er ikke gemt.";
+    $("rundeTabel").innerHTML = ""; $("slutStat").innerHTML = "";
+    if (window.visFaellesTop) visFaellesTop($("faellesTop"), GAME_NAME, navn);
+  }
+  visLokalTop();
+  const tabt = !msg.res;
+  $("igenKnap").hidden = role !== "host";
+  $("kopierKnap").hidden = tabt;
+  $("delKnap").hidden = tabt || !navigator.share;
+  $("slutVent").textContent = role === "host" ? "Ny runde = samme rum, samme venner." : tabt ? "" : "Venter på at værten starter en ny runde…";
+  showScreen("slutSkaerm");
+}
+function visLokalTop() {
+  const top = hentJSON(TOP_KEY, []);
+  $("lokalTop").innerHTML = top.length
+    ? top.map((e, i) => `<tr class="${sidsteResultat && e.id === sidsteResultat.id ? "mig" : ""}"><td>${i + 1}.</td><td>${esc(e.n)}</td><td>${fmt(e.s)}</td><td>${esc(e.d)}</td></tr>`).join("")
+    : "<tr><td colspan=4>Ingen resultater endnu</td></tr>";
+}
+function resultatTekst() {
+  const navn = hentNavn();
+  const mine = roundResult && roundResult.res && roundResult.res.find(r => r.id === MY_ID);
+  const score = mine ? mine.s : 0;
+  const bedste = hentJSON(BEDSTE_KEY, {})[navn] ?? score;
+  const n = roundResult && roundResult.res ? roundResult.res.length : 1;
+  const plads = mine ? roundResult.res.indexOf(mine) + 1 : 0;
+  return `🎮 Bananmanden Hjem Multi – ${navn}: ${fmt(score)} point` + (n > 1 ? `, nr. ${plads} af ${n}` : "") + ` (bedste: ${fmt(bedste)})`;
+}
+function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => el.classList.remove("show"), 1800); }
+async function kopier(txt) {
+  try { await navigator.clipboard.writeText(txt); toast("Kopieret! 📋"); return; } catch (e) { }
+  const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); toast("Kopieret! 📋"); } catch (e) { toast("Kunne ikke kopiere"); }
+  ta.remove();
+}
+async function delLink() {
+  const url = roomLink();
+  if (navigator.share && erTouch) { try { await navigator.share({ text: `Kom og cykl bananmanden hjem med mig! Rum ${roomCode}`, url }); return; } catch (e) { } }
+  kopier(url);
+}
+
+document.addEventListener("visibilitychange", () => { if (!document.hidden) return; clearInput(); if (role === "host") pause(); });
+addEventListener("pagehide", () => { if (role === "client") sendMine("bye", { id: MY_ID }); });
+
+$("opretKnap").onclick = createRoom;
+$("deltagKnap").onclick = joinRoom;
+$("startKnap").onclick = hostStart;
+$("forladKnap").onclick = leaveRoom;
+$("slutForladKnap").onclick = leaveRoom;
+$("linkKnap").onclick = delLink;
+$("igenKnap").onclick = () => {
+  if (role !== "host" || performance.now() - endedAt < 600) return;
+  G = null; ME = null; state = "lobby"; lobby.started = false;
+  for (const p of lobby.players) if (p.id !== MY_ID) p.last = performance.now();
+  renderLobby(); showScreen("lobbySkaerm"); $("lobbyBesked").textContent = "";
+  hostBroadcastLobby(); visBaggrund();
+};
+$("fortsaetKnap").onclick = resume;
+$("pauseKnap").onclick = () => { state === "play" ? pause() : resume(); };
+$("kopierKnap").onclick = () => kopier(resultatTekst());
+$("delKnap").onclick = async () => { try { await navigator.share({ text: resultatTekst() }); } catch (e) { } };
+$("lydKnap").onclick = () => { lydTil = !lydTil; try { localStorage.setItem("bananmanden_lyd", lydTil ? "1" : "0"); } catch (e) { } opdaterLydKnap(); };
+for (const b of document.querySelectorAll("#hud button")) b.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") e.preventDefault(); });
+
+function visBaggrund() { ME = null; S = null; lab = lavLabyrint(15, 1); }
+function readHash() {
+  const h = location.hash.replace("#", "").toUpperCase();
+  if (/^[A-Z]{4}$/.test(h)) { $("kodeInput").value = h; $("deltagKnap").textContent = "Deltag i " + h; }
+}
+(function init() {
+  try { $("navnInput").value = localStorage.getItem(NAVN_KEY) || ""; } catch (e) { }
+  $("styringTekst").innerHTML = erTouch
+    ? "📱 <b>Vip telefonen</b> for at cykle (kuglespil)<br>🦘 <b>Løft telefonen hurtigt</b> for at hoppe over biler<br>🪢 <b>Tryk på skærmen</b> for at svirpe den nærmeste med bæltet"
+    : "⌨️ <b>Piletaster / WASD</b> for at cykle<br>🦘 <b>Mellemrum</b> for at hoppe over biler<br>🪢 <b>F / Enter / klik</b> for at svirpe den nærmeste med bæltet";
+  readHash();
+  addEventListener("hashchange", () => { if (state === "start") readHash(); });
+  opdaterLydKnap();
+  visBaggrund();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
