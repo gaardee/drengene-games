@@ -255,6 +255,7 @@ const LOBBY_PING_MS = 1500;
 const SEED = 20261224;
 const WORLD = 1400;              // København er 1400×1400 enheder
 const VIEW_UNITS = 560;          // så mange enheder kan man se på den korteste led af skærmen
+const VIEW_UNITS_SMALL = 470;    // ... på en lille telefon (lidt mere zoomet ind)
 const PLAYER_R = 16;
 const PLAYER_SPEED = 220;
 const ENEMY_R = 17;
@@ -265,6 +266,7 @@ const ALIVE_POINTS = 2;          // point pr. sekund med tøj på
 const STOP_POINTS = 100;         // pr. klaret stop (+50 for hver ekstra omgang)
 const FIRST_BONUS = 25;          // til den første ved stoppet
 const PICKUP_POINTS = 10;
+const TOJ_ON_MAP = 5;             // så mange stykker tøj ligger der altid på kortet
 // Alle stop er fristeder: tegnerne kan ikke komme ind, og man kan ikke tegnes derinde
 const inSafe = p => STOPS.some(st => Math.hypot(p.x - st.x, p.y - st.y) < STOP_R);
 const SING_AT = [35, 80];        // "Syng LAST CHRISTMAS!!!" efter så mange sekunders spil
@@ -619,7 +621,7 @@ function hostNewGame() {
   const n = lobby.players.length;
   G = {
     t: 0, paused: false, sing: 0, singIdx: 0,
-    players: {}, enemies: [], items: [], nextSpot: 0, itemRnd: mulberry32(SEED + 3), nextToj: 12,
+    players: {}, enemies: [], items: [], nextSpot: 0, itemRnd: mulberry32(SEED + 3),
     stop: 0, firstAt: null, atStop: 0, need: n, lap: 0,
     ff: {}, ffT: 0,
     floaters: [], evq: [], over: false,
@@ -633,6 +635,7 @@ function hostNewGame() {
     };
   });
   for (let i = 0; i < foodOnMap(n); i++) spawnItem(null);
+  for (let i = 0; i < TOJ_ON_MAP; i++) spawnItem("toj");
   S = G;
 }
 function spawnItem(kind) {
@@ -722,7 +725,7 @@ function resize() {
   view.dpr = Math.min(window.devicePixelRatio || 1, 2);
   view.cw = r.width; view.ch = r.height;
   canvas.width = Math.round(r.width * view.dpr); canvas.height = Math.round(r.height * view.dpr);
-  view.s = Math.min(r.width, r.height) / VIEW_UNITS;
+  view.s = Math.min(r.width, r.height) / (Math.min(r.width, r.height) < 500 ? VIEW_UNITS_SMALL : VIEW_UNITS);
   cam.snap = true;
 }
 addEventListener("resize", resize);
@@ -836,10 +839,7 @@ function hostUpdate(dt) {
     }
   }
   while (G.items.filter(i => i.k !== "toj").length < foodOnMap(n)) spawnItem(null);
-  if (t >= G.nextToj) {
-    G.nextToj += 12;
-    if (G.items.filter(i => i.k === "toj").length < 3) { spawnItem("toj"); const it = G.items[G.items.length - 1]; hostEvent(it.x, it.y - 30, "Tøj! 👕", "#7dffb0"); }
-  }
+  while (G.items.filter(i => i.k === "toj").length < TOJ_ON_MAP) spawnItem("toj"); // der ligger altid 5 stykker tøj
 
   // ---- Stoppet: alle drenge med tøj på skal være der ----
   const stop = STOPS[G.stop % STOPS.length];
@@ -1317,7 +1317,7 @@ function draw(now, dt) {
     ctx.beginPath(); ctx.arc(x, y, f.r, 0, Math.PI * 2); ctx.fill();
   }
 
-  if (ME && S && state !== "end") { drawStopArrow(now); drawTeamArrows(); drawStopBanner(); drawScoreboard(); drawMinimap(); }
+  if (ME && S && state !== "end") { drawMeArrow(now); drawStopArrow(now); drawTeamArrows(); drawStopBanner(); drawScoreboard(); drawMinimap(); }
 
   if (joy.active && state === "play") {
     ctx.globalAlpha = 0.35; ctx.fillStyle = "#fff";
@@ -1528,8 +1528,8 @@ function drawDreng(k, now) {
     for (let i = 0; i <= 6; i++) ctx.lineTo(x - R * 0.7 + i * R * 0.233, y - R * 0.3 - bob + (i % 2 ? -R * 0.12 : R * 0.06));
     ctx.stroke();
     // tallet = hvor mange stykker tøj man har på
-    ctx.font = `900 ${Math.max(8, R * 0.85)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.lineWidth = Math.max(2, R * 0.18); ctx.strokeStyle = INK; ctx.lineJoin = "round";
+    ctx.font = `900 ${Math.max(15, R * 1.05)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(4, R * 0.25); ctx.strokeStyle = INK; ctx.lineJoin = "round";
     ctx.strokeText(String(k.clothes), x, y + R * 0.2 - bob); ctx.fillStyle = "#fff"; ctx.fillText(String(k.clothes), x, y + R * 0.2 - bob);
   } else { // navle
     ctx.fillStyle = "rgba(120,60,30,.6)"; ctx.beginPath(); ctx.arc(x, y + R * 0.15 - bob, 1.6 * s, 0, Math.PI * 2); ctx.fill();
@@ -1612,6 +1612,18 @@ function drawStopArrow(now) {
   ctx.restore();
   ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = "#c8102e"; ctx.stroke();
   ctx.font = "34px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(st.emoji, 0, 2);
+  ctx.restore();
+}
+// Pil rundt om min egen dreng, der altid peger mod næste stop
+function drawMeArrow(now) {
+  const st = STOPS[S.stop % STOPS.length];
+  const dx = st.x - ME.x, dy = st.y - ME.y;
+  if (Math.hypot(dx, dy) < STOP_R * 0.6) return; // man står midt i stoppet
+  const a = Math.atan2(dy, dx), [mx, my] = toS(ME.x, ME.y - PLAYER_R * 0.5);
+  const rad = Math.max(46, PLAYER_R * view.s * 3) + Math.sin(now / 150) * 4;
+  ctx.save(); ctx.translate(mx + Math.cos(a) * rad, my + Math.sin(a) * rad); ctx.rotate(a);
+  ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -14); ctx.lineTo(-4, 0); ctx.lineTo(-10, 14); ctx.closePath();
+  ctx.fillStyle = "#c8102e"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.lineJoin = "round"; ctx.stroke();
   ctx.restore();
 }
 // Små prikker ved kanten: hvor er de andre drenge?
