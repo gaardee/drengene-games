@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b0620">
+<title>Skål & Kamp</title>
+<style>
+  /* =========================================================
+     Skål & Kamp – et festspil hvor en fræk pixel-nisse er
+     gamemaster. Én skærm til alle, I dyster i virkeligheden.
+     ========================================================= */
+  :root {
+    --bg: #0b0620; --panel: #170c38; --kant: #4a33a0;
+    --pink: #ff2bd6; --cyan: #22f3ff; --gul: #ffe14d; --groen: #39ff88; --roed: #ff3b5c;
+    --tekst: #f2ecff; --svag: #a99bd6;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; overflow: hidden; background: var(--bg); color: var(--tekst);
+    font-family: var(--mono);
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  input { user-select: text; -webkit-user-select: text; }
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; }
+  /* CRT-scanlines over det hele */
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 60;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px);
+  }
+
+  #app {
+    position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column;
+    max-width: 860px; margin: 0 auto;
+    padding: max(6px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
+  }
+
+  /* ---------- Topbjælke ---------- */
+  #hud { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 52px; }
+  #hudTid {
+    font-size: clamp(22px, 6.5vw, 32px); font-weight: 900; color: var(--gul);
+    text-shadow: 0 0 10px #ffb800, 3px 3px 0 #000; letter-spacing: 2px;
+  }
+  #hudTid.travlt { color: var(--roed); text-shadow: 0 0 10px var(--roed), 3px 3px 0 #000; animation: blink 1s steps(2) infinite; }
+  #hudX2 {
+    background: var(--pink); color: #fff; font-weight: 900; padding: 3px 7px; font-size: 16px;
+    box-shadow: 3px 3px 0 #000, 0 0 14px var(--pink); animation: blink .8s steps(2) infinite;
+  }
+  #hudRunde { flex: 1; text-align: center; color: var(--cyan); font-weight: 900; letter-spacing: 2px; font-size: clamp(12px, 3.4vw, 16px); text-shadow: 0 0 8px var(--cyan); }
+  .ikon {
+    width: 46px; height: 46px; min-height: 46px; padding: 0; font-size: 20px; flex: 0 0 auto;
+    border: 3px solid var(--kant); background: #120a2e; box-shadow: 3px 3px 0 #000;
+  }
+
+  /* ---------- Scene ---------- */
+  #scene {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y;
+    display: flex; flex-direction: column; gap: 12px; padding: 6px 2px 10px;
+  }
+  #scene * { touch-action: manipulation; }
+  .fyld { flex: 1; }
+
+  button {
+    font: inherit; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;
+    min-height: 50px; padding: 10px 14px; color: var(--tekst); cursor: pointer;
+    border: 3px solid var(--cyan); background: #0d1d3a; border-radius: 0;
+    box-shadow: 4px 4px 0 #000, 0 0 12px rgba(34,243,255,.3);
+    touch-action: manipulation; position: relative;
+  }
+  button:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; }
+  button:disabled { opacity: .35; cursor: default; }
+  .primaer { border-color: var(--pink); background: #3a0a35; box-shadow: 4px 4px 0 #000, 0 0 18px rgba(255,43,214,.55); font-size: clamp(16px, 4.4vw, 20px); }
+  .stor { width: 100%; min-height: 60px; }
+  .groen { border-color: var(--groen); background: #0b3020; box-shadow: 4px 4px 0 #000, 0 0 14px rgba(57,255,136,.4); }
+  .roed { border-color: var(--roed); background: #3a0a14; box-shadow: 4px 4px 0 #000, 0 0 14px rgba(255,59,92,.4); }
+  .graa { border-color: var(--kant); background: #120a2e; box-shadow: 3px 3px 0 #000; color: var(--svag); }
+  .lilleknap { min-height: 44px; font-size: 13px; padding: 8px 12px; }
+  .knaprad { display: flex; gap: 10px; flex-wrap: wrap; }
+  .knaprad > * { flex: 1 1 140px; }
+  /* Tastatur-hjælp vises kun på computer */
+  .tast { display: none; position: absolute; top: 2px; left: 4px; font-size: 10px; color: var(--svag); }
+  body.mus .tast { display: block; }
+
+  .kort { background: var(--panel); border: 3px solid var(--kant); padding: 14px; box-shadow: 6px 6px 0 #000; }
+  .lille { font-size: 13px; color: var(--svag); line-height: 1.45; }
+  .midt { text-align: center; }
+
+  /* ---------- Titel ---------- */
+  .titel {
+    text-align: center; font-weight: 900; line-height: .95; letter-spacing: 3px;
+    font-size: clamp(42px, 14vw, 84px); color: var(--gul);
+    text-shadow: 4px 4px 0 var(--pink), 8px 8px 0 #000, 0 0 30px rgba(255,225,77,.5);
+    margin-top: 6px;
+  }
+  .titel .og { color: var(--cyan); text-shadow: 4px 4px 0 #000, 0 0 20px var(--cyan); }
+  .undertitel { text-align: center; color: var(--pink); font-weight: 900; letter-spacing: 3px; font-size: clamp(12px, 3.5vw, 16px); text-shadow: 0 0 10px var(--pink); }
+  .blink { animation: blink 1.2s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  /* ---------- Gamemaster-nissen ---------- */
+  .gm { display: flex; gap: 10px; align-items: flex-start; }
+  .gm canvas { width: 54px; height: 63px; flex: 0 0 auto; image-rendering: pixelated; animation: hop 1.4s steps(2) infinite; filter: drop-shadow(3px 3px 0 #000); }
+  @keyframes hop { 50% { transform: translateY(-3px); } }
+  .boble {
+    position: relative; background: #fffbe8; color: #16102a; padding: 10px 12px; border: 3px solid #000;
+    box-shadow: 4px 4px 0 #000; font-weight: 700; font-size: clamp(14px, 3.9vw, 17px); line-height: 1.35;
+    animation: pop .25s ease-out;
+  }
+  .boble::before { content: ""; position: absolute; left: -13px; top: 14px; border: 6px solid transparent; border-right: 8px solid #000; }
+  .boble b { color: #c0127f; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+
+  /* ---------- Start ---------- */
+  form.navne { display: flex; gap: 8px; }
+  form.navne input {
+    flex: 1; min-width: 0; font: inherit; font-weight: 700; font-size: 18px; padding: 10px; min-height: 50px;
+    background: #07031a; color: var(--tekst); border: 3px solid var(--cyan); border-radius: 0; outline: none;
+  }
+  form.navne input:focus { box-shadow: 0 0 14px var(--cyan); }
+  form.navne button { flex: 0 0 auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { min-height: 44px; font-size: 15px; padding: 6px 10px; border-color: var(--gul); background: #2b2408; box-shadow: 3px 3px 0 #000; text-transform: none; }
+  .chip i { font-style: normal; color: var(--roed); margin-left: 6px; }
+  details summary { cursor: pointer; font-weight: 900; color: var(--cyan); letter-spacing: 1px; min-height: 28px; }
+  .regler ul { margin: 8px 0 0 18px; line-height: 1.6; font-size: 14px; }
+
+  /* ---------- Runde ---------- */
+  .rundehoved { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tag { font-weight: 900; padding: 5px 10px; font-size: clamp(16px, 4.6vw, 22px); letter-spacing: 2px; text-transform: uppercase; box-shadow: 3px 3px 0 #000; color: #0b0620; }
+  .tag.quiz { background: var(--cyan); } .tag.duel { background: var(--roed); color: #fff; }
+  .tag.skuespil { background: var(--gul); } .tag.sang { background: var(--pink); color: #fff; } .tag.peg { background: var(--groen); }
+  .pointinfo { font-size: 13px; color: var(--svag); font-weight: 700; }
+  .advarsel { background: var(--roed); color: #fff; font-weight: 900; padding: 8px 10px; text-align: center; box-shadow: 4px 4px 0 #000; animation: blink 1s steps(2) infinite; }
+  .kat { color: var(--svag); font-weight: 900; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
+  .spm { font-size: clamp(20px, 5.6vw, 30px); font-weight: 900; line-height: 1.25; margin-top: 6px; }
+  .svar { margin-top: 12px; padding: 10px; border: 3px dashed var(--groen); color: var(--groen); font-weight: 900; font-size: clamp(20px, 5.6vw, 30px); text-shadow: 0 0 10px rgba(57,255,136,.6); }
+  .vs { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; text-align: center; }
+  .vs .navn { font-size: clamp(22px, 7vw, 38px); font-weight: 900; color: var(--gul); text-shadow: 3px 3px 0 #000, 0 0 12px rgba(255,225,77,.5); word-break: break-word; }
+  .vs .mod { font-size: clamp(18px, 5vw, 26px); font-weight: 900; color: var(--roed); text-shadow: 0 0 12px var(--roed); }
+  .opgave { margin-top: 10px; font-size: clamp(17px, 4.6vw, 23px); font-weight: 800; line-height: 1.35; text-align: center; }
+  .hemmeligt { font-size: clamp(30px, 9vw, 54px); font-weight: 900; text-align: center; color: var(--gul); text-shadow: 4px 4px 0 var(--pink), 0 0 20px rgba(255,225,77,.6); padding: 12px 0; word-break: break-word; }
+  .spoerg { font-weight: 900; color: var(--cyan); letter-spacing: 1px; text-transform: uppercase; font-size: 14px; }
+  .spillergrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .spillergrid button { text-transform: none; font-size: clamp(16px, 4.4vw, 19px); word-break: break-word; }
+  .rtimer { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .rtal { font-size: 34px; font-weight: 900; color: var(--gul); min-width: 64px; text-align: right; text-shadow: 3px 3px 0 #000; }
+  .rtal.lav { color: var(--roed); animation: blink .5s steps(2) infinite; }
+  .rbar { flex: 1; height: 18px; border: 3px solid var(--kant); background: #07031a; }
+  .rbar i { display: block; height: 100%; background: repeating-linear-gradient(90deg, var(--gul) 0 10px, #ffb800 10px 14px); }
+  .tal321 { font-size: clamp(80px, 30vw, 160px); font-weight: 900; text-align: center; color: var(--gul); text-shadow: 6px 6px 0 var(--pink), 0 0 40px rgba(255,225,77,.7); line-height: 1; padding: 10px 0; }
+
+  /* ---------- Resultat og stilling ---------- */
+  .plus { font-size: clamp(30px, 9vw, 52px); font-weight: 900; text-align: center; color: var(--groen); text-shadow: 4px 4px 0 #000, 0 0 20px rgba(57,255,136,.7); animation: pop .35s ease-out both; word-break: break-word; }
+  .plus.nul { color: var(--roed); text-shadow: 4px 4px 0 #000, 0 0 20px rgba(255,59,92,.6); }
+  .note { text-align: center; color: var(--svag); font-weight: 700; }
+  .note b { color: var(--tekst); }
+  .stilling { display: flex; flex-direction: column; gap: 6px; }
+  .srk { display: grid; grid-template-columns: 30px minmax(70px, 34%) 1fr 44px; gap: 8px; align-items: center; font-weight: 900; font-size: clamp(14px, 3.9vw, 17px); }
+  .srk .nr { color: var(--svag); text-align: right; }
+  .srk .nv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srk .bar { height: 16px; background: #07031a; border: 2px solid var(--kant); }
+  .srk .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); transition: width .5s; }
+  .srk.ny .bar i { background: var(--groen); box-shadow: 0 0 10px var(--groen); }
+  .srk.ny .nv { color: var(--groen); }
+  .srk .pt { text-align: right; color: var(--gul); }
+
+  /* ---------- Slut ---------- */
+  .podie { display: flex; align-items: flex-end; justify-content: center; gap: 8px; margin-top: 6px; }
+  .podie > div { flex: 1 1 0; max-width: 180px; text-align: center; }
+  .podie .nv { font-weight: 900; font-size: clamp(14px, 4.2vw, 20px); word-break: break-word; }
+  .podie .blok { margin-top: 6px; border: 3px solid #000; box-shadow: 4px 4px 0 #000; font-weight: 900; font-size: 26px; display: flex; flex-direction: column; justify-content: center; color: #0b0620; }
+  .podie .blok small { font-size: 13px; }
+  .p1 .blok { height: 120px; background: var(--gul); } .p2 .blok { height: 88px; background: #cfd6ff; } .p3 .blok { height: 64px; background: #e0955a; }
+  .krone { font-size: 32px; animation: hop 1s steps(2) infinite; }
+  table.liste { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.liste td { padding: 5px 4px; border-bottom: 1px dashed var(--kant); }
+  table.liste td:first-child { width: 2.4em; color: var(--svag); }
+  table.liste td:last-child { text-align: right; color: var(--gul); font-weight: 900; }
+  table.liste tr.me td { color: var(--groen); }
+  h3 { color: var(--cyan); letter-spacing: 2px; font-size: 15px; margin-bottom: 8px; text-transform: uppercase; }
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .stat { border: 2px solid var(--kant); padding: 8px; font-size: 14px; line-height: 1.4; }
+  .stat b { color: var(--gul); }
+
+  /* ---------- Overlay og bannere ---------- */
+  #overlay { position: fixed; inset: 0; z-index: 40; background: rgba(5,2,15,.86); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #overlay[hidden] { display: none; }
+  #overlay .kort { width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; text-align: center; }
+  #overlay h2 { font-size: 40px; color: var(--gul); text-shadow: 4px 4px 0 var(--pink); letter-spacing: 4px; }
+  .banner {
+    position: fixed; left: 50%; top: 42%; z-index: 50; transform: translate(-50%, -50%);
+    width: min(92vw, 560px); text-align: center; padding: 18px; pointer-events: none;
+    background: #0b0620; border: 4px solid var(--pink); box-shadow: 8px 8px 0 #000, 0 0 40px var(--pink);
+    font-weight: 900; font-size: clamp(24px, 7vw, 40px); color: var(--gul); text-shadow: 3px 3px 0 var(--pink);
+    animation: bannerind 3.2s ease-out both;
+  }
+  .banner small { display: block; font-size: 16px; color: var(--tekst); text-shadow: none; margin-top: 6px; }
+  @keyframes bannerind { 0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; } 10% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; } 15%, 85% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { opacity: 0; } }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 55; background: var(--groen); color: #0b0620; font-weight: 900; padding: 10px 16px; box-shadow: 4px 4px 0 #000; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+  #toast.vis { opacity: 1; }
+
+  @media (max-height: 640px) {
+    .gm canvas { width: 40px; height: 47px; }
+    .boble { padding: 7px 10px; }
+    button { min-height: 46px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="app">
+  <header id="hud">
+    <span id="hudTid" hidden>30:00</span>
+    <span id="hudX2" hidden>×2</span>
+    <span id="hudRunde"></span>
+    <button class="ikon" id="btnLyd" data-act="lyd" aria-label="Lyd til/fra">🔊</button>
+    <button class="ikon" id="btnPause" data-act="pause" aria-label="Pause" hidden>⏸</button>
+  </header>
+  <main id="scene"></main>
+</div>
+<div id="overlay" hidden></div>
+<div id="toast"></div>
+
+<script src="../../scores.js"></script>
+<script>
+"use strict";
+
+/* =====================================================================
+   INDSTILLINGER
+   ===================================================================== */
+const SPIL = "skaal-og-kamp";                 // skal være præcis mappenavnet
+const GEM_KEY = "skaalOgKamp_spil";           // igangværende spil (overlever genindlæsning)
+const NAVNE_KEY = "skaalOgKamp_navne";        // sidste holds navne
+const TOP_KEY = "skaalOgKamp_top";            // lokal top 10
+const LYD_KEY = "skaalOgKamp_lyd";
+// Spillets længde. Kan ændres med ?minutter=10 i adressen (fx til en kort test-runde).
+const MINUTTER = (() => {
+  const m = parseFloat(new URLSearchParams(location.search).get("minutter"));
+  return m > 0 && m <= 120 ? m : 30;
+})();
+const FINALE_MS = Math.min(5 * 60000, MINUTTER * 60000 * 0.2); // dobbeltpoint de sidste 5 minutter
+const MAKS_SPILLERE = 12;
+
+// Point pr. rundetype (ganges med 2 i finalen)
+const POINT = { quiz: 1, duel: 2, uafgjort: 1, skuespil: 1, sang: 2, peg: 1 };
+// Hvor ofte de forskellige runder kommer (vægte)
+const TYPER = [["quiz", 40], ["duel", 28], ["skuespil", 14], ["sang", 8], ["peg", 10]];
+
+/* =====================================================================
+   INDHOLD – ret og tilføj løs! (Husk at svarene skal være rigtige 😉)
+   ===================================================================== */
+// [kategori, spørgsmål, svar]
+const QUIZ = [
+  ["🎄 Jul", "Hvor mange rensdyr trækker julemandens slæde, når man ikke tæller Rudolf med?", "8"],
+  ["🎄 Jul", "Hvor bor julemanden ifølge danske børn?", "Grønland"],
+  ["🎄 Jul", "I hvilken finsk by har julemanden sit officielle værksted?", "Rovaniemi"],
+  ["🎄 Jul", "Hvad hedder de tre vise mænd?", "Kaspar, Melchior og Balthasar"],
+  ["🎄 Jul", "Hvilke tre gaver fik Jesusbarnet af de vise mænd?", "Guld, røgelse og myrra"],
+  ["🎄 Jul", "I hvilken by blev Jesus født ifølge juleevangeliet?", "Betlehem"],
+  ["🎄 Jul", "Hvilket firma får (lidt uretfærdigt) æren for den røde julemand?", "Coca-Cola"],
+  ["🎄 Jul", "Hvad er nissens yndlingsmad?", "Risengrød (med en klat smør)"],
+  ["🎄 Jul", "Hvad får man, hvis man finder mandlen i risalamanden?", "Mandelgaven"],
+  ["🎄 Jul", "Hvilken helgen fejres med optog den 13. december?", "Sankta Lucia"],
+  ["🎄 Jul", "Hvilket træ er det mest solgte juletræ i Danmark?", "Nordmannsgran"],
+  ["🎄 Jul", "Hvem skrev 'Et juleeventyr' om gnieren Scrooge?", "Charles Dickens"],
+  ["🎄 Jul", "Hvor mange spøgelser besøger Scrooge – ud over Marley?", "3"],
+  ["🎄 Jul", "Hvem har lavet det ældste kendte flettede julehjerte?", "H.C. Andersen"],
+  ["🎄 Jul", "Hvad hedder den røde juleblomst, der også kaldes poinsettia?", "Julestjerne"],
+  ["🎄 Jul", "Hvad hedder dagen den 23. december?", "Lillejuleaften"],
+  ["🎄 Jul", "Hvor mange lys er der i en almindelig adventskrans?", "4"],
+  ["🎄 Jul", "Hvilket land giver hvert år London det store juletræ på Trafalgar Square?", "Norge"],
+  ["🇩🇰 Danmark", "Hvilket år faldt Dannebrog ned fra himlen ifølge sagnet?", "1219"],
+  ["🇩🇰 Danmark", "Hvor mange kommuner er der i Danmark?", "98"],
+  ["🇩🇰 Danmark", "Hvor mange regioner er Danmark delt op i?", "5"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks højeste naturlige punkt?", "Møllehøj"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks længste å?", "Gudenåen"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks største sø?", "Arresø"],
+  ["🇩🇰 Danmark", "Hvad er Danmarks ældste by?", "Ribe"],
+  ["🇩🇰 Danmark", "Hvilket år åbnede Tivoli?", "1843"],
+  ["🇩🇰 Danmark", "Hvilket år blev Danmark medlem af EF (nu EU)?", "1973"],
+  ["🇩🇰 Danmark", "Hvilket år blev Margrethe 2. dronning?", "1972"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks konge?", "Frederik 10."],
+  ["🇩🇰 Danmark", "Hvem skrev nationalsangen 'Der er et yndigt land'?", "Adam Oehlenschläger"],
+  ["🇩🇰 Danmark", "Hvad er Danmarks nationalfugl?", "Knopsvanen"],
+  ["🇩🇰 Danmark", "Hvem grundlagde LEGO?", "Ole Kirk Christiansen"],
+  ["🇩🇰 Danmark", "I hvilken by blev H.C. Andersen født?", "Odense"],
+  ["🇩🇰 Danmark", "Hvilket år vandt Danmark EM i fodbold?", "1992"],
+  ["🇩🇰 Danmark", "Hvilken dansk landsholdsspiller faldt om på banen under EM 2021?", "Christian Eriksen"],
+  ["🇩🇰 Danmark", "Hvilket land ligger Danmarks eneste landegrænse til?", "Tyskland"],
+  ["🎵 Musik", "Hvilken gruppe udgav 'Last Christmas'?", "Wham!"],
+  ["🎵 Musik", "Hvem synger 'All I Want for Christmas Is You'?", "Mariah Carey"],
+  ["🎵 Musik", "Hvilket år udkom 'All I Want for Christmas Is You'?", "1994"],
+  ["🎵 Musik", "Hvem skrev 'White Christmas'?", "Irving Berlin"],
+  ["🎵 Musik", "Hvad hedder The Pogues' juleklassiker med Kirsty MacColl?", "Fairytale of New York"],
+  ["🎵 Musik", "Hvad hed velgørenhedsprojektet bag 'Do They Know It's Christmas?'", "Band Aid"],
+  ["🎵 Musik", "Hvad trækker slæden i 'Jingle Bells'?", "Én hest (\"one-horse open sleigh\")"],
+  ["🎵 Musik", "Hvilken dansk gruppe sang 'Barbie Girl'?", "Aqua"],
+  ["🎵 Musik", "Hvem vandt Eurovision for Danmark i år 2000?", "Olsen Brothers"],
+  ["🎵 Musik", "Hvilken dansk sangerinde vandt Eurovision i 2013 med 'Only Teardrops'?", "Emmelie de Forest"],
+  ["🎵 Musik", "Hvem var forsanger i Gasolin'?", "Kim Larsen"],
+  ["🎵 Musik", "Hvilken dansk sangerinde synger på 'Lean On' med Major Lazer?", "MØ"],
+  ["🎵 Musik", "Hvilket band lavede 'Bohemian Rhapsody'?", "Queen"],
+  ["🎵 Musik", "Hvem sang 'Thriller'?", "Michael Jackson"],
+  ["🎬 Film & TV", "Hvad hedder drengen, der bliver glemt i 'Alene hjemme'?", "Kevin (McCallister)"],
+  ["🎬 Film & TV", "Hvilken by flyver familien til i 'Alene hjemme'?", "Paris"],
+  ["🎬 Film & TV", "Hvem spiller Kevin i 'Alene hjemme'?", "Macaulay Culkin"],
+  ["🎬 Film & TV", "Hvad hedder Grinchens hund?", "Max"],
+  ["🎬 Film & TV", "Hvad hedder bygningen i 'Die Hard'?", "Nakatomi Plaza"],
+  ["🎬 Film & TV", "Hvem spiller Buddy i filmen 'Elf'?", "Will Ferrell"],
+  ["🎬 Film & TV", "Hvad fejrer Miss Sophie i 'Dinner for One'?", "Sin 90-års fødselsdag"],
+  ["🎬 Film & TV", "Hvad hedder butleren i 'Dinner for One'?", "James"],
+  ["🎬 Film & TV", "Hvad hedder Disney-showet, som DR viser juleaften kl. 16?", "Fra alle os til alle jer"],
+  ["🎬 Film & TV", "Hvilken trio lavede 'The Julekalender' fra 1991?", "De Nattergale"],
+  ["🎬 Film & TV", "Hvilket pengeskab knækker Egon Olsen altid?", "Franz Jäger, Berlin"],
+  ["🎬 Film & TV", "Hvilken dansk film vandt Oscar for bedste internationale film i 2021?", "Druk"],
+  ["🎬 Film & TV", "Hvilken dansk skuespiller spiller skurken Le Chiffre i 'Casino Royale'?", "Mads Mikkelsen"],
+  ["🎬 Film & TV", "Hvad hedder snemanden i 'Frost'?", "Olaf"],
+  ["🎬 Film & TV", "Hvad hedder rensdyret i 'Frost'?", "Sven"],
+  ["🎬 Film & TV", "Hvad hedder Harry Potters ugle?", "Hedvig"],
+  ["🎬 Film & TV", "Hvilken film: 'Yippee-ki-yay …'?", "Die Hard"],
+  ["🍺 Mad & drikke", "Hvad hedder dagen, hvor Tuborg Julebryg kommer på hanerne?", "J-dag"],
+  ["🍺 Mad & drikke", "Hvornår er J-dag?", "Første fredag i november"],
+  ["🍺 Mad & drikke", "Hvor mange procent alkohol er der i en Tuborg Grøn?", "4,6 %"],
+  ["🍺 Mad & drikke", "Hvilket krydderi giver Aalborg Taffel Akvavit sin klassiske smag?", "Kommen"],
+  ["🍺 Mad & drikke", "Hvilket land kommer Jägermeister fra?", "Tyskland"],
+  ["🍺 Mad & drikke", "Hvad giver brunkager deres brune farve og søde smag?", "Sirup"],
+  ["🍺 Mad & drikke", "Hvilke to slags kød er mest almindelige juleaften i Danmark?", "And og flæskesteg"],
+  ["🍺 Mad & drikke", "Hvad kom der oprindeligt inden i æbleskiver?", "Æble"],
+  ["🧠 Hovedregning", "Hvad er 7 × 8?", "56"],
+  ["🧠 Hovedregning", "Hvad er 17 × 3?", "51"],
+  ["🧠 Hovedregning", "Hvor mange timer er der i en uge?", "168"],
+  ["🧠 Hovedregning", "Hvor mange sekunder er der i en time?", "3.600"],
+  ["🧠 Hovedregning", "Hvad er 25 % af 200?", "50"],
+  ["🌍 Alt muligt", "Hvad er hovedstaden i Australien?", "Canberra"],
+  ["🌍 Alt muligt", "Hvad er hovedstaden i Canada?", "Ottawa"],
+  ["🌍 Alt muligt", "Hvad er det kemiske tegn for guld?", "Au"],
+  ["🌍 Alt muligt", "Hvilken planet er tættest på Solen?", "Merkur"],
+  ["🌍 Alt muligt", "Hvilket år faldt Berlinmuren?", "1989"],
+  ["🌍 Alt muligt", "Hvor mange stjerner er der på EU's flag?", "12"],
+  ["🌍 Alt muligt", "Hvor mange ben har en edderkop?", "8"],
+];
+
+// [udfordring, sekunder (0 = ingen nedtælling)]
+const DUEL = [
+  ["Armlægning! Bedst af én. Albuen bliver på bordet.", 0],
+  ["Stå på ét ben med lukkede øjne. Den, der står længst, vinder.", 0],
+  ["Stabl flest pebernødder (eller mønter) i ét tårn.", 30],
+  ["Tommelfingerkrig – bedst af 3.", 0],
+  ["Sten, saks, papir – bedst af 5.", 0],
+  ["Stirrekonkurrence! Den første, der blinker eller griner, taber.", 0],
+  ["Sig 'Fem flade flødeboller på et fladt fad' tre gange hurtigt. Den hurtigste uden fejl vinder.", 0],
+  ["Nævn julesange på skift. Den, der går i stå eller gentager, taber.", 0],
+  ["Nævn danske byer på skift. Den, der går i stå eller gentager, taber.", 0],
+  ["Nævn ord, der rimer på 'jul', på skift. Den, der går i stå, taber.", 0],
+  ["Balancér en ske på næsen. Den, der holder den længst, vinder.", 0],
+  ["Planke! Den, der holder længst, vinder.", 0],
+  ["Hold et glas vand i strakt arm. Den, der holder længst, vinder.", 0],
+  ["Fold en serviet til det flotteste juletræ. Bordet dømmer.", 45],
+  ["Byg det højeste tårn af ting fra bordet. Ingen hjælp!", 45],
+  ["Tegn en nisse med den 'forkerte' hånd. Bordet dømmer den flotteste.", 30],
+  ["Læg en småkage på panden, og få den ned i munden uden hænder. Først til at spise den vinder.", 0],
+  ["Pust en serviet hen over bordet. Den første ud over kanten vinder.", 0],
+  ["Klap flest gange. Bordet tæller (deles i to hold).", 10],
+  ["Grimasse-duel: Lav den grimmeste grimasse. Bordet stemmer.", 0],
+  ["Bedste julemandslatter: 'HO HO HO!'. Bordet stemmer.", 0],
+  ["Wall sit: Sid op ad væggen uden stol. Den, der holder længst, vinder.", 0],
+  ["Sig alfabetet baglæns. Den hurtigste uden fejl vinder.", 0],
+  ["Nævn julemandens rensdyr på skift. Den, der går i stå, taber.", 0],
+  ["Balancér en tom flaske på hovedet. Den, der holder den længst, vinder.", 0],
+  ["Hvem kan holde en tone længst? Én tone, ét åndedrag.", 0],
+  ["Snak uafbrudt om sild i 20 sekunder uden at sige 'øh'. Den bedste vinder.", 20],
+];
+
+const MIME = [
+  "Julemanden sidder fast i skorstenen", "Rudolf med snue", "At pakke en gave ind", "At danse om juletræet",
+  "Skøjteløb på glat is", "Sneboldkamp", "At bage brunkager", "At finde mandlen", "Fuld onkel holder tale",
+  "At bære juletræet hjem", "Kø i Bilka den 23. december", "En snemand der smelter", "En nisse der driller",
+  "At få en gave, man ikke kan lide", "Taxachauffør kl. 3 om natten", "Pingvin på glatis", "En kalkun der flygter",
+  "At synge karaoke", "At spise risalamande", "At tabe telefonen i toilettet", "Vikinger der skåler",
+  "At hælde snaps op", "Luciaoptog", "At klippe julehjerter", "At skrive ønskeseddel", "At pynte juletræet",
+  "Julemanden på slankekur", "At skifte pære i julestjernen", "Et rensdyr der lærer at flyve", "At sove til julegudstjeneste",
+];
+
+const TEGN = [
+  "Snemand", "Rensdyr", "Juletræ", "Nisse", "Risalamande", "Julestjerne", "Slæde", "Skorsten", "Pebernød",
+  "Kirkeklokke", "Julegave", "Snefnug", "Adventskrans", "Mistelten", "Kirke", "Engel", "Skøjter", "Julehjerte",
+  "Ølflaske", "Sild", "Flæskesteg", "Pingvin", "Isbjørn", "Brunkage", "Kravlenisse", "Grønland", "Julemandens mave",
+  "Juleand", "Æbleskive", "Snapseglas",
+];
+
+const SANGE = [
+  "Højt fra træets grønne top", "Nu er det jul igen", "Glade jul", "Dejlig er jorden",
+  "Sikken voldsom trængsel og alarm", "På loftet sidder nissen med sin julegrød", "Jeg så julemanden kysse mor",
+  "Rudolf med den røde tud", "Jingle Bells", "Last Christmas", "All I Want for Christmas Is You",
+  "Juletræet med sin pynt", "Et barn er født i Betlehem", "Jul det' cool",
+];
+const STILE = [
+  "som en operasanger", "som en heavy metal-forsanger", "hviskende, som om alle sover", "på bred jysk",
+  "som Kim Larsen", "mens du danser", "så trist som overhovedet muligt", "som en rapper", "med en tyk tysk accent",
+  "som en robot", "som om du lige har vundet X Factor", "mens du står på ét ben",
+];
+
+const PEG = [
+  "Hvem ville overleve kortest i en zombie-apokalypse?", "Hvem falder først i søvn i aften?",
+  "Hvem har den vildeste dansestil?", "Hvem kommer sidst hjem i nat?", "Hvem ville være den bedste julemand?",
+  "Hvem har sendt den mest pinlige besked?", "Hvem ville vinde Robinson?", "Hvem bruger længst tid foran spejlet?",
+  "Hvem bliver først rig?", "Hvem klarer sig bedst på en øde ø?", "Hvem holder en tale, ingen har bedt om?",
+  "Hvem glemmer julegaverne til sidste øjeblik?", "Hvem har det bedste grin?", "Hvem kommer for sent til sin egen fødselsdag?",
+  "Hvem ville være den værste nisse?", "Hvem ender med at synge karaoke i aften?", "Hvem snyder i brætspil?",
+  "Hvem er hemmeligt den største julenørd?", "Hvem bliver kendt på TikTok?", "Hvem spiser mest risalamande?",
+  "Hvem ville kunne overleve en uge uden telefon?", "Hvem vinder det her spil?",
+];
+
+/* ---------- Gamemasterens replikker ({n}, {t}, {a}, {b}, {p}, {g} er navne) ---------- */
+const INTRO = {
+  quiz: ["Quiztid! Første der råber det rigtige svar, får pointet.", "Lad os se, om der er hjerneceller tilbage efter sildemaden.",
+    "Spørgsmål på vej. Ingen googling under bordet – jeg kan se jer.", "Skru op for hjernen og ned for snapsen.",
+    "Nu skal I bruge hovedet. Jeg ved godt, det er svært."],
+  duel: ["{a} mod {b}. Jeg har glædet mig til det her.", "DUEL! {a} og {b}, op og stå.",
+    "{a} mod {b}. Taberen skal høre for det resten af aftenen.", "{a} mod {b}. Ingen nåde i julen!",
+    "Hvem er stærkest: {a} eller {b}? Det finder vi ud af NU."],
+  skuespil: ["{p}, du er på. De andre gætter.", "{p}, nu skal vi se lidt skuespiltalent. Eller mangel på samme.",
+    "Scenen er din, {p}. Gør os ikke flove."],
+  sang: ["{p}, din stemme er efterspurgt. Desværre for os andre.", "Koncerttid! {p} synger, resten dømmer.",
+    "{p}, nu skal du synge. Tag det med ro, vi optager det ikke. Måske."],
+  peg: ["Pegeleg! På 3 peger alle på den, der passer bedst.", "Nu skal I være ærlige. Eller bare onde.",
+    "Ingen kan gemme sig nu. Klar til at pege?"],
+};
+const VIND = ["{n} tager pointet. Imponerende – eller også var det held.", "Point til {n}! Bliv nu ikke høj i hatten.",
+  "{n} scorer. Resten af jer burde skamme jer en lille smule.", "{n}! Det sad lige i skabet.",
+  "{n} vidste det. Har du siddet og læst op på det?"];
+const INGEN = ["Ingen? Seriøst? Jeg skal bruge et nyt publikum.", "Pinligt. Pointet går tilbage til nissen.",
+  "Ingen fik den. Det må være sildens skyld.", "Total stilhed. Jeg kunne høre jeres hjerner knirke."];
+const DUELVIND = ["{n} vinder duellen! {t}, det var pinligt at se på.", "{n} smadrer {t}. Ingen nåde i julen.",
+  "{t} taber til {n}. Jeg siger det bare: det så ikke godt ud.", "{n} vinder! {t}, gå hen i hjørnet og tænk over det."];
+const UAFGJORT = ["Uafgjort? Kedeligt! Et point til hver for indsatsen.", "Lige godt – eller lige dårligt. Et point hver."];
+const GAETTET = ["{g} gættede det! Point til både {g} og {p}.", "Bingo, {g}! {p} får også et point for skuespillet.",
+  "{g} læste {p} som en åben bog. Point til begge."];
+const IKKEGAETTET = ["Ingen gættede det. {p}, skuespilskolen ringer ikke.", "Nul. Niks. Nada. {p}, hvad var DET?"];
+const GODKENDT = ["Bordet har talt: {n} kan synge! Mere eller mindre.", "Godkendt! {n} er klar til X Factor. Til første audition.",
+  "{n} leverede! Mine pixelører har det fint."];
+const BUH = ["BUUH! {n}, mine pixelører bløder.", "Bordet siger nej. {n}, behold dit dagjob.", "Buh! {n}, det var en forbrydelse mod julen."];
+const PEGVIND = ["{n} fik flest fingre. Tillykke? Det er stadig et point.", "Folket har talt: {n}! Ingen overraskelse der.",
+  "{n}! I var vist ret enige."];
+const PEGUAFGJORT = ["Uafgjort? I kan ikke engang blive enige om at være onde. Ingen point."];
+const LEDER = ["{n} fører. Er der virkelig ingen, der tør udfordre?", "{n} i front – og lidt for selvglad, hvis du spørger mig.",
+  "Kan nogen stoppe {n}? Jeg begynder at kede mig."];
+const SIDST = ["{n} ligger sidst. Rolig, jeg sørger for, at du kommer med i næste duel.", "{n}, er du faldet i søvn? Op med pointene!",
+  "{n} ligger sidst. Jeg holder øje med dig."];
+
+/* =====================================================================
+   SMÅ HJÆLPERE
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const scene = $("#scene"), overlay = $("#overlay");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const tilf = a => a[Math.floor(Math.random() * a.length)];
+// Indsætter navne i en replik som fed tekst ({n} → <b>Anders</b>)
+const fyld = (t, v) => t.replace(/\{(\w+)\}/g, (_, k) => v[k] != null ? `<b>${esc(v[k])}</b>` : "");
+function hent(k, std) { try { const v = localStorage.getItem(k); return v == null ? std : JSON.parse(v); } catch (e) { return std; } }
+function gem(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function slet(k) { try { localStorage.removeItem(k); } catch (e) {} }
+const mmss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const fmt = n => Number(n).toLocaleString("da-DK");
+
+if (!matchMedia("(pointer: coarse)").matches) document.body.classList.add("mus");
+
+/* =====================================================================
+   LYD (Web Audio – alt laves i kode, 8-bit stil)
+   ===================================================================== */
+const Lyd = {
+  ctx: null, til: hent(LYD_KEY, true),
+  start() {
+    if (!this.ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) this.ctx = new AC(); }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+  },
+  tone(f, d, { type = "square", vol = 0.1, t = 0, til = null } = {}) {
+    if (!this.til || !this.ctx) return;
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain(), s = c.currentTime + t;
+    o.type = type; o.frequency.setValueAtTime(f, s);
+    if (til) o.frequency.exponentialRampToValueAtTime(til, s + d);
+    g.gain.setValueAtTime(vol, s); g.gain.exponentialRampToValueAtTime(0.0001, s + d);
+    o.connect(g).connect(c.destination); o.start(s); o.stop(s + d + 0.02);
+  },
+  stoej(d, { vol = 0.08, t = 0 } = {}) {
+    if (!this.til || !this.ctx) return;
+    const c = this.ctx, n = Math.floor(c.sampleRate * d), buf = c.createBuffer(1, n, c.sampleRate), data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource(), g = c.createGain(), s = c.currentTime + t;
+    src.buffer = buf; g.gain.setValueAtTime(vol, s); g.gain.exponentialRampToValueAtTime(0.0001, s + d);
+    src.connect(g).connect(c.destination); src.start(s);
+  },
+  klik() { this.tone(660, 0.06, { vol: 0.07 }); },
+  point() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.13, { t: i * 0.07 })); },
+  fanfare() {
+    const n = [[392, 0], [392, .12], [392, .24], [523, .36], [659, .66], [784, .9], [659, 1.08], [784, 1.2]];
+    n.forEach(([f, t], i) => this.tone(f, i === n.length - 1 ? .6 : .14, { t, vol: .11 }));
+    n.forEach(([f, t], i) => this.tone(f / 2, i === n.length - 1 ? .6 : .14, { t, vol: .06, type: "triangle" }));
+  },
+  hvirvel() { for (let i = 0; i < 14; i++) this.stoej(0.05, { t: i * 0.05, vol: 0.04 + i * 0.006 }); this.stoej(0.35, { t: 0.72, vol: 0.18 }); this.tone(110, .3, { t: .72, type: "triangle", vol: .2 }); },
+  buh() { this.tone(220, 0.7, { type: "sawtooth", til: 80, vol: 0.1 }); this.tone(233, 0.7, { type: "sawtooth", til: 85, vol: 0.07 }); },
+  tik() { this.tone(1200, 0.05, { vol: 0.06 }); },
+  horn() { this.tone(330, 0.45, { type: "sawtooth", vol: 0.12 }); this.tone(262, 0.8, { type: "sawtooth", t: 0.42, vol: 0.12 }); },
+  bip(hoej) { this.tone(hoej ? 1175 : 587, hoej ? 0.4 : 0.14, { vol: 0.1 }); },
+};
+function opdaterLydKnap() { $("#btnLyd").textContent = Lyd.til ? "🔊" : "🔇"; }
+
+/* =====================================================================
+   PIXEL-NISSEN (gamemasteren) – tegnes fra et lille kort
+   ===================================================================== */
+const NISSE = [
+  ".....RR.....",
+  "....RRRR....",
+  "...RRRRRR...",
+  "..RRRRRRRRW.",
+  ".WWWWWWWWWWW",
+  ".SSSSSSSSSS.",
+  ".SKKSSSSKKS.",
+  ".SSSSNNSSSS.",
+  ".WSSSSSSSSW.",
+  ".WWWMMMMWWW.",
+  ".WWWWWWWWWW.",
+  "..WWWWWWWW..",
+  "...WWWWWW...",
+  ".....WW.....",
+];
+const NFARVE = { R: "#ff2a55", W: "#f4f4ff", S: "#ffc8a0", K: "#111", N: "#ff6b6b", M: "#8a1030" };
+function tegnNisser() {
+  document.querySelectorAll("canvas.nisse").forEach(cv => {
+    cv.width = 12; cv.height = 14;
+    const x = cv.getContext("2d");
+    NISSE.forEach((row, y) => [...row].forEach((ch, i) => { if (NFARVE[ch]) { x.fillStyle = NFARVE[ch]; x.fillRect(i, y, 1, 1); } }));
+  });
+}
+const gmHtml = tekst => `<div class="gm"><canvas class="nisse"></canvas><div class="boble">${tekst}</div></div>`;
+
+/* =====================================================================
+   SPILLETS TILSTAND
+   S gemmes i localStorage efter hver handling, så en genindlæst
+   side (fx når telefonen går i dvale) kan fortsætte festen.
+   ===================================================================== */
+let S = null;
+let pauset = false;
+let navne = hent(NAVNE_KEY, []);
+let sidstRender = 0;   // bruges til at undgå dobbelt-tryk lige efter skærmskift
+let afslutSikker = false;
+
+function gemState() { if (S) gem(GEM_KEY, S); }
+const navn = i => S.spillere[i].navn;
+const gange = () => (S.finale ? 2 : 1);
+
+function nyFest(liste) {
+  S = {
+    spillere: liste.map(n => ({ navn: n, point: 0, st: {}, valgt: -9 })),
+    runde: 0, totalMs: MINUTTER * 60000, tilbageMs: MINUTTER * 60000,
+    finale: false, tidUde: false, fase: "runde", r: null, brugt: {}, typer: [],
+    resultat: null, fortryd: null, afbrudt: false, gemt: false, dato: Date.now(),
+  };
+  pauset = false;
+  Lyd.fanfare();
+  nyRunde();
+}
+
+// Trækker et tilfældigt kort fra en bunke uden gentagelser (bunken blandes igen, når den er tom)
+function traek(bunke, liste) {
+  const brugt = S.brugt[bunke] || (S.brugt[bunke] = []);
+  if (brugt.length >= liste.length) brugt.length = 0;
+  let i;
+  do { i = Math.floor(Math.random() * liste.length); } while (brugt.includes(i));
+  brugt.push(i);
+  return i;
+}
+
+// Vælger en spiller. Underdog-hjælp: jo længere bagud og jo længe siden man var med, jo større chance.
+function vaelgSpiller(udeluk) {
+  const maks = Math.max(...S.spillere.map(s => s.point));
+  const kand = S.spillere.map((s, i) => ({ i, w: 1 + (maks - s.point) * 0.5 + Math.min(6, S.runde - s.valgt) * 0.5 }))
+    .filter(k => !udeluk.includes(k.i));
+  let x = Math.random() * kand.reduce((a, k) => a + k.w, 0);
+  for (const k of kand) { x -= k.w; if (x <= 0) { S.spillere[k.i].valgt = S.runde; return k.i; } }
+  const k = kand[kand.length - 1]; S.spillere[k.i].valgt = S.runde; return k.i;
+}
+
+function vaelgType() {
+  const t = S.typer, sidste = t[t.length - 1];
+  let kand = TYPER.filter(([k]) => {
+    if (t.length >= 2 && sidste === k && t[t.length - 2] === k) return false; // aldrig 3 ens i træk
+    if (k !== "quiz" && sidste === k) return false;                          // kun quiz må komme to gange i træk
+    return true;
+  });
+  let x = Math.random() * kand.reduce((a, [, w]) => a + w, 0);
+  for (const [k, w] of kand) { x -= w; if (x <= 0) return k; }
+  return kand[0][0];
+}
+
+function nyRunde() {
+  S.runde++;
+  const type = vaelgType();
+  S.typer.push(type); if (S.typer.length > 6) S.typer.shift();
+  const r = { type, fase: "klar", timer: null };
+  if (type === "quiz") {
+    r.i = traek("quiz", QUIZ); r.fase = "spm";
+    r.timer = { ms: 20000, tot: 20000, koer: true };
+    r.intro = tilf(INTRO.quiz);
+  } else if (type === "duel") {
+    r.i = traek("duel", DUEL); r.a = vaelgSpiller([]); r.b = vaelgSpiller([r.a]);
+    const sek = DUEL[r.i][1];
+    if (sek) r.timer = { ms: sek * 1000, tot: sek * 1000, koer: false };
+    r.intro = fyld(tilf(INTRO.duel), { a: navn(r.a), b: navn(r.b) });
+  } else if (type === "skuespil") {
+    r.metode = Math.random() < 0.5 ? "mime" : "tegn";
+    r.i = traek(r.metode, r.metode === "mime" ? MIME : TEGN);
+    r.p = vaelgSpiller([]); r.fase = "hemmelig";
+    r.timer = { ms: 60000, tot: 60000, koer: false };
+    r.intro = fyld(tilf(INTRO.skuespil), { p: navn(r.p) });
+  } else if (type === "sang") {
+    r.i = traek("sang", SANGE); r.stil = traek("stil", STILE); r.p = vaelgSpiller([]);
+    r.timer = { ms: 30000, tot: 30000, koer: false };
+    r.intro = fyld(tilf(INTRO.sang), { p: navn(r.p) });
+  } else {
+    r.i = traek("peg", PEG);
+    r.intro = tilf(INTRO.peg);
+  }
+  S.r = r; S.fase = "runde"; S.resultat = null; S.fortryd = null;
+  if (type === "duel") Lyd.hvirvel(); else Lyd.bip(true);
+  gemState(); vis();
+}
+
+// Giver point. plus = [{ i: spiller, p: grundpoint, st: statistik-nøgle }]
+function tildel(plus, kommentar, note) {
+  S.fortryd = JSON.stringify({ spillere: S.spillere, r: S.r, typer: S.typer });
+  const m = gange(), linjer = [];
+  for (const x of plus) {
+    const s = S.spillere[x.i];
+    if (x.st) s.st[x.st] = (s.st[x.st] || 0) + 1;
+    if (x.p > 0) { s.point += x.p * m; linjer.push({ i: x.i, p: x.p * m }); }
+  }
+  if (S.r && S.r.timer) S.r.timer.koer = false;
+  S.resultat = { linjer, kommentar: kommentar + stillingsKommentar(), note: note || "" };
+  S.fase = "resultat";
+  if (linjer.length) Lyd.point(); else Lyd.buh();
+  gemState(); vis();
+}
+
+function sorteret() {
+  return S.spillere.map((s, i) => ({ ...s, i })).sort((a, b) => b.point - a.point || a.navn.localeCompare(b.navn, "da"));
+}
+// Lidt ekstra drilleri om stillingen
+function stillingsKommentar() {
+  const s = sorteret();
+  if (s.length < 2 || s[0].point === s[s.length - 1].point) return "";
+  const x = Math.random();
+  if (x < 0.35 && s[0].point > s[1].point) return " " + fyld(tilf(LEDER), { n: s[0].navn });
+  if (x < 0.7) return " " + fyld(tilf(SIDST), { n: s[s.length - 1].navn });
+  return "";
+}
+
+/* =====================================================================
+   SKÆRME
+   ===================================================================== */
+function vis() {
+  sidstRender = performance.now();
+  if (!S) visStart();
+  else if (S.fase === "runde") visRunde();
+  else if (S.fase === "resultat") visResultat();
+  else visSlut();
+  tegnNisser();
+  opdaterHud(true);
+  scene.scrollTop = 0;
+}
+
+/* ---------- Startskærm ---------- */
+function visStart() {
+  const gemt = hent(GEM_KEY, null);
+  const kanFortsaette = gemt && gemt.fase !== "slut" && gemt.spillere && gemt.tilbageMs > 0;
+  const touch = !document.body.classList.contains("mus");
+  scene.innerHTML = `
+    <div class="titel">SKÅL<br><span class="og">&amp;</span> KAMP</div>
+    <div class="undertitel blink">★ JULEFROKOST-EDITION ★</div>
+    ${gmHtml("Jeg er jeres gamemaster i aften. Skriv jeres navne, så sætter jeg jer på plads. <b>" + MINUTTER + " minutter</b>, alle mod alle.")}
+    ${kanFortsaette ? `<button class="groen stor" data-act="fortsaetGemt">▶ Fortsæt festen (runde ${gemt.runde}, ${mmss(gemt.tilbageMs)} tilbage)</button>` : ""}
+    <div class="kort">
+      <form class="navne" autocomplete="off">
+        <input id="navnInput" maxlength="20" placeholder="Skriv et navn…" enterkeyhint="done" autocomplete="off" aria-label="Spillerens navn">
+        <button type="submit">+ Tilføj</button>
+      </form>
+      <div class="chips">${navne.map((n, i) => `<button class="chip" data-act="fjern" data-arg="${i}">${esc(n)}<i>✕</i></button>`).join("")}</div>
+      <p class="lille" style="margin-top:10px">${navne.length}/${MAKS_SPILLERE} spillere. I skal være mindst 2.</p>
+    </div>
+    <button class="primaer stor" data-act="start" ${navne.length < 2 ? "disabled" : ""}>▶ Start festen</button>
+    <details class="kort regler">
+      <summary>Sådan foregår det</summary>
+      <ul>
+        <li>I samles om <b>én skærm</b>. Nissen finder på runderne, I dyster i virkeligheden.</li>
+        <li>❓ <b>Quiz:</b> første der råber rigtigt får 1 point.</li>
+        <li>⚔️ <b>Duel:</b> vinderen får 2 point.</li>
+        <li>🎭 <b>Mime / tegn og gæt:</b> 1 point til den, der optræder, og 1 til den, der gætter.</li>
+        <li>🎤 <b>Syng:</b> 2 point, hvis bordet godkender.</li>
+        <li>👉 <b>Pegeleg:</b> 1 point til den, flest peger på.</li>
+        <li>🔥 De sidste 5 minutter giver <b>dobbeltpoint</b>.</li>
+      </ul>
+    </details>
+    <p class="lille midt">${touch
+      ? "Den, der holder telefonen, trykker på vinderen efter hver runde. Tryk ⏸ for pause."
+      : "Klik på vinderen efter hver runde – eller brug tal-tasterne. Mellemrum = næste. P = pause, M = lyd."}</p>`;
+}
+
+/* ---------- Rundeskærm ---------- */
+const TYPENAVN = { quiz: "❓ Quiz", duel: "⚔️ Duel", sang: "🎤 Syng!", peg: "👉 Pegeleg" };
+function pointTekst(r) {
+  const m = gange();
+  if (r.type === "quiz") return `${POINT.quiz * m} point til den hurtigste`;
+  if (r.type === "duel") return `${POINT.duel * m} point til vinderen`;
+  if (r.type === "skuespil") return `${m} point til ${r.metode === "mime" ? "mimeren" : "tegneren"} og ${m} til den, der gætter`;
+  if (r.type === "sang") return `${POINT.sang * m} point, hvis bordet godkender`;
+  return `${POINT.peg * m} point til den, flest peger på`;
+}
+const timerHtml = r => `<div class="rtimer"><div class="rtal" id="rtal">${Math.ceil(r.timer.ms / 1000)}</div><div class="rbar"><i id="rbar" style="width:${(r.timer.ms / r.timer.tot) * 100}%"></i></div></div>`;
+// Knapper med spillernavne. Tal-taster 1-9 og 0 på computer.
+function spillerKnapper(idx, act, klasse = "") {
+  return `<div class="spillergrid">${idx.map((i, n) =>
+    `<button class="${klasse}" data-act="${act}" data-arg="${i}" ${n < 10 ? `data-key="${(n + 1) % 10}"` : ""}><span class="tast">${n < 10 ? (n + 1) % 10 : ""}</span>${esc(navn(i))}</button>`).join("")}</div>`;
+}
+const alle = () => S.spillere.map((_, i) => i);
+
+function visRunde() {
+  const r = S.r;
+  const typeNavn = r.type === "skuespil" ? (r.metode === "mime" ? "🎭 Mimeleg" : "✏️ Tegn og gæt") : TYPENAVN[r.type];
+  let h = `<div class="rundehoved"><span class="tag ${r.type}">${typeNavn}</span><span class="pointinfo">${pointTekst(r)}</span></div>`;
+  if (S.tidUde) h += `<div class="advarsel">⏰ Tiden er gået – gør runden færdig!</div>`;
+  h += gmHtml(r.intro);
+
+  if (r.type === "quiz") {
+    const [kat, spm, svar] = QUIZ[r.i];
+    h += `<div class="kort"><div class="kat">${kat}</div><div class="spm">${esc(spm)}</div>
+      ${r.fase === "svar" ? `<div class="svar">✔ ${esc(svar)}</div>` : timerHtml(r)}</div>`;
+    if (r.fase === "spm") {
+      h += `<button class="primaer stor" data-act="visSvar">Vis svaret</button>`;
+    } else {
+      h += `<div class="spoerg">Hvem råbte det rigtige svar først?</div>
+        ${spillerKnapper(alle(), "quizVinder")}
+        <button class="graa" data-act="ingen" data-key="n"><span class="tast">N</span>Ingen fik den</button>`;
+    }
+  } else if (r.type === "duel") {
+    const [tekst] = DUEL[r.i];
+    h += `<div class="kort"><div class="vs"><span class="navn">${esc(navn(r.a))}</span><span class="mod">VS</span><span class="navn">${esc(navn(r.b))}</span></div>
+      <div class="opgave">${esc(tekst)}</div>${r.timer ? timerHtml(r) : ""}</div>`;
+    if (r.timer && !r.timer.koer && r.timer.ms === r.timer.tot) h += `<button class="primaer stor" data-act="timerStart">▶ Start nedtælling (${r.timer.tot / 1000} sek.)</button>`;
+    h += `<div class="spoerg">Hvem vandt?</div>
+      ${spillerKnapper([r.a, r.b], "duelVinder", "groen")}
+      <button class="graa" data-act="uafgjort" data-key="u"><span class="tast">U</span>Uafgjort (1 point hver)</button>`;
+  } else if (r.type === "skuespil") {
+    const ord = r.metode === "mime" ? MIME[r.i] : TEGN[r.i];
+    const regel = r.metode === "mime" ? "Ingen ord og ingen lyde – kun kropssprog!" : "Tegn på en serviet eller et stykke papir. Ingen bogstaver eller tal!";
+    if (r.fase === "hemmelig") {
+      h += `<div class="kort midt"><div class="opgave">Giv skærmen til <b style="color:var(--gul)">${esc(navn(r.p))}</b>.<br>Kun ${esc(navn(r.p))} må se ordet – I andre kigger væk! 🙈</div></div>
+        <button class="primaer stor" data-act="visOrd">👀 Vis ordet</button>`;
+    } else if (r.fase === "vis") {
+      h += `<div class="kort"><div class="kat midt">Dit ord er:</div><div class="hemmeligt">${esc(ord)}</div><div class="opgave lille">${regel}</div></div>
+        <button class="primaer stor" data-act="skjulOrd">Skjul ordet og start (60 sek.)</button>`;
+    } else {
+      h += `<div class="kort"><div class="opgave">${esc(navn(r.p))} ${r.metode === "mime" ? "mimer" : "tegner"} – gæt løs!</div>${timerHtml(r)}</div>
+        <div class="spoerg">Hvem gættede det først?</div>
+        ${spillerKnapper(alle().filter(i => i !== r.p), "gaettet")}
+        <button class="graa" data-act="ikkeGaettet" data-key="n"><span class="tast">N</span>Ingen gættede det</button>`;
+    }
+  } else if (r.type === "sang") {
+    h += `<div class="kort"><div class="kat midt">${esc(navn(r.p))} synger:</div><div class="hemmeligt" style="font-size:clamp(24px,7vw,40px)">♪ ${esc(SANGE[r.i])} ♪</div>
+      <div class="opgave">… ${esc(STILE[r.stil])}!</div>${timerHtml(r)}</div>`;
+    if (!r.timer.koer && r.timer.ms === r.timer.tot) h += `<button class="primaer stor" data-act="timerStart">▶ Start sangen (30 sek.)</button>`;
+    h += `<div class="spoerg">Hvad siger bordet?</div>
+      <div class="knaprad"><button class="groen" data-act="godkendt" data-key="1"><span class="tast">1</span>👍 Godkendt</button>
+      <button class="roed" data-act="buh" data-key="2"><span class="tast">2</span>👎 Buh!</button></div>`;
+  } else {
+    h += `<div class="kort"><div class="spm midt">${esc(PEG[r.i])}</div>${r.fase === "taeller" ? `<div class="tal321" id="tal321">3</div>` : ""}</div>`;
+    if (r.fase === "klar") h += `<button class="primaer stor" data-act="peg321">Tæl ned: 3 – 2 – 1 – PEG!</button>`;
+    if (r.fase === "valg") {
+      h += `<div class="spoerg">Hvem fik flest fingre?</div>
+        ${spillerKnapper(alle(), "pegVinder")}
+        <button class="graa" data-act="pegUafgjort" data-key="u"><span class="tast">U</span>Uafgjort – ingen point</button>`;
+    }
+  }
+  h += `<div class="fyld"></div><div class="knaprad"><button class="graa lilleknap" data-act="spring">⏭ Spring runden over</button></div>`;
+  scene.innerHTML = h;
+}
+
+/* ---------- Resultat efter hver runde ---------- */
+function stillingHtml(nye = []) {
+  const s = sorteret(), maks = Math.max(1, s[0].point);
+  let rang = 0, forrige = null;
+  return `<div class="kort stilling">${s.map((x, n) => {
+    if (x.point !== forrige) { rang = n + 1; forrige = x.point; }
+    return `<div class="srk ${nye.includes(x.i) ? "ny" : ""}"><span class="nr">${rang}.</span><span class="nv">${esc(x.navn)}</span>
+      <span class="bar"><i style="width:${(x.point / maks) * 100}%"></i></span><span class="pt">${x.point}</span></div>`;
+  }).join("")}</div>`;
+}
+function visResultat() {
+  const res = S.resultat;
+  const plus = res.linjer.length
+    ? res.linjer.map((l, n) => `<div class="plus" style="animation-delay:${n * 0.15}s">+${l.p} ${esc(navn(l.i))}</div>`).join("")
+    : `<div class="plus nul">Ingen point</div>`;
+  scene.innerHTML = `
+    ${plus}
+    ${res.note ? `<div class="note">${res.note}</div>` : ""}
+    ${gmHtml(res.kommentar)}
+    ${stillingHtml(res.linjer.map(l => l.i))}
+    <div class="fyld"></div>
+    ${S.tidUde
+      ? `<button class="primaer stor" data-act="naeste">🏆 Se vinderen!</button>`
+      : `<button class="primaer stor" data-act="naeste">Næste runde ▶</button>`}
+    <div class="knaprad"><button class="graa lilleknap" data-act="fortryd">↶ Fortryd (forkert person?)</button></div>`;
+}
+
+/* ---------- Slutskærm ---------- */
+const STATS = [
+  ["quiz", "🧠 Quizgeni", "rigtige svar"], ["duelV", "💪 Duelkonge", "vundne dueller"], ["duelT", "🤕 Mest tæsk", "tabte dueller"],
+  ["peg", "👉 Folkets valg", "gange peget på"], ["sang", "🎤 Stjernestemme", "godkendte sange"], ["buh", "🍅 Buh-magnet", "gange buhet ud"],
+  ["gaet", "🔮 Tankelæser", "gæt"], ["skuespil", "🎭 Skuespiller", "gættede forestillinger"],
+];
+function visSlut() {
+  const s = sorteret();
+  const vindere = s.filter(x => x.point === s[0].point);
+  const vinderTekst = vindere.length > 1
+    ? `Delt sejr mellem ${vindere.map(v => `<b>${esc(v.navn)}</b>`).join(" og ")}! I er lige dårlige. Eller gode.`
+    : `<b>${esc(s[0].navn)}</b> vinder Skål &amp; Kamp med ${s[0].point} point! Resten af jer kan rydde op.`;
+
+  // Podie: 2. – 1. – 3. plads (ved pointlighed deler man placering)
+  const rang = x => s.findIndex(y => y.point === x.point) + 1;
+  const blok = (x, k) => x ? `<div class="${k}">${rang(x) === 1 ? `<div class="krone">👑</div>` : ""}<div class="nv">${esc(x.navn)}</div>
+    <div class="blok">${rang(x)}<small>${x.point} p</small></div></div>` : `<div></div>`;
+  const podie = `<div class="podie">${blok(s[1], "p2")}${blok(s[0], "p1")}${blok(s[2], "p3")}</div>`;
+
+  const stats = STATS.map(([k, titel, enhed]) => {
+    const maks = Math.max(...S.spillere.map(p => p.st[k] || 0));
+    if (!maks) return "";
+    const hvem = S.spillere.filter(p => (p.st[k] || 0) === maks).map(p => esc(p.navn)).join(" & ");
+    return `<div class="stat">${titel}<br><b>${hvem}</b> – ${maks} ${enhed}</div>`;
+  }).join("");
+
+  scene.innerHTML = `
+    <div class="titel" style="font-size:clamp(30px,10vw,56px)">GAME OVER</div>
+    ${podie}
+    ${gmHtml(vinderTekst + ` Vi nåede ${S.runde} ${S.runde === 1 ? "runde" : "runder"}.`)}
+    ${S.afbrudt ? `<p class="lille midt">Festen blev afsluttet før tid, så scores bliver ikke gemt på ranglisten.</p>` : ""}
+    <div class="kort"><h3>Stilling</h3>${stillingHtml().replace('class="kort stilling"', 'class="stilling"')}</div>
+    ${stats ? `<div class="kort"><h3>Aftenens priser</h3><div class="statgrid">${stats}</div></div>` : ""}
+    <div class="knaprad">
+      <button class="primaer" data-act="kopier">📋 Kopiér resultat</button>
+      ${navigator.share && !document.body.classList.contains("mus") ? `<button data-act="del">📤 Del</button>` : ""}
+    </div>
+    <div class="knaprad">
+      <button class="groen" data-act="nyFestSamme">🔁 Ny fest – samme spillere</button>
+      <button class="graa" data-act="tilStart">🏠 Til start</button>
+    </div>
+    <div class="kort"><h3>Fælles rangliste</h3><table class="liste" id="faellesTop"></table></div>
+    <div class="kort"><h3>Top 10 på denne enhed</h3><table class="liste" id="lokalTop"></table></div>`;
+
+  // Gem scores én gang (kun hvis festen blev spillet færdig)
+  if (!S.gemt && !S.afbrudt) {
+    S.gemt = true; gemState();
+    const top = hent(TOP_KEY, []);
+    const dato = new Date().toLocaleDateString("da-DK");
+    S.spillere.forEach(p => top.push({ navn: p.navn, score: p.point, dato }));
+    top.sort((a, b) => b.score - a.score);
+    gem(TOP_KEY, top.slice(0, 10));
+    const vent = window.gemScore ? Promise.allSettled(S.spillere.map(p => gemScore(SPIL, p.navn, p.point))) : Promise.resolve();
+    vent.then(() => window.visFaellesTop && visFaellesTop($("#faellesTop"), SPIL, s[0].navn));
+  } else if (window.visFaellesTop) {
+    visFaellesTop($("#faellesTop"), SPIL, s[0].navn);
+  } else {
+    $("#faellesTop").innerHTML = "<tr><td>Kunne ikke hente den fælles rangliste</td></tr>";
+  }
+  visLokalTop();
+}
+function visLokalTop() {
+  const t = $("#lokalTop"), top = hent(TOP_KEY, []), mine = S ? S.spillere.map(p => p.navn) : [];
+  t.innerHTML = top.length ? "" : "<tr><td>Ingen resultater endnu</td></tr>";
+  top.forEach((e, n) => {
+    const tr = t.insertRow();
+    [`${n + 1}.`, `${e.navn} (${e.dato})`, fmt(e.score)].forEach(c => (tr.insertCell().textContent = c));
+    if (mine.includes(e.navn)) tr.className = "me";
+  });
+}
+
+function resultatTekst() {
+  const s = sorteret(), top = hent(TOP_KEY, []);
+  const bedste = Math.max(s[0].point, ...top.filter(e => e.navn === s[0].navn).map(e => e.score));
+  const resten = s.slice(1).map((x, n) => `${n + 2}. ${x.navn} ${x.point}`).join(" · ");
+  return `🎮 Skål & Kamp – 🏆 ${s[0].navn}: ${fmt(s[0].point)} point (bedste: ${fmt(bedste)})` + (resten ? `\n${resten}` : "");
+}
+
+/* =====================================================================
+   PAUSE, BANNERE OG TOPBJÆLKE
+   ===================================================================== */
+function pause() {
+  if (!S || S.fase === "slut" || pauset) return;
+  pauset = true; afslutSikker = false;
+  overlay.innerHTML = `<div class="kort"><h2>PAUSE</h2><p class="lille">Uret står stille, indtil I fortsætter.</p>
+    <button class="primaer stor" data-act="fortsaet">▶ Fortsæt</button>
+    <button class="roed" data-act="afslut" id="afslutKnap">⏹ Afslut festen nu</button></div>`;
+  overlay.hidden = false; gemState();
+}
+function fortsaet() { pauset = false; overlay.hidden = true; }
+
+function banner(html) {
+  const d = document.createElement("div");
+  d.className = "banner"; d.innerHTML = html;
+  document.body.appendChild(d); setTimeout(() => d.remove(), 3300);
+}
+function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("vis"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("vis"), 1800); }
+
+function startFinale() {
+  S.finale = true; Lyd.fanfare();
+  const s = sorteret();
+  banner(`🔥 ×2 🔥<br>DOBBELTPOINT-FINALE<small>Alle point tæller dobbelt resten af festen.${s.length > 1 ? ` ${esc(s[s.length - 1].navn)}, nu er chancen der!` : ""}</small>`);
+  gemState(); if (S.fase !== "slut") vis();
+}
+function tidErGaaet() {
+  S.tidUde = true; S.tilbageMs = 0; Lyd.horn();
+  banner(`⏰ TIDEN ER GÅET!<small>Gør runden færdig, så kårer vi en vinder.</small>`);
+  gemState(); vis();
+}
+function slutSpil(afbrudt) {
+  S.fase = "slut"; S.afbrudt = !!afbrudt; pauset = false; overlay.hidden = true;
+  Lyd.fanfare(); gemState(); vis();
+}
+
+let hudCache = "";
+function opdaterHud(tving) {
+  const i = !!S && S.fase !== "slut";
+  const tid = $("#hudTid");
+  tid.hidden = !i; $("#btnPause").hidden = !i; $("#hudX2").hidden = !(i && S.finale);
+  const tekst = i ? mmss(S.tilbageMs) + "|" + S.runde : "";
+  if (!tving && tekst === hudCache) return;
+  hudCache = tekst;
+  if (i) {
+    tid.textContent = mmss(S.tilbageMs);
+    tid.classList.toggle("travlt", S.tilbageMs < 60000);
+    $("#hudRunde").textContent = `RUNDE ${S.runde}`;
+  } else {
+    $("#hudRunde").textContent = S ? "" : `${MINUTTER} MIN · ALLE MOD ALLE`;
+  }
+}
+// Opdaterer nedtællingen i en runde uden at tegne hele skærmen igen
+function opdaterRundeTimer() {
+  const r = S.r, tal = $("#rtal"), bar = $("#rbar");
+  if (!tal || !r || !r.timer) return;
+  const s = Math.ceil(r.timer.ms / 1000);
+  if (tal.textContent !== String(s)) tal.textContent = s;
+  tal.classList.toggle("lav", s <= 5 && r.timer.koer);
+  bar.style.width = (r.timer.ms / r.timer.tot) * 100 + "%";
+}
+
+/* =====================================================================
+   HANDLINGER (knapperne har data-act="navn")
+   ===================================================================== */
+const A = {
+  lyd() { Lyd.til = !Lyd.til; gem(LYD_KEY, Lyd.til); opdaterLydKnap(); Lyd.klik(); },
+  pause, fortsaet,
+  afslut() {
+    if (!afslutSikker) { afslutSikker = true; $("#afslutKnap").textContent = "Sikker? Tryk igen"; return; }
+    slutSpil(true);
+  },
+
+  // Start
+  tilfoej() {
+    const inp = $("#navnInput"), n = inp.value.trim().replace(/\s+/g, " ").slice(0, 20);
+    if (!n) return;
+    if (navne.length >= MAKS_SPILLERE) return toast(`Max ${MAKS_SPILLERE} spillere`);
+    if (navne.some(x => x.toLowerCase() === n.toLowerCase())) return toast("Det navn er der allerede");
+    navne.push(n); gem(NAVNE_KEY, navne); Lyd.klik();
+    visStart(); tegnNisser();
+    const ny = $("#navnInput"); if (ny) ny.focus();
+  },
+  fjern(i) { navne.splice(i, 1); gem(NAVNE_KEY, navne); Lyd.klik(); visStart(); tegnNisser(); },
+  start() { if (navne.length >= 2) nyFest(navne.slice()); },
+  fortsaetGemt() { S = hent(GEM_KEY, null); if (!S) return vis(); pauset = false; Lyd.bip(true); vis(); },
+
+  // Runder
+  spring() { S.runde--; Lyd.klik(); nyRunde(); },
+  timerStart() { S.r.timer.koer = true; Lyd.bip(true); gemState(); vis(); },
+  visSvar() { S.r.fase = "svar"; S.r.timer.koer = false; Lyd.klik(); gemState(); vis(); },
+  quizVinder(i) {
+    tildel([{ i, p: POINT.quiz, st: "quiz" }], fyld(tilf(VIND), { n: navn(i) }), `Svaret var: <b>${esc(QUIZ[S.r.i][2])}</b>`);
+  },
+  ingen() { tildel([], tilf(INGEN), `Svaret var: <b>${esc(QUIZ[S.r.i][2])}</b>`); },
+  duelVinder(i) {
+    const r = S.r, t = i === r.a ? r.b : r.a;
+    tildel([{ i, p: POINT.duel, st: "duelV" }, { i: t, p: 0, st: "duelT" }], fyld(tilf(DUELVIND), { n: navn(i), t: navn(t) }));
+  },
+  uafgjort() { const r = S.r; tildel([{ i: r.a, p: POINT.uafgjort }, { i: r.b, p: POINT.uafgjort }], tilf(UAFGJORT)); },
+  visOrd() { S.r.fase = "vis"; Lyd.klik(); gemState(); vis(); },
+  skjulOrd() { S.r.fase = "gaet"; S.r.timer.koer = true; Lyd.bip(true); gemState(); vis(); },
+  gaettet(i) {
+    const r = S.r, ord = r.metode === "mime" ? MIME[r.i] : TEGN[r.i];
+    tildel([{ i: r.p, p: POINT.skuespil, st: "skuespil" }, { i, p: POINT.skuespil, st: "gaet" }],
+      fyld(tilf(GAETTET), { g: navn(i), p: navn(r.p) }), `Ordet var: <b>${esc(ord)}</b>`);
+  },
+  ikkeGaettet() {
+    const r = S.r, ord = r.metode === "mime" ? MIME[r.i] : TEGN[r.i];
+    tildel([], fyld(tilf(IKKEGAETTET), { p: navn(r.p) }), `Ordet var: <b>${esc(ord)}</b>`);
+  },
+  godkendt() { tildel([{ i: S.r.p, p: POINT.sang, st: "sang" }], fyld(tilf(GODKENDT), { n: navn(S.r.p) })); },
+  buh() { tildel([{ i: S.r.p, p: 0, st: "buh" }], fyld(tilf(BUH), { n: navn(S.r.p) })); },
+  peg321() {
+    const r = S.r; r.fase = "taeller"; vis();
+    const trin = ["3", "2", "1", "PEG!"];
+    trin.forEach((t, n) => setTimeout(() => {
+      if (S && S.r === r && r.fase === "taeller") { const el = $("#tal321"); if (el) el.textContent = t; Lyd.bip(n === 3); }
+    }, n * 700));
+    setTimeout(() => { if (S && S.r === r && r.fase === "taeller") { r.fase = "valg"; gemState(); vis(); } }, 3 * 700 + 900);
+  },
+  pegVinder(i) { tildel([{ i, p: POINT.peg, st: "peg" }], fyld(tilf(PEGVIND), { n: navn(i) })); },
+  pegUafgjort() { tildel([], tilf(PEGUAFGJORT)); },
+
+  // Efter runden
+  naeste() { if (S.tidUde) slutSpil(false); else nyRunde(); },
+  fortryd() {
+    if (!S.fortryd) return;
+    const f = JSON.parse(S.fortryd);
+    S.spillere = f.spillere; S.r = f.r; S.typer = f.typer; S.fortryd = null; S.resultat = null; S.fase = "runde";
+    if (S.r.timer) S.r.timer.koer = false;
+    toast("Pointene er taget tilbage"); Lyd.klik(); gemState(); vis();
+  },
+
+  // Slut
+  async kopier() {
+    const t = resultatTekst();
+    try { await navigator.clipboard.writeText(t); toast("Kopieret! 📋"); }
+    catch (e) {
+      const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast("Kopieret! 📋"); } catch (e2) { toast("Kunne ikke kopiere"); }
+      ta.remove();
+    }
+  },
+  async del() { try { await navigator.share({ text: resultatTekst() }); } catch (e) {} },
+  nyFestSamme() { const liste = S.spillere.map(p => p.navn); slet(GEM_KEY); nyFest(liste); },
+  tilStart() { S = null; slet(GEM_KEY); vis(); },
+};
+
+/* ---------- Input ---------- */
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]");
+  if (!b || b.disabled) return;
+  // Ignorér tryk lige efter et skærmskift (så et dobbelttryk ikke rammer den næste knap)
+  if (b.closest("#scene") && performance.now() - sidstRender < 350) return;
+  Lyd.start();
+  const f = A[b.dataset.act];
+  if (f) f(b.dataset.arg != null ? Number(b.dataset.arg) : undefined);
+});
+document.addEventListener("submit", e => { e.preventDefault(); Lyd.start(); A.tilfoej(); });
+document.addEventListener("pointerdown", () => Lyd.start(), { passive: true });
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  Lyd.start();
+  const k = e.key.toLowerCase();
+  if (k === "m") return A.lyd();
+  if (k === "p" || k === "escape") { if (!overlay.hidden) fortsaet(); else pause(); return; }
+  if (k === " " || k === "enter") {
+    const b = !overlay.hidden ? overlay.querySelector(".primaer") : scene.querySelector(".primaer:not([disabled])");
+    if (b) { e.preventDefault(); b.click(); }
+    return;
+  }
+  if (!overlay.hidden) return;
+  const b = scene.querySelector(`[data-key="${CSS.escape(k)}"]`);
+  if (b) { e.preventDefault(); b.click(); }
+});
+// Pause automatisk, når man skifter fane eller app
+document.addEventListener("visibilitychange", () => { if (document.hidden) { pause(); gemState(); } });
+addEventListener("pagehide", gemState);
+
+/* =====================================================================
+   BAGGRUND (pixelsne og neon-gulv) OG HOVEDLØKKE
+   ===================================================================== */
+const bg = $("#bg"), bx = bg.getContext("2d");
+let fnug = [], gulvOffset = 0;
+function bgResize() {
+  const d = Math.min(2, devicePixelRatio || 1);
+  bg.width = innerWidth * d; bg.height = innerHeight * d; bx.setTransform(d, 0, 0, d, 0, 0);
+  fnug = Array.from({ length: Math.round((innerWidth * innerHeight) / 9000) }, () => ({
+    x: Math.random() * innerWidth, y: Math.random() * innerHeight, v: 12 + Math.random() * 30, s: Math.random() < 0.2 ? 4 : 2,
+  }));
+}
+function tegnBg(dt) {
+  const w = innerWidth, h = innerHeight, hor = h * 0.66;
+  bx.fillStyle = "#0b0620"; bx.fillRect(0, 0, w, h);
+  // Neon-gulv i perspektiv
+  gulvOffset = (gulvOffset + dt * 0.02) % 1;
+  bx.strokeStyle = "rgba(255,43,214,.22)"; bx.lineWidth = 1; bx.beginPath();
+  for (let n = 0; n < 12; n++) { const z = (n + gulvOffset) / 12, y = hor + (h - hor) * z * z; bx.moveTo(0, y); bx.lineTo(w, y); }
+  for (let k = -10; k <= 10; k++) { bx.moveTo(w / 2 + k * 24, hor); bx.lineTo(w / 2 + k * w / 5, h); }
+  bx.stroke();
+  // Pixelsne
+  bx.fillStyle = "rgba(230,235,255,.55)";
+  for (const f of fnug) {
+    f.y += (f.v * dt) / 1000; if (f.y > h) { f.y = -4; f.x = Math.random() * w; }
+    bx.fillRect(Math.round(f.x), Math.round(f.y), f.s, f.s);
+  }
+}
+
+let sidst = performance.now(), gemTaeller = 0;
+function loop(nu) {
+  const dt = Math.min(100, nu - sidst); sidst = nu;
+  tegnBg(dt);
+  if (S && S.fase !== "slut" && !pauset && !document.hidden) {
+    // Hoveduret (tæller også mens resultatskærmen vises – det er ægte festtid)
+    if (!S.tidUde) {
+      S.tilbageMs -= dt;
+      if (!S.finale && S.tilbageMs <= FINALE_MS && S.tilbageMs > 0) startFinale();
+      if (S.tilbageMs <= 0) tidErGaaet();
+    }
+    // Nedtælling i selve runden
+    const r = S.r;
+    if (S.fase === "runde" && r && r.timer && r.timer.koer) {
+      const foer = Math.ceil(r.timer.ms / 1000);
+      r.timer.ms = Math.max(0, r.timer.ms - dt);
+      const efter = Math.ceil(r.timer.ms / 1000);
+      if (efter !== foer && efter > 0 && efter <= 5) Lyd.tik();
+      if (r.timer.ms <= 0) {
+        r.timer.koer = false; Lyd.horn();
+        if (r.type === "quiz" && r.fase === "spm") { r.fase = "svar"; vis(); }
+        gemState();
+      }
+      opdaterRundeTimer();
+    }
+    gemTaeller += dt;
+    if (gemTaeller > 2000) { gemTaeller = 0; gemState(); }
+  }
+  opdaterHud(false);
+  requestAnimationFrame(loop);
+}
+
+addEventListener("resize", bgResize);
+bgResize();
+opdaterLydKnap();
+vis();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
