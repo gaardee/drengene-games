@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Bananmanden Hjem</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05060f; overflow: hidden;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .skaerm { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 20px; box-sizing: border-box;
+    background: rgba(3, 4, 12, .85); gap: 12px; overflow-y: auto; justify-content: safe center; }
+  input { font: inherit; font-size: 18px; padding: 10px 14px; min-height: 44px; box-sizing: border-box; border-radius: 12px;
+    border: 2px solid #ffe14d; background: #111633; color: #fff; text-align: center; width: min(280px, 80vw); user-select: text; -webkit-user-select: text; }
+  .knapper { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .knapper button { font-size: 17px; padding: 10px 18px; }
+  .knapper .alt { background: #2a3160; color: #fff; box-shadow: 0 4px 0 #151a3a; }
+  h3 { margin: 6px 0 0; font-size: 17px; color: #ffe14d; }
+  table { width: min(360px, 90vw); border-collapse: collapse; font-size: 14px; }
+  td { padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,.1); text-align: left; }
+  td:last-child { text-align: right; }
+  tr.me td, tr.mig td { color: #ffe14d; font-weight: 700; }
+  #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #ffe14d; color: #3b2a00;
+    padding: 10px 18px; border-radius: 12px; font-weight: 700; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 10; }
+  #toast.show { opacity: 1; }
+  #nyRekord { color: #7CFC00; font-weight: 800; min-height: 1em; }
+  .skjult { display: none !important; }
+  h1 { margin: 0; font-size: clamp(28px, 7vw, 52px); color: #ffe14d; text-shadow: 0 3px 0 #b8860b; }
+  p { margin: 0; max-width: 460px; line-height: 1.4; font-size: clamp(15px, 4vw, 18px); }
+  .styring { background: rgba(255,255,255,.08); border-radius: 12px; padding: 10px 14px; }
+  button { font: inherit; font-size: 20px; font-weight: 700; min-width: 44px; min-height: 44px;
+    padding: 12px 28px; border: 0; border-radius: 14px; background: #ffe14d; color: #3b2a00;
+    box-shadow: 0 4px 0 #b8860b; cursor: pointer; }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b8860b; }
+  #hud { position: fixed; top: 10px; left: 12px; right: 12px; display: flex; justify-content: space-between;
+    align-items: center; pointer-events: none; font-weight: 700; font-size: clamp(14px, 4vw, 19px); text-shadow: 0 2px 3px #000; gap: 8px; white-space: nowrap; }
+  #batBar { width: clamp(44px, 14vw, 70px) !important; }
+  #lyd { pointer-events: auto; background: rgba(255,255,255,.15); box-shadow: none; padding: 6px 10px; font-size: 20px; }
+  #batteri { display: flex; align-items: center; gap: 6px; }
+  #batBar { width: 70px; height: 20px; border: 2px solid #fff; border-radius: 4px; position: relative; }
+  #batBar::after { content: ""; position: absolute; right: -6px; top: 5px; width: 4px; height: 8px; background: #fff; border-radius: 0 2px 2px 0; }
+  #batFyld { height: 100%; background: #4dff6a; width: 100%; }
+  #besked { position: fixed; top: 20%; left: 0; right: 0; text-align: center; font-size: clamp(20px, 5vw, 30px);
+    font-weight: 800; color: #ffe14d; text-shadow: 0 2px 4px #000; pointer-events: none; opacity: 0; transition: opacity .3s; padding: 0 16px; }
+  .stor { font-size: 44px; font-weight: 800; color: #ffe14d; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="score">0 point</div>
+  <div id="bane">Bane 1</div>
+  <div id="batteri"><div id="batBar"><div id="batFyld"></div></div><span id="batTal">30s</span></div>
+  <button id="lyd" aria-label="Lyd til/fra">🔊</button>
+</div>
+<div id="besked"></div>
+
+<div id="start" class="skaerm">
+  <div style="font-size:64px">🍌🚲🏠</div>
+  <h1>Bananmanden Hjem</h1>
+  <p>Klokken er 3. Bananmanden aner ikke, hvor han bor, og telefonens lommelygte er ved at dø. <b>Find hjem, før batteriet løber tør!</b></p>
+  <p class="styring" id="styringTekst"></p>
+  <p>Point: 🏠 hjem = 100 × banen · 🍺 øl = 30, 60, 90… point (men du bliver fuldere og fuldere) · 🥙 kebab = +5 sek batteri og lidt mere ædru · 🥸 find den <b>hemmelige arrangør</b> – han viser vejen hjem i 5 sek · 🚗 hop over den parkerede bil!</p>
+  <input id="navnInput" maxlength="16" placeholder="Dit navn" autocomplete="off" aria-label="Dit navn">
+  <button id="startKnap">Cykl hjem! 🚲</button>
+</div>
+
+<div id="pause" class="skaerm skjult">
+  <h1>Pause</h1>
+  <button id="fortsaetKnap">Fortsæt</button>
+</div>
+
+<div id="slut" class="skaerm skjult">
+  <h1>📵 Telefonen døde!</h1>
+  <p id="slutTekst"></p>
+  <div class="stor" id="slutScore">0</div>
+  <div id="nyRekord"></div>
+  <p id="slutStat"></p>
+  <div class="knapper">
+    <button id="igenKnap">Prøv igen 🚲</button>
+    <button id="kopierKnap" class="alt">Kopiér resultat</button>
+    <button id="delKnap" class="alt" hidden>Del</button>
+  </div>
+  <h3>🌍 Fælles rangliste</h3>
+  <table id="faellesTop"></table>
+  <h3>🏆 Top 10 på denne enhed</h3>
+  <table id="lokalTop"></table>
+</div>
+<div id="toast"></div>
+
+<script src="../../scores.js"></script>
+<script>
+"use strict";
+/* ============================================================
+   BANANMANDEN HJEM
+   Byen er en labyrint, som man kun kan se en lille del af
+   (lommelygten). Bananmanden cykler rundt som kuglen i et
+   kuglespil (vip telefonen). Find hoveddøren 🏠 før batteriet dør.
+   Hop over den parkerede bil, find den hemmelige arrangør 🥸,
+   og drik øl for flere point – hvis du tør.
+   Hver bane er større end den forrige. Banerne er "seedede",
+   så alle spillere får præcis de samme labyrinter.
+   ============================================================ */
+
+const cv = document.getElementById("c");
+const ctx = cv.getContext("2d");
+let W = 0, H = 0;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener("resize", resize); resize();
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- Lyd ----------
+let actx = null, lydTil = true;
+function bip(freq, dur = 0.1, type = "square", vol = 0.07) {
+  if (!lydTil) return;
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq; g.gain.value = vol;
+  g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+  o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+}
+document.getElementById("lyd").onclick = (e) => { lydTil = !lydTil; e.target.textContent = lydTil ? "🔊" : "🔇"; };
+
+// ---------- Labyrint ----------
+// Vægge pr. celle: bit 1=op, 2=højre, 4=ned, 8=venstre
+const DIR = [{ dx: 0, dy: -1, bit: 1, mod: 4 }, { dx: 1, dy: 0, bit: 2, mod: 8 }, { dx: 0, dy: 1, bit: 4, mod: 1 }, { dx: -1, dy: 0, bit: 8, mod: 2 }];
+function lavLabyrint(n, seed) {
+  const r = mulberry32(seed);
+  const vaeg = Array.from({ length: n }, () => Array(n).fill(15));
+  const set = Array.from({ length: n }, () => Array(n).fill(false));
+  const stak = [[0, 0]]; set[0][0] = true;
+  while (stak.length) {
+    const [x, y] = stak[stak.length - 1];
+    const mulige = DIR.map((d, i) => i).filter(i => {
+      const nx = x + DIR[i].dx, ny = y + DIR[i].dy;
+      return nx >= 0 && ny >= 0 && nx < n && ny < n && !set[ny][nx];
+    });
+    if (!mulige.length) { stak.pop(); continue; }
+    const i = mulige[Math.floor(r() * mulige.length)], d = DIR[i];
+    vaeg[y][x] &= ~d.bit; vaeg[y + d.dy][x + d.dx] &= ~d.mod;
+    set[y + d.dy][x + d.dx] = true; stak.push([x + d.dx, y + d.dy]);
+  }
+  // Fjern nogle ekstra vægge, så der er flere veje (mindre frustrerende)
+  for (let k = 0; k < n * n / 8; k++) {
+    const x = 1 + Math.floor(r() * (n - 2)), y = 1 + Math.floor(r() * (n - 2)), i = Math.floor(r() * 4), d = DIR[i];
+    vaeg[y][x] &= ~d.bit; vaeg[y + d.dy][x + d.dx] &= ~d.mod;
+  }
+  // Ting i labyrinten
+  const ting = [];
+  const brugt = new Set(["0,0", `${n - 1},${n - 1}`]);
+  function placer(type, antal) {
+    for (let k = 0; k < antal; k++) {
+      let x, y, t = 0;
+      do { x = Math.floor(r() * n); y = Math.floor(r() * n); t++; } while (brugt.has(x + "," + y) && t < 100);
+      brugt.add(x + "," + y); ting.push({ type, x, y });
+    }
+  }
+  placer("kebab", Math.floor(n / 3));
+  placer("oel", Math.floor(n / 2.5));
+  return { n, vaeg, ting, maal: { x: n - 1, y: n - 1 } };
+}
+
+// ---------- Korteste vej (bruges af den hemmelige arrangør) ----------
+function kortesteVej(fx, fy, tx, ty) {
+  const n = lab.n, forrige = new Map(), koe = [[fx, fy]];
+  forrige.set(fx + "," + fy, null);
+  while (koe.length) {
+    const [x, y] = koe.shift();
+    if (x === tx && y === ty) break;
+    for (const d of DIR) {
+      if (lab.vaeg[y][x] & d.bit) continue;
+      const nx = x + d.dx, ny = y + d.dy, k = nx + "," + ny;
+      if (nx < 0 || ny < 0 || nx >= n || ny >= n || forrige.has(k)) continue;
+      forrige.set(k, [x, y]); koe.push([nx, ny]);
+    }
+  }
+  const sti = []; let c = [tx, ty];
+  while (c) { sti.unshift({ x: c[0], y: c[1] }); c = forrige.get(c[0] + "," + c[1]); }
+  return sti;
+}
+
+// ---------- Styring ----------
+// Telefon: vip telefonen (som et kuglespil). Virker vip ikke, kan man trække med fingeren (joystick).
+// Computer: piletaster / WASD.
+const erTouch = matchMedia("(pointer: coarse)").matches;
+const styrTekst = document.getElementById("styringTekst");
+styrTekst.innerHTML = erTouch
+  ? "📱 <b>Vip telefonen</b> for at cykle rundt – som et gammeldags kuglespil.<br>🦘 <b>Tryk på skærmen</b> eller <b>løft telefonen hurtigt</b> for at hoppe."
+  : "⌨️ <b>Piletaster</b> / WASD for at cykle rundt – som et kuglespil.<br>🦘 <b>Mellemrum</b> for at hoppe.";
+
+const taster = {};
+addEventListener("keydown", e => {
+  if (e.target && e.target.tagName === "INPUT") { if (e.key === "Enter") startSpil(); return; }
+  if (e.key.startsWith("Arrow")) e.preventDefault();
+  taster[e.key.toLowerCase()] = true;
+  if (e.key === " " && tilstand === "spil") { e.preventDefault(); hop(); return; }
+  if ((e.key === " " || e.key === "Enter") && tilstand !== "spil" && tilstand !== "pause") { e.preventDefault(); startSpil(); }
+});
+addEventListener("keyup", e => { taster[e.key.toLowerCase()] = false; });
+
+// Vippe-styring (DeviceOrientation)
+let vip = { aktiv: false, x: 0, y: 0, nulX: 0, nulY: 0, kalibrer: true };
+function vipRaa(e) {
+  // Omregn til skærmens retning, så det også virker med telefonen på langs
+  const b = e.beta || 0, g = e.gamma || 0;
+  const vinkel = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  if (vinkel === 90) return [b, -g];
+  if (vinkel === -90 || vinkel === 270) return [-b, g];
+  if (vinkel === 180) return [-g, -b];
+  return [g, b];
+}
+function paaVip(e) {
+  if (e.beta == null && e.gamma == null) return;
+  vip.aktiv = true;
+  const [x, y] = vipRaa(e);
+  if (vip.kalibrer) { vip.nulX = x; vip.nulY = y; vip.kalibrer = false; } // "lige" = sådan man holder den ved start
+  vip.x = x - vip.nulX; vip.y = y - vip.nulY;
+}
+// Løft telefonen hurtigt = hop (accelerationen vinkelret på skærmen)
+function paaBevaegelse(e) {
+  const a = e.acceleration;
+  if (a && a.z != null && a.z > 7) hop();
+}
+async function startVip() {
+  try {
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+      const svar = await DeviceOrientationEvent.requestPermission(); // iPhone kræver tilladelse
+      if (svar !== "granted") return;
+    }
+    addEventListener("deviceorientation", paaVip);
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      try { await DeviceMotionEvent.requestPermission(); } catch (e) { }
+    }
+    addEventListener("devicemotion", paaBevaegelse);
+  } catch (err) { /* ingen vip – joystick bruges i stedet */ }
+}
+
+// Joystick-reserve: træk fingeren væk fra hvor du satte den
+let joy = null;
+cv.addEventListener("pointerdown", e => {
+  if (vip.aktiv) { hop(); return; } // med vip-styring er ethvert tryk et hop
+  joy = { ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId, t: performance.now() };
+});
+cv.addEventListener("pointermove", e => { if (joy && e.pointerId === joy.id) { joy.x = e.clientX; joy.y = e.clientY; } });
+["pointerup", "pointercancel"].forEach(n => cv.addEventListener(n, e => {
+  if (!joy || e.pointerId !== joy.id) return;
+  // Kort tryk uden at trække = hop
+  if (performance.now() - joy.t < 250 && Math.hypot(joy.x - joy.ox, joy.y - joy.oy) < 12) hop();
+  joy = null;
+}));
+
+// Samlet "hældning" i x/y, mellem -1 og 1
+function haeldning() {
+  let ax = 0, ay = 0;
+  if (taster.arrowleft || taster.a) ax -= 1;
+  if (taster.arrowright || taster.d) ax += 1;
+  if (taster.arrowup || taster.w) ay -= 1;
+  if (taster.arrowdown || taster.s) ay += 1;
+  if (joy) { ax += (joy.x - joy.ox) / 50; ay += (joy.y - joy.oy) / 50; }
+  else if (vip.aktiv) { ax += vip.x / 18; ay += vip.y / 18; } // 18° = fuld fart
+  const l = Math.hypot(ax, ay);
+  if (l > 1) { ax /= l; ay /= l; }
+  return [ax, ay];
+}
+
+// ---------- Spiltilstand ----------
+let tilstand = "start";
+const START_BAT = 30;    // sekunders batteri ved start
+const HJEM_BONUS = 15;   // sekunder ekstra batteri for at komme hjem
+const R = 0.27;          // bananmandens radius (i celler)
+const VT = 0.18;         // murenes tykkelse (i celler)
+const ACC = 16, MAX_FART = 5.5, FRIKTION = 2.2;
+const HOP_TID = 0.65;    // sekunder i luften
+let lab, bane, score, batteri, sp, promille, tid, beskedTid, kebabs, oels, arr, arrFundet, sidstStoed, bil, bilVist;
+
+// Hop (over den parkerede bil)
+function hop() {
+  if (tilstand !== "spil" || sp.hop > 0) return;
+  sp.hop = HOP_TID; bip(520, 0.08, "square", 0.05); setTimeout(() => bip(780, 0.08, "square", 0.05), 60);
+}
+function iLuften() { return sp.hop > 0.08 && sp.hop < HOP_TID - 0.05; }
+function hopHoejde() { return sp.hop > 0 ? Math.sin(Math.PI * (1 - sp.hop / HOP_TID)) : 0; }
+// Hvor fuld er han (0-1)? Promillen stiger med hver øl.
+function fuldhed() { return Math.min(1, promille / 4); }
+
+function nyBane() {
+  const n = Math.min(21, 5 + bane * 2);
+  lab = lavLabyrint(n, 1000 + bane); // samme labyrint for alle
+  sp = { x: 0.5, y: 0.5, vx: 0, vy: 0, vend: 1, gaa: 0, hop: 0 };
+  // Den hemmelige arrangør gemmer sig et sted langt fra start (seedet)
+  const r = mulberry32(5000 + bane);
+  let ax, ay, t = 0;
+  do { ax = Math.floor(r() * n); ay = Math.floor(r() * n); t++; }
+  while (t < 200 && ((ax + ay) < n * 0.6 || (ax === n - 1 && ay === n - 1) || lab.ting.some(o => o.x === ax && o.y === ay)));
+  arr = { x: ax + 0.5, y: ay + 0.5, tilstand: "gemt", tid: 0, sti: [], i: 0 };
+  // En parkeret bil holder på tværs af vejen et sted på korteste vej hjem – den skal man hoppe over
+  const vej = kortesteVej(0, 0, n - 1, n - 1);
+  const ki = Math.max(1, Math.floor(vej.length * (0.35 + r() * 0.3)));
+  const a = vej[ki - 1], b = vej[ki];
+  const B = 0.25; // halv bil-bredde (langs kørselsretningen)
+  bil = { ax: a.x, ay: a.y, vandret: a.x !== b.x, farve: ["#c1121f", "#1d4ed8", "#f5f5f5", "#2b2d42", "#e9c46a"][bane % 5] };
+  if (bil.vandret) { const gx = Math.max(a.x, b.x); bil.rekt = [gx - B, a.y + VT / 2, gx + B, a.y + 1 - VT / 2]; }
+  else { const gy = Math.max(a.y, b.y); bil.rekt = [a.x + VT / 2, gy - B, a.x + 1 - VT / 2, gy + B]; }
+  document.getElementById("bane").textContent = "Bane " + bane;
+}
+
+function startSpil() {
+  if (tilstand === "spil") return;
+  bip(440, 0.05);
+  startVip(); // skal kaldes fra et tryk (iPhone)
+  try { localStorage.setItem(NAVN_KEY, hentNavn()); } catch (e) { }
+  document.getElementById("navnInput").blur();
+  for (const k in taster) taster[k] = false;
+  vip.kalibrer = true;
+  bane = 1; score = 0; batteri = START_BAT; promille = 0; bilVist = false; tid = 0; kebabs = 0; oels = 0; arrFundet = 0; beskedTid = 0; sidstStoed = 0;
+  nyBane();
+  ["start", "slut", "pause"].forEach(id => document.getElementById(id).classList.add("skjult"));
+  tilstand = "spil";
+  visBesked("Hvor fanden bor jeg? 🤔");
+}
+
+function visBesked(t) { const el = document.getElementById("besked"); el.textContent = t; el.style.opacity = 1; beskedTid = 1.8; }
+
+const HJEM_TEKSTER = ["Hjemme! Nøglen passede… næsten.", "Hjemme! Men er det overhovedet hans hus?", "Hjemme! Konen er IKKE imponeret.",
+  "Hjemme! Han sover i bananen i nat.", "Hjemme! Hvem har sat en anden banan i sengen?!"];
+const SLUT_TEKSTER = ["Bananmanden sov på en bænk. En due tog hans hue.", "Han ringede til den hemmelige arrangør – men telefonen var død.",
+  "Han endte hos naboen og spiste deres risalamande.", "Han vågnede i en taxa til Kolding. Ingen ved hvorfor."];
+const ARR_TEKSTER = ["🥸 Den hemmelige arrangør! \"Følg mig, banan…\"", "🥸 Arrangøren: \"Jeg ved, hvor du bor 😏\"",
+  "🥸 Arrangøren: \"Kom, jeg følger dig hjem…\"", "🥸 Arrangøren: \"Sig det ikke til nogen!\""];
+
+// ---------- Navn, rangliste og deling ----------
+const SPIL = "bananmanden-hjem"; // skal være præcis det samme som mappenavnet
+const NAVN_KEY = "drengene_navn", TOP_KEY = "bananmanden_top10", BEDSTE_KEY = "bananmanden_bedste";
+const $ = id => document.getElementById(id);
+const fmt = n => Math.floor(n).toLocaleString("da-DK");
+let sidsteResultat = null;
+function hentNavn() { return ($("navnInput").value.trim() || "Anonym").slice(0, 16); }
+function hentJSON(k, std) { try { return JSON.parse(localStorage.getItem(k)) ?? std; } catch (e) { return std; } }
+function gemJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+try { $("navnInput").value = localStorage.getItem(NAVN_KEY) || ""; } catch (e) { }
+
+function slutSpil() {
+  if (tilstand !== "spil") return;
+  tilstand = "slut";
+  for (const k in taster) taster[k] = false; joy = null;
+  bip(220, 0.25, "sawtooth"); setTimeout(() => bip(110, 0.4, "sawtooth"), 180);
+  const navn = hentNavn();
+
+  // Personlig rekord (pr. navn)
+  const bedste = hentJSON(BEDSTE_KEY, {});
+  const gammel = bedste[navn] ?? null;
+  const rekord = gammel === null || score > gammel;
+  if (rekord) { bedste[navn] = score; gemJSON(BEDSTE_KEY, bedste); }
+
+  // Lokal top 10
+  const d = new Date();
+  sidsteResultat = { n: navn, s: score, d: `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(2)}`, id: Date.now() };
+  const top = hentJSON(TOP_KEY, []);
+  top.push(sidsteResultat);
+  top.sort((a, b) => b.s - a.s || a.id - b.id);
+  gemJSON(TOP_KEY, top.slice(0, 10));
+
+  $("slutTekst").textContent = SLUT_TEKSTER[Math.floor(Math.random() * SLUT_TEKSTER.length)];
+  $("slutScore").textContent = fmt(score) + " point";
+  $("nyRekord").textContent = rekord && score > 0 ? "🎉 Ny personlig rekord!" : gammel !== null ? `Din bedste: ${fmt(gammel)} point` : "";
+  $("slutStat").innerHTML = `🏠 ${bane - 1} gange hjem · 🥸 ${arrFundet} arrangør · 🥙 ${kebabs} kebab<br>🍺 ${oels} øl (${promille.toFixed(1).replace(".", ",")} ‰) · ⏱️ ${Math.floor(tid)} sek`;
+  visLokalTop();
+
+  // Fælles rangliste (scores.js) – gemmes én gang per spil
+  if (window.gemScore) {
+    $("faellesTop").innerHTML = "<tr><td>Henter fælles rangliste…</td></tr>";
+    gemScore(SPIL, navn, score).then(() => visFaellesTop($("faellesTop"), SPIL, navn));
+  } else {
+    $("faellesTop").innerHTML = "<tr><td>Den fælles rangliste kunne ikke indlæses</td></tr>";
+  }
+  $("delKnap").hidden = !navigator.share;
+  setTimeout(() => $("slut").classList.remove("skjult"), 600);
+}
+function visLokalTop() {
+  const top = hentJSON(TOP_KEY, []);
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  $("lokalTop").innerHTML = top.length
+    ? top.map((e, i) => `<tr class="${sidsteResultat && e.id === sidsteResultat.id ? "mig" : ""}"><td>${i + 1}.</td><td>${esc(e.n)}</td><td>${fmt(e.s)}</td><td>${esc(e.d)}</td></tr>`).join("")
+    : "<tr><td colspan=4>Ingen resultater endnu</td></tr>";
+}
+function resultatTekst() {
+  const navn = hentNavn();
+  const bedste = hentJSON(BEDSTE_KEY, {})[navn] ?? score;
+  return `🎮 Bananmanden Hjem – ${navn}: ${fmt(score)} point (bedste: ${fmt(bedste)})`;
+}
+function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => el.classList.remove("show"), 1800); }
+$("kopierKnap").onclick = async () => {
+  const txt = resultatTekst();
+  try { await navigator.clipboard.writeText(txt); toast("Kopieret! 📋"); return; } catch (e) { }
+  const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); toast("Kopieret! 📋"); } catch (e) { toast("Kunne ikke kopiere"); }
+  ta.remove();
+};
+$("delKnap").onclick = async () => { try { await navigator.share({ text: resultatTekst() }); } catch (e) { } };
+
+function saetPause() { tilstand = "pause"; document.getElementById("pause").classList.remove("skjult"); }
+document.addEventListener("visibilitychange", () => { if (document.hidden && tilstand === "spil") saetPause(); });
+document.getElementById("fortsaetKnap").onclick = () => { document.getElementById("pause").classList.add("skjult"); vip.kalibrer = true; tilstand = "spil"; };
+document.getElementById("startKnap").onclick = startSpil;
+document.getElementById("igenKnap").onclick = startSpil;
+
+// ---------- Fysik ----------
+// Murene som rektangler omkring spillerens celle
+function naereMure(cx, cy) {
+  const n = lab.n, h = VT / 2, ud = [];
+  for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++) {
+    if (x < 0 || y < 0 || x >= n || y >= n) continue;
+    const v = lab.vaeg[y][x];
+    if (v & 1) ud.push([x - h, y - h, x + 1 + h, y + h]);
+    if (v & 8) ud.push([x - h, y - h, x + h, y + 1 + h]);
+    if (y === n - 1 && (v & 4)) ud.push([x - h, y + 1 - h, x + 1 + h, y + 1 + h]);
+    if (x === n - 1 && (v & 2)) ud.push([x + 1 - h, y - h, x + 1 + h, y + 1 + h]);
+  }
+  return ud;
+}
+function kollision() {
+  const mure = naereMure(Math.floor(sp.x), Math.floor(sp.y));
+  if (!iLuften()) mure.push(bil.rekt); // i luften kan man hoppe over bilen
+  for (const [x1, y1, x2, y2] of mure) {
+    const qx = Math.max(x1, Math.min(sp.x, x2)), qy = Math.max(y1, Math.min(sp.y, y2));
+    let dx = sp.x - qx, dy = sp.y - qy; const d = Math.hypot(dx, dy);
+    if (d >= R) continue;
+    if (d > 1e-6) { dx /= d; dy /= d; } else { dx = 0; dy = -1; }
+    sp.x = qx + dx * R; sp.y = qy + dy * R;
+    const vn = sp.vx * dx + sp.vy * dy;
+    if (vn < 0) {
+      sp.vx -= 1.3 * vn * dx; sp.vy -= 1.3 * vn * dy; // lille "bump"
+      if (-vn > 2.5 && tid - sidstStoed > 0.15) { sidstStoed = tid; bip(90 + Math.random() * 30, 0.08, "triangle", 0.12); }
+    }
+  }
+}
+
+// ---------- Opdatering ----------
+function opdater(dt) {
+  tid += dt;
+  batteri -= dt * (1 + (bane - 1) * 0.2); // drænes hurtigere på senere baner (så et spil varer max ca. 2 min)
+  promille = Math.max(0, promille - dt * 0.01); // forbrænder langsomt
+  if (batteri <= 0) { batteri = 0; opdaterHud(); slutSpil(); return; }
+
+  if (sp.hop > 0) sp.hop = Math.max(0, sp.hop - dt);
+
+  let [ax, ay] = haeldning();
+  const fh = fuldhed();
+  if (fh > 0) { // fuld: styringen drejer og slingrer mere, jo mere promille
+    const v = Math.sin(tid * 1.7) * 1.1 * fh, c = Math.cos(v), s = Math.sin(v);
+    [ax, ay] = [ax * c - ay * s + Math.sin(tid * 3.1) * 0.35 * fh, ax * s + ay * c + Math.cos(tid * 2.3) * 0.35 * fh];
+  }
+  // Første gang man nærmer sig bilen: forklar hop
+  if (!bilVist && Math.hypot((bil.rekt[0] + bil.rekt[2]) / 2 - sp.x, (bil.rekt[1] + bil.rekt[3]) / 2 - sp.y) < 1.5) {
+    bilVist = true; visBesked(erTouch ? "🚗 Parkeret bil! Tryk eller løft telefonen for at hoppe" : "🚗 Parkeret bil! Tryk mellemrum for at hoppe");
+  }
+  sp.vx += ax * ACC * dt; sp.vy += ay * ACC * dt;
+  const f = Math.exp(-FRIKTION * dt); sp.vx *= f; sp.vy *= f;
+  const fart = Math.hypot(sp.vx, sp.vy);
+  if (fart > MAX_FART) { sp.vx *= MAX_FART / fart; sp.vy *= MAX_FART / fart; }
+  // Små skridt, så han aldrig smutter igennem en mur
+  const skridt = Math.max(1, Math.ceil(fart * dt / 0.06));
+  for (let i = 0; i < skridt; i++) { sp.x += sp.vx * dt / skridt; sp.y += sp.vy * dt / skridt; kollision(); }
+  if (Math.abs(sp.vx) > 0.3) sp.vend = sp.vx > 0 ? 1 : -1;
+  sp.gaa += fart * dt * 6;
+
+  // Saml ting op
+  for (let i = lab.ting.length - 1; i >= 0; i--) {
+    const t = lab.ting[i];
+    if (Math.hypot(t.x + 0.5 - sp.x, t.y + 0.5 - sp.y) > 0.45) continue;
+    lab.ting.splice(i, 1);
+    if (t.type === "kebab") { batteri += 5; kebabs++; promille = Math.max(0, promille - 0.5); bip(660, 0.08); bip(990, 0.12); visBesked("🥙 Kebab! +5 sek og lidt mere ædru"); }
+    if (t.type === "oel") {
+      oels++; const pt = 30 * oels; score += pt; promille += 1; // hver øl giver mere – men gør dig fuldere
+      bip(300, 0.15, "triangle"); visBesked(`🍺 Skål! +${pt} – ${promille.toFixed(1).replace(".", ",")} ‰`);
+    }
+  }
+
+  opdaterArrangoer(dt);
+
+  // Hjemme?
+  if (Math.hypot(lab.maal.x + 0.5 - sp.x, lab.maal.y + 0.5 - sp.y) < 0.4) {
+    const pt = 100 * bane;
+    score += pt; batteri += HJEM_BONUS;
+    bip(523, 0.1); setTimeout(() => bip(659, 0.1), 100); setTimeout(() => bip(784, 0.2), 200);
+    visBesked(HJEM_TEKSTER[(bane - 1) % HJEM_TEKSTER.length] + ` +${pt}`);
+    bane++; nyBane();
+  }
+  if (beskedTid > 0) { beskedTid -= dt; if (beskedTid <= 0) document.getElementById("besked").style.opacity = 0; }
+  opdaterHud();
+}
+
+// Den hemmelige arrangør: gemt → fundet (viser vej hjem i 5 sek) → væk
+const ARR_TID = 5, ARR_FART = 3;
+function opdaterArrangoer(dt) {
+  if (arr.tilstand === "gemt" && Math.hypot(arr.x - sp.x, arr.y - sp.y) < 0.6) {
+    arr.tilstand = "guider"; arr.tid = 0; arrFundet++; score += 50;
+    arr.sti = kortesteVej(Math.floor(arr.x), Math.floor(arr.y), lab.maal.x, lab.maal.y); arr.i = 0;
+    visBesked(ARR_TEKSTER[(arrFundet - 1) % ARR_TEKSTER.length]);
+    [392, 494, 587, 784].forEach((f, k) => setTimeout(() => bip(f, 0.12, "square", 0.06), k * 90));
+  }
+  if (arr.tilstand === "guider") {
+    arr.tid += dt;
+    // Gå langs korteste vej mod hjem – men vent på bananmanden, hvis han sakker bagud
+    const venter = Math.hypot(arr.x - sp.x, arr.y - sp.y) > 2.2;
+    let rest = venter ? 0 : ARR_FART * dt;
+    while (rest > 0 && arr.i < arr.sti.length) {
+      const m = arr.sti[arr.i], tx = m.x + 0.5, ty = m.y + 0.5;
+      const d = Math.hypot(tx - arr.x, ty - arr.y);
+      if (d <= rest) { arr.x = tx; arr.y = ty; rest -= d; arr.i++; }
+      else { arr.x += (tx - arr.x) / d * rest; arr.y += (ty - arr.y) / d * rest; rest = 0; }
+    }
+    if (arr.tid >= ARR_TID) { arr.tilstand = "vaek"; visBesked("🥸 …og så forsvandt arrangøren ud i natten."); bip(200, 0.3, "sine"); }
+  }
+}
+
+function opdaterHud() {
+  document.getElementById("score").textContent = score.toLocaleString("da-DK") + " point";
+  const pct = Math.min(1, batteri / START_BAT);
+  const f = document.getElementById("batFyld");
+  f.style.width = (pct * 100) + "%";
+  f.style.background = pct < 0.25 ? "#ff4d4d" : pct < 0.5 ? "#ffd24d" : "#4dff6a";
+  document.getElementById("batTal").textContent = Math.ceil(batteri) + "s";
+  document.getElementById("bane").textContent = `Bane ${bane} · ${promille.toFixed(1).replace(".", ",")}‰`;
+}
+
+// ---------- Tegning ----------
+function tegnBananmand(x, y, v, skala, hjulFase, nu, vend) {
+  // Bananmanden på cykel, set fra siden. (x,y) = hvor hjulene rører jorden. vend = 1 (højre) / -1 (venstre).
+  ctx.save(); ctx.translate(x, y); ctx.rotate(v); ctx.scale(skala * vend, skala);
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  // Hjul med eger, der drejer
+  for (const hx of [-34, 34]) {
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(hx, -22, 20, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "#aaa"; ctx.lineWidth = 1.5;
+    for (let k = 0; k < 4; k++) {
+      const a = hjulFase + k * Math.PI / 4;
+      ctx.beginPath(); ctx.moveTo(hx + Math.cos(a) * 18, -22 + Math.sin(a) * 18); ctx.lineTo(hx - Math.cos(a) * 18, -22 - Math.sin(a) * 18); ctx.stroke();
+    }
+  }
+  // Stel (rødt), sadel og styr
+  ctx.strokeStyle = "#d62828"; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-34, -22); ctx.lineTo(-6, -24); ctx.lineTo(24, -56); ctx.lineTo(-12, -56); ctx.lineTo(-6, -24);
+  ctx.moveTo(-34, -22); ctx.lineTo(-12, -56); ctx.moveTo(34, -22); ctx.lineTo(24, -56); ctx.lineTo(22, -66); ctx.stroke();
+  ctx.strokeStyle = "#222"; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(16, -68); ctx.lineTo(30, -66); ctx.stroke();          // styr
+  ctx.beginPath(); ctx.moveTo(-22, -60); ctx.lineTo(-4, -60); ctx.stroke();          // sadel
+  // Lygte (telefonen tapet fast på styret 😅)
+  ctx.fillStyle = "#222"; ctx.fillRect(28, -74, 8, 12); ctx.fillStyle = "#fffbe0"; ctx.fillRect(34, -72, 3, 8);
+  // Ben der træder i pedalerne
+  const pa = hjulFase * 0.8;
+  ctx.strokeStyle = "#2b2b5a"; ctx.lineWidth = 8;
+  for (const ph of [0, Math.PI]) {
+    const px = -6 + Math.cos(pa + ph) * 10, py = -24 + Math.sin(pa + ph) * 10;
+    ctx.beginPath(); ctx.moveTo(-12, -64); ctx.lineTo((px - 12) / 2 + 8, (py - 64) / 2 - 4); ctx.lineTo(px, py); ctx.stroke();
+    ctx.fillStyle = "#111"; ctx.fillRect(px - 5, py - 2, 12, 5);
+  }
+  // Bananen (kostumet), lænet lidt frem over styret
+  ctx.save(); ctx.translate(-10, -26); ctx.rotate(0.22);
+  ctx.fillStyle = "#ffe14d"; ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-4, -165); ctx.bezierCurveTo(30, -150, 34, -70, 18, -36);
+  ctx.bezierCurveTo(4, -28, -16, -30, -24, -38); ctx.bezierCurveTo(-36, -80, -30, -140, -4, -165);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#6b4a1b"; ctx.fillRect(-8, -178, 9, 15);
+  ctx.fillStyle = "rgba(120,80,20,.5)";
+  ctx.beginPath(); ctx.arc(14, -70, 4, 0, 7); ctx.arc(-18, -100, 3, 0, 7); ctx.arc(8, -130, 2.5, 0, 7); ctx.fill();
+  // Ansigt
+  ctx.fillStyle = "#f2c49b"; ctx.beginPath(); ctx.ellipse(2, -112, 15, 18, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#222"; ctx.lineWidth = 3;
+  if (tilstand === "slut") {
+    for (const ox of [-5, 9]) { ctx.beginPath(); ctx.moveTo(ox - 3, -120); ctx.lineTo(ox + 3, -114); ctx.moveTo(ox + 3, -120); ctx.lineTo(ox - 3, -114); ctx.stroke(); }
+  } else {
+    ctx.beginPath(); ctx.arc(-5, -117, 3, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(9, -117, 3, 0.2, Math.PI - 0.2); ctx.stroke();
+  }
+  ctx.fillStyle = "#e0453a"; ctx.beginPath(); ctx.arc(2, -110, 4, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#7a2b20"; ctx.beginPath(); ctx.arc(2, -104, 6, 0.3, Math.PI - 0.3); ctx.stroke();
+  ctx.restore();
+  // Arme ud til styret
+  ctx.strokeStyle = "#ffe14d"; ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(4, -110); ctx.lineTo(18, -68); ctx.stroke();
+  ctx.restore();
+}
+
+
+// Parkeret bil set oppefra, holdende på tværs af vejen
+function tegnBil(b, celle, nu) {
+  const [x1, y1, x2, y2] = b.rekt;
+  const cx = (x1 + x2) / 2 * celle, cy = (y1 + y2) / 2 * celle;
+  const L = celle * 0.95, Bb = celle * 0.5; // længde (på tværs af vejen) og bredde
+  ctx.save(); ctx.translate(cx, cy); if (b.vandret) ctx.rotate(Math.PI / 2);
+  // nu: bilen ligger vandret med længden langs x
+  ctx.fillStyle = "#111";
+  for (const [wx, wy] of [[-L * 0.3, -Bb / 2], [L * 0.3, -Bb / 2], [-L * 0.3, Bb / 2], [L * 0.3, Bb / 2]]) ctx.fillRect(wx - L * 0.08, wy - Bb * 0.08, L * 0.16, Bb * 0.16);
+  ctx.fillStyle = b.farve; ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-L / 2, -Bb / 2, L, Bb, Bb * 0.3) : ctx.rect(-L / 2, -Bb / 2, L, Bb); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#9ecae1"; // ruder
+  ctx.fillRect(-L * 0.22, -Bb * 0.38, L * 0.12, Bb * 0.76);
+  ctx.fillRect(L * 0.12, -Bb * 0.38, L * 0.1, Bb * 0.76);
+  ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(-L * 0.1, -Bb * 0.38, L * 0.22, Bb * 0.76); // tag
+  ctx.fillStyle = "rgba(255,255,255,.85)"; // sne på taget
+  ctx.fillRect(-L * 0.08, -Bb * 0.3, L * 0.18, Bb * 0.25);
+  ctx.fillStyle = "#ffe9a8"; ctx.fillRect(L / 2 - 4, -Bb * 0.38, 4, Bb * 0.18); ctx.fillRect(L / 2 - 4, Bb * 0.2, 4, Bb * 0.18); // forlygter
+  ctx.fillStyle = Math.floor(nu / 500) % 2 ? "#ff8c00" : "#7a4300"; // havariblink
+  ctx.fillRect(-L / 2, -Bb * 0.38, 4, Bb * 0.14); ctx.fillRect(-L / 2, Bb * 0.24, 4, Bb * 0.14);
+  ctx.restore();
+}
+
+function tegnArrangoer(x, y, s, nu) {
+  // Forklædt figur med nissehue og solbriller (🥸)
+  ctx.save(); ctx.translate(x, y + Math.sin(nu / 200) * s * 0.04);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `${s * 0.75}px serif`; ctx.fillText("🥸", 0, 0);
+  ctx.fillStyle = "#d62828";
+  ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 0.25); ctx.lineTo(s * 0.3, -s * 0.25); ctx.lineTo(s * 0.18, -s * 0.7); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.fillRect(-s * 0.32, -s * 0.3, s * 0.64, s * 0.09);
+  ctx.beginPath(); ctx.arc(s * 0.18, -s * 0.7, s * 0.07, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+const morkCv = document.createElement("canvas"), mctx = morkCv.getContext("2d");
+function tegn(nu) {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, W, H);
+  if (!lab) return;
+  const celle = Math.max(40, Math.min(W, H) / 7);
+  const slinger = Math.sin(nu / 300) * 0.3 * fuldhed();
+  const camX = W / 2 - sp.x * celle, camY = H / 2 - sp.y * celle;
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.rotate(slinger * 0.4); ctx.translate(-W / 2, -H / 2);
+  ctx.translate(camX, camY);
+
+  // Gader
+  ctx.fillStyle = "#23283f"; ctx.fillRect(0, 0, lab.n * celle, lab.n * celle);
+  ctx.fillStyle = "rgba(255,255,255,.07)";
+  for (let y = 0; y < lab.n; y++) for (let x = 0; x < lab.n; x++) if ((x * 7 + y * 13) % 3 === 0) ctx.fillRect(x * celle + celle * 0.3, y * celle + celle * 0.6, 3, 3);
+
+  // Arrangørens glødende fodspor mod hjem
+  if (arr.tilstand === "guider") {
+    ctx.fillStyle = "rgba(255,80,80,.55)";
+    for (let k = arr.i; k < Math.min(arr.sti.length, arr.i + 8); k++) {
+      const m = arr.sti[k]; ctx.beginPath(); ctx.arc((m.x + 0.5) * celle, (m.y + 0.5) * celle, celle * 0.08, 0, 7); ctx.fill();
+    }
+  }
+
+  // Mure = hække med sne og julelys
+  const t = VT * celle;
+  for (let y = 0; y < lab.n; y++) for (let x = 0; x < lab.n; x++) {
+    const v = lab.vaeg[y][x], px = x * celle, py = y * celle;
+    ctx.fillStyle = "#1d5e3a";
+    if (v & 1) ctx.fillRect(px - t / 2, py - t / 2, celle + t, t);
+    if (v & 8) ctx.fillRect(px - t / 2, py - t / 2, t, celle + t);
+    if (y === lab.n - 1 && (v & 4)) ctx.fillRect(px - t / 2, py + celle - t / 2, celle + t, t);
+    if (x === lab.n - 1 && (v & 2)) ctx.fillRect(px + celle - t / 2, py - t / 2, t, celle + t);
+  }
+  for (let y = 0; y < lab.n; y++) for (let x = 0; x < lab.n; x++) {
+    const v = lab.vaeg[y][x], px = x * celle, py = y * celle;
+    ctx.fillStyle = "rgba(240,246,255,.85)";
+    if (v & 1) ctx.fillRect(px - t / 2, py - t / 2, celle + t, t * 0.35);
+    if ((v & 1) && (x + y) % 3 === 0) {
+      for (let k = 0; k < 4; k++) { ctx.fillStyle = ["#ff4d4d", "#4dff6a", "#4db8ff", "#ffe14d"][(k + x + Math.floor(nu / 400)) % 4];
+        ctx.beginPath(); ctx.arc(px + (k + 0.5) * celle / 4, py, 2.5, 0, 7); ctx.fill(); }
+    }
+  }
+
+  tegnBil(bil, celle, nu);
+  // Ting
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `${celle * 0.5}px serif`;
+  for (const ti of lab.ting) ctx.fillText(ti.type === "kebab" ? "🥙" : "🍺", (ti.x + 0.5) * celle, (ti.y + 0.5) * celle + Math.sin(nu / 300 + ti.x) * 3);
+  ctx.font = `${celle * 0.75}px serif`;
+  ctx.fillText("🏠", (lab.maal.x + 0.5) * celle, (lab.maal.y + 0.5) * celle);
+
+  if (arr.tilstand !== "vaek") tegnArrangoer(arr.x * celle, arr.y * celle, celle, nu);
+
+  // Bananmanden på cykel (med skygge, der bliver mindre når han hopper)
+  const hh = hopHoejde();
+  const bx = sp.x, by = sp.y;
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  ctx.beginPath(); ctx.ellipse(bx * celle, by * celle + celle * 0.42, celle * 0.42 * (1 - hh * 0.4), celle * 0.1 * (1 - hh * 0.4), 0, 0, 7); ctx.fill();
+  const vugge = Math.max(-0.3, Math.min(0.3, sp.vy * 0.05 * sp.vend)) + Math.sin(nu / 170) * 0.25 * fuldhed();
+  const sk = 1 + hh * 0.25;
+  tegnBananmand(bx * celle, by * celle + celle * 0.42 - hh * celle * 0.55, vugge, celle * 1.05 / 150 * sk, sp.gaa, nu, sp.vend);
+  ctx.restore();
+
+  // Mørket: lommelygtens lys (og arrangørens lille lygte) skærer huller i mørket
+  const dpr = cv.width / W;
+  if (morkCv.width !== cv.width || morkCv.height !== cv.height) { morkCv.width = cv.width; morkCv.height = cv.height; }
+  mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  mctx.globalCompositeOperation = "source-over";
+  mctx.clearRect(0, 0, W, H);
+  mctx.fillStyle = "rgb(2,3,8)"; mctx.fillRect(0, 0, W, H);
+  mctx.globalCompositeOperation = "destination-out";
+  const pct = Math.min(1, batteri / START_BAT);
+  let r = celle * (1.4 + 1.5 * pct) * (1 - 0.3 * fuldhed());
+  r *= 1 + Math.sin(nu / 70) * (pct < 0.25 ? 0.05 : 0); // flimrer ved lavt batteri
+  function hul(x, y, rr) {
+    const g = mctx.createRadialGradient(x, y, rr * 0.35, x, y, rr);
+    g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    mctx.fillStyle = g; mctx.beginPath(); mctx.arc(x, y, rr, 0, 7); mctx.fill();
+  }
+  hul(W / 2, H / 2, r);
+  if (arr.tilstand === "guider") {
+    // samme kamera-forskydning (uden slinger, det er fint nok)
+    hul(W / 2 + (arr.x - sp.x) * celle, H / 2 + (arr.y - sp.y) * celle, celle * 1.3);
+  }
+  ctx.drawImage(morkCv, 0, 0, W, H);
+
+  // Pil der viser den omtrentlige retning hjem
+  if (tilstand === "spil") {
+    const a = Math.atan2(lab.maal.y + 0.5 - sp.y, lab.maal.x + 0.5 - sp.x);
+    ctx.save(); ctx.translate(W / 2 + Math.cos(a) * (r + 14), H / 2 + Math.sin(a) * (r + 14)); ctx.rotate(a);
+    ctx.fillStyle = "rgba(255,225,77,.7)"; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-8, -8); ctx.lineTo(-8, 8); ctx.fill();
+    ctx.restore();
+  }
+  // Joystick (når man trækker med fingeren)
+  if (joy && tilstand === "spil") {
+    ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 50, 0, 7); ctx.stroke();
+    const dx = joy.x - joy.ox, dy = joy.y - joy.oy, l = Math.min(50, Math.hypot(dx, dy)), an = Math.atan2(dy, dx);
+    ctx.fillStyle = "rgba(255,225,77,.6)"; ctx.beginPath(); ctx.arc(joy.ox + Math.cos(an) * l, joy.oy + Math.sin(an) * l, 18, 0, 7); ctx.fill();
+  }
+  if (fuldhed() > 0) { ctx.fillStyle = `rgba(255,120,200,${0.1 * fuldhed()})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// ---------- Game loop (delta-tid) ----------
+let sidst = performance.now();
+bane = 2; batteri = START_BAT; promille = 0; nyBane(); sp.x = 2.5; sp.y = 2.5; // baggrund på startskærmen
+function loop(nu) {
+  const dt = Math.min(0.05, (nu - sidst) / 1000); sidst = nu;
+  if (tilstand === "spil") opdater(dt);
+  tegn(nu);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
