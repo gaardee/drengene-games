@@ -259,9 +259,11 @@ const SOCK_Y = 728;              // højden hvor sokken fanger
 const SOCK_HALF = 38;            // halv bredde af sokkens åbning
 const WAND_HALF = 105;           // ... med tryllestav
 const WAND_TIME = 6;
-const SOCK_SPEED = 560;          // med tastatur
-const BOT_SPEED = 290;           // computer-nissernes fart (lavere = nemmere)
-const BOT_AIM_ERR = 70;          // hvor meget de sigter forkert (højere = nemmere)
+const SOCK_SPEED = 450;          // med tastatur
+const MOUSE_SPEED = 720;         // hvor hurtigt sokken følger musen
+const TOUCH_SENS = 0.92;         // hvor langt sokken flytter sig, når man trækker med fingeren
+const BOT_SPEED = 232;           // computer-nissernes fart (lavere = nemmere)
+const BOT_AIM_ERR = 84;          // hvor meget de sigter forkert (højere = nemmere)
 const QUEUE_MAX = 4, QUEUE_MAX_WAND = 6;
 const SHOT_V = 1150;             // skuddenes fart opad
 const SHOT_Y0 = SOCK_Y - 40;
@@ -559,7 +561,7 @@ canvas.addEventListener("pointermove", e => {
   const tp = taps.get(e.pointerId);
   if (tp) tp.moved = Math.max(tp.moved, Math.hypot(e.clientX - tp.x, e.clientY - tp.y));
   if (e.pointerId !== drag.id || !ME || state !== "play") return;
-  const dx = (e.clientX - drag.lastX) / view.kx * 1.15;
+  const dx = (e.clientX - drag.lastX) / view.kx * TOUCH_SENS;
   drag.lastX = e.clientX;
   if (ME.stun <= 0) ME.x = clamp(ME.x + dx, 30, W - 30);
 });
@@ -605,7 +607,7 @@ function moveMe(dt) {
   if (keys["arrowleft"] || keys["a"]) dir -= 1;
   if (keys["arrowright"] || keys["d"]) dir += 1;
   if (dir) { ME.x += dir * SOCK_SPEED * dt; mouseX = null; }
-  else if (mouseX !== null) ME.x += clamp(mouseX - ME.x, -900 * dt, 900 * dt);
+  else if (mouseX !== null) ME.x += clamp(mouseX - ME.x, -MOUSE_SPEED * dt, MOUSE_SPEED * dt);
   ME.x = clamp(ME.x, 30, W - 30);
   if (keys[" "] || keys["arrowup"] || keys["w"]) tryShoot(); // hold for at skyde igen og igen
 }
@@ -801,7 +803,7 @@ function botUpdate(p, dt, t) {
   const rnd = G.botRnd;
   p.think -= dt;
   if (p.think <= 0) {
-    p.think = 0.25 + rnd() * 0.2;
+    p.think = 0.3 + rnd() * 0.24;
     // 1) undgå grankogler, der er lige ved at lande
     let dodge = null;
     for (const id of G.items) {
