@@ -157,7 +157,8 @@
           <li>🛡️ Alle stop er <b>fristeder</b>: tegnerne kan ikke komme ind, så I kan vente sikkert på hinanden</li>
           <li>🎨 Croquis-tegnere stjæler jeres tøj: 🎅🧣👖🧶. Tallet på trøjen er, hvor meget tøj du har på. Mister du trøjen, er du <b>nøgen</b> – find 👕 for at komme med igen. De andre venter ikke på nøgne drenge</li>
           <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage · <b>+10</b></li>
-          <li>🌉 Kanalerne kan kun krydses på broerne · turister og duer står i vejen</li>
+          <li>👩 Jeres <b>koner</b> jagter jer med <b>barnevogn</b>. Alle koner og barnevogne spærrer vejen for alle drenge</li>
+          <li>🌉 Kanalerne kan kun krydses på broerne · duer bremser</li>
           <li>⭐ <b>+2 point</b> pr. sekund med tøj på (ikke mens du gemmer dig i et gammelt stop)</li>
         </ul>
         <div class="controls" id="ctrlHelp"></div>
@@ -273,7 +274,7 @@ const SING_AT = [35, 80];        // "Syng LAST CHRISTMAS!!!" efter så mange sek
 const SING_TIME = 10;
 const MAX_TIME = 150;            // nødstop, hvis nogen gemmer sig i fristederne
 const BOOSTS = { horn: { mul: 1.35, time: 3.5 }, pepsi: { mul: 1.7, time: 3.0 } };
-const TOURIST_SLOW = 0.45, PIGEON_SLOW = 0.55;
+const PIGEON_SLOW = 0.55;
 
 // Tegnerne: flere og hurtigere med tiden – et normalt spil slutter inden for ca. 2 min.
 const enemySpeed = t => 100 + 1.3 * t + Math.max(0, t - 95) * 3.5;
@@ -322,16 +323,13 @@ const BRIDGES = [
   { x: 1110, y: 660, w: 90, h: 75, v: true },
   { x: 880, y: 270, w: 75, h: 90, v: false }, { x: 420, y: 1000, w: 75, h: 90, v: false },
 ];
-// Turister går frem og tilbage langs kanalerne (position afhænger kun af tiden => ens på alle skærme)
-const TOURIST_PATHS = [
-  { x1: 300, y1: 638, x2: 850, y2: 638, sp: 45, ph: 0,   c: "#ff9f43" },
-  { x1: 520, y1: 757, x2: 1080, y2: 757, sp: 50, ph: 200, c: "#54a0ff" },
-  { x1: 858, y1: 390, x2: 858, y2: 630, sp: 38, ph: 50,  c: "#ff6b6b" },
-  { x1: 977, y1: 40,  x2: 977, y2: 630, sp: 55, ph: 300, c: "#1dd1a1" },
-  { x1: 517, y1: 1110, x2: 517, y2: 1370, sp: 40, ph: 100, c: "#feca57" },
-  { x1: 398, y1: 760, x2: 398, y2: 990, sp: 35, ph: 0,   c: "#c56cf0" },
-];
-const TOURIST_R = 22, PIGEON_R = 38;
+const PIGEON_R = 38;
+// Konerne: én pr. dreng. Hun jagter sin egen mand og skubber en barnevogn foran sig.
+// Alle koner og barnevogne spærrer vejen for alle drenge.
+const WIFE_R = 14, PRAM_R = 15, PRAM_D = 30;  // barnevognen kører PRAM_D foran konen
+const WIFE_DELAY = 3;                          // sekunder før konerne går i gang
+const wifeSpeed = t => 125 + 0.4 * t;
+const HAIR = ["#6b4423", "#f2c94c", "#2b1d14", "#b5562d", "#8a6e4b", "#d9b46a", "#3b2a20", "#c0392b", "#ece0c8", "#5a3a1a"];
 const HOUSE_COLORS = ["#e8a33d", "#c8553d", "#3d7fd6", "#e6c84f", "#5aa36b", "#d9775b", "#8e5ba8", "#e9dcc4", "#b84a62"];
 
 /* =====================================================================
@@ -401,13 +399,7 @@ function makeSpots(seed, n, pad) {
 const ITEM_SPOTS = makeSpots(SEED + 1, 300, 28);
 const PIGEONS = makeSpots(SEED + 7, 8, 45).filter(p => Math.hypot(p.x - START.x, p.y - START.y) > 150).slice(0, 7);
 
-function tourists(t) {
-  return TOURIST_PATHS.map(p => {
-    const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1);
-    const d = (t * p.sp + p.ph) % (len * 2), k = (d < len ? d : len * 2 - d) / len;
-    return { x: p.x1 + (p.x2 - p.x1) * k, y: p.y1 + (p.y2 - p.y1) * k, c: p.c, dir: d < len ? 1 : -1 };
-  });
-}
+const pramOf = w => ({ x: w.x + Math.cos(w.a) * PRAM_D, y: w.y + Math.sin(w.a) * PRAM_D });
 
 function pushOut(e, r) {
   const cx = clamp(e.x, r.x, r.x + r.w), cy = clamp(e.y, r.y, r.y + r.h);
@@ -634,6 +626,12 @@ function hostNewGame() {
       st: { stops: 0, first: 0, horn: 0, pepsi: 0, toj: 0, hits: 0, alive: 0 },
     };
   });
+  // én kone pr. dreng – de starter på en række nord for Hovedbanegården
+  G.wives = lobby.players.map((p, i) => {
+    const c = nearFree(START.x + (i - (n - 1) / 2) * 45, START.y - 120);
+    const x = (c % GN + 0.5) * CELL + (i - (n - 1) / 2) * 8, y = (((c / GN) | 0) + 0.5) * CELL;
+    return { owner: p.id, c: p.c, i, x, y, dx: x, dy: y, a: Math.PI / 2, r: WIFE_R };
+  });
   for (let i = 0; i < foodOnMap(n); i++) spawnItem(null);
   for (let i = 0; i < TOJ_ON_MAP; i++) spawnItem("toj");
   S = G;
@@ -764,9 +762,19 @@ function visible(x, y, pad) {
    ===================================================================== */
 function slowAt(x, y, t) {
   let k = 1;
-  for (const tr of tourists(t)) if (Math.hypot(tr.x - x, tr.y - y) < TOURIST_R + PLAYER_R) k = Math.min(k, TOURIST_SLOW);
   for (const p of PIGEONS) if (Math.hypot(p.x - x, p.y - y) < PIGEON_R) k = Math.min(k, PIGEON_SLOW);
   return k;
+}
+// Konerne og deres barnevogne som cirkler (værten bruger de rigtige positioner, spillerne de bløde)
+function blockers() {
+  const out = [];
+  if (!S || !S.wives) return out;
+  for (const w of S.wives) {
+    const pos = role === "client" ? { x: w.dx, y: w.dy, a: w.a } : w;
+    out.push({ x: pos.x, y: pos.y, r: WIFE_R });
+    const p = pramOf(pos); out.push({ x: p.x, y: p.y, r: PRAM_R });
+  }
+  return out;
 }
 function moveMe(dt, t) {
   const P = ME;
@@ -785,7 +793,14 @@ function moveMe(dt, t) {
     P.moving = Math.hypot(inp.x, inp.y) > 0.1;
     if (P.moving) { if (Math.abs(inp.x) > 0.15) P.fx = Math.sign(inp.x); P.step += dt * 12; }
   }
-  collideWorld(P);
+  // alle koner og barnevogne spærrer vejen
+  for (let k = 0; k < 2; k++) {
+    for (const o of blockers()) {
+      const dx = P.x - o.x, dy = P.y - o.y, d = Math.hypot(dx, dy) || 0.01, m = o.r + P.r;
+      if (d < m) { P.x = o.x + dx / d * m; P.y = o.y + dy / d * m; }
+    }
+    collideWorld(P);
+  }
   myStats.dist += Math.hypot(P.x - prevX, P.y - prevY);
 }
 
@@ -873,6 +888,7 @@ function hostUpdate(dt) {
   }
 
   hostUpdateEnemies(dt, act, n);
+  hostUpdateWives(dt);
 
   // ---- Slut ----
   if (!act.length && Object.values(G.players).every(p => p.out || performance.now() - p.last >= 4000)) hostEnd("Alle drenge er tegnet nøgne! 🙈");
@@ -885,7 +901,7 @@ function hostUpdateEnemies(dt, act, n) {
   G.ffT -= dt;
   if (G.ffT <= 0) {
     G.ffT = 0.25; G.ff = {};
-    for (const p of act) G.ff[p.id] = flowField(p.x, p.y);
+    for (const p of Object.values(G.players)) G.ff[p.id] = flowField(p.x, p.y); // (også til konerne)
   }
   // flere tegnere med tiden – de dukker op langt fra drengene
   if (G.enemies.length < enemyCount(t, n) && act.length) {
@@ -954,6 +970,55 @@ function hostUpdateEnemies(dt, act, n) {
   }
 }
 
+// Konerne går efter deres egen mand ad gaderne og stopper, når barnevognen er lige ved ham
+function hostUpdateWives(dt) {
+  if (G.t < WIFE_DELAY) return;
+  const speed = wifeSpeed(G.t);
+  for (const w of G.wives) {
+    const P = G.players[w.owner];
+    if (!P) continue;
+    const pram = pramOf(w);
+    const close = Math.hypot(P.x - pram.x, P.y - pram.y) < PRAM_R + PLAYER_R + 8 || Math.hypot(P.x - w.x, P.y - w.y) < WIFE_R + PLAYER_R + 8;
+    let tx = P.x, ty = P.y;
+    const ff = G.ff[P.id], c = cellOf(w.x, w.y);
+    if (ff && ff[c] > 1) {
+      const cx = c % GN, cy = (c / GN) | 0;
+      let best = ff[c], bi = -1;
+      for (const [ddx, ddy] of NB) {
+        if (!canStep(cx, cy, ddx, ddy)) continue;
+        const nIdx = (cy + ddy) * GN + cx + ddx;
+        if (ff[nIdx] < best) { best = ff[nIdx]; bi = nIdx; }
+      }
+      if (bi >= 0) { tx = (bi % GN + 0.5) * CELL; ty = (((bi / GN) | 0) + 0.5) * CELL; }
+    }
+    const dx = tx - w.x, dy = ty - w.y, d = Math.hypot(dx, dy);
+    // drej blødt mod den retning hun går (barnevognen følger med)
+    if (d > 1) {
+      const want = Math.atan2(dy, dx);
+      let diff = ((want - w.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      w.a += clamp(diff, -6 * dt, 6 * dt);
+    }
+    if (!close && d > 0.5) {
+      const step = Math.min(speed * dt, d);
+      w.x += dx / d * step; w.y += dy / d * step;
+    }
+    collideWorld(w);
+    for (const st of STOPS) { // konerne kan ikke komme ind i fristederne (heller ikke med barnevognen)
+      for (const o of [w, pramOf(w)]) {
+        const fx = o.x - st.x, fy = o.y - st.y, fd = Math.hypot(fx, fy) || 1, m = STOP_R + (o === w ? 0 : PRAM_R);
+        if (fd < m) { const k = m - fd; w.x += fx / fd * k; w.y += fy / fd * k; }
+      }
+    }
+    collideWorld(w);
+  }
+  // konerne skubber lidt til hinanden
+  for (let i = 0; i < G.wives.length; i++) for (let j = i + 1; j < G.wives.length; j++) {
+    const a = G.wives[i], b = G.wives[j];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, o = a.r + b.r + 4 - d;
+    if (o > 0) { a.x -= dx / d * o / 2; a.y -= dy / d * o / 2; b.x += dx / d * o / 2; b.y += dy / d * o / 2; }
+  }
+}
+
 function hitPlayer(e, p) {
   const lost = CLOTHES[CLOTHES.length - p.clothes];
   p.clothes--; p.st.hits++;
@@ -981,6 +1046,7 @@ function hostSendState() {
     so: G.stop, at: G.atStop, nd: G.need,
     it: G.items.map(i => [ITEM_KINDS.indexOf(i.k), r1(i.x), r1(i.y)]),
     en: G.enemies.map(e => [r1(e.x), r1(e.y), EMODES.indexOf(e.mode), e.fx]),
+    wv: G.wives.map(w => [r1(w.x), r1(w.y), r1(w.a * 100)]),
     pl, ev: G.evq,
   });
   G.evq = [];
@@ -1004,7 +1070,7 @@ function hostEnd(reason) {
    SPILLERNE (ikke-vært): modtag værtens tilstand
    ===================================================================== */
 function clientNewView() {
-  S = { t: 0, paused: false, sing: 0, stop: 0, atStop: 0, need: 1, items: [], enemies: [], players: {}, floaters: [], recvAt: performance.now() };
+  S = { t: 0, paused: false, sing: 0, stop: 0, atStop: 0, need: 1, items: [], enemies: [], wives: [], players: {}, floaters: [], recvAt: performance.now() };
 }
 function clientState(m) {
   if (!S) return;
@@ -1020,6 +1086,12 @@ function clientState(m) {
     Object.assign(e, { x, y, mode: EMODES[mode], fx });
   });
   S.enemies.length = m.en.length;
+  (m.wv || []).forEach(([x, y, a], i) => {
+    let w = S.wives[i];
+    const pl = lobby.players[i] || { id: "", c: 0 };
+    if (!w) w = S.wives[i] = { x, y, dx: x, dy: y, a: a / 100, owner: pl.id, c: pl.c, i };
+    Object.assign(w, { x, y, a: a / 100 });
+  });
   for (const [id, x, y, fx, mv, score, clothes, inv, hc, kx, ky, out, boost] of m.pl) {
     let p = S.players[id];
     const info = lobby.players.find(q => q.id === id) || { name: "?", c: 0 };
@@ -1308,13 +1380,16 @@ function draw(now, dt) {
 
   // personer sorteret oppefra og ned
   const people = [];
-  for (const tr of tourists(t)) if (visible(tr.x, tr.y, 60)) people.push({ k: "t", o: tr, y: tr.y });
+  if (S && S.wives) for (const w of S.wives) {
+    const x = role === "client" ? w.dx : w.x, y = role === "client" ? w.dy : w.y;
+    if (visible(x, y, 90)) people.push({ k: "w", o: w, x, y });
+  }
   if (S) {
     for (const e of S.enemies) { const x = role === "client" ? e.dx : e.x, y = role === "client" ? e.dy : e.y; if (visible(x, y, 60)) people.push({ k: "e", o: e, x, y }); }
     for (const k of peopleNear) if (visible(k.x, k.y, 60)) people.push({ k: "p", o: k, y: k.y });
   }
   people.sort((a, b) => a.y - b.y);
-  for (const p of people) p.k === "t" ? drawTourist(p.o, now) : p.k === "e" ? drawTegner(p.o, p.x, p.y, now) : drawDreng(p.o, now);
+  for (const p of people) p.k === "w" ? drawWife(p.o, p.x, p.y, now) : p.k === "e" ? drawTegner(p.o, p.x, p.y, now) : drawDreng(p.o, now);
 
   // svævende tekst
   if (S) for (const f of S.floaters) {
@@ -1467,16 +1542,46 @@ function drawItem(it, now) {
   }
 }
 
-function drawTourist(tr, now) {
-  const s = view.s, [x, y] = toS(tr.x, tr.y), R = 13 * s;
-  ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(x, y + R * 1.2, R * 1.4, R * 0.5, 0, 0, Math.PI * 2); ctx.fill();
-  rr(x - R * 1.15 * tr.dir - R * 0.4, y - R * 0.5, R * 0.8, R * 1.3, 3 * s); fillStroke("#6b4f3a", 2); // rygsæk
-  rr(x - R * 0.8, y - R * 0.5, R * 1.6, R * 1.6, R * 0.6); fillStroke(tr.c, 2.5);
-  circle(x, y - R * 1.1, R * 0.7, "#f2c6a0", 2.5);
-  ctx.beginPath(); ctx.arc(x, y - R * 1.3, R * 0.72, Math.PI, 0); fillStroke("#fff", 2); // kasket
-  rr(x + tr.dir * R * 0.3 - R * 0.35, y - R * 0.05, R * 0.7, R * 0.5, 2 * s); fillStroke("#333", 1.5); // kamera
-  if ((now + tr.x * 37) % 2600 < 120) { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); ctx.arc(x + tr.dir * R * 0.3, y + R * 0.2, R * 1.4, 0, Math.PI * 2); ctx.fill(); }
-  ctx.font = `${Math.max(9, 12 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.fillText("📸", x, y - R * 2.4);
+// Konen (kjole i samme farve som mandens trøje) med barnevogn
+function drawWife(w, wx, wy, now) {
+  const s = view.s, R = WIFE_R * s;
+  const pram = pramOf({ x: wx, y: wy, a: w.a });
+  const [x, y] = toS(wx, wy), [px, py] = toS(pram.x, pram.y);
+  const f = Math.cos(w.a) >= 0 ? 1 : -1;
+  const drawPram = () => {
+    ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(px, py + PRAM_R * s * 0.9, PRAM_R * s * 1.1, PRAM_R * s * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    for (const [ox, oy] of [[-0.7, 0.75], [0.7, 0.75]]) circle(px + ox * PRAM_R * s, py + oy * PRAM_R * s, PRAM_R * s * 0.32, "#2b2b2b", 2);
+    rr(px - PRAM_R * s, py - PRAM_R * s * 0.55, PRAM_R * s * 2, PRAM_R * s * 1.15, PRAM_R * s * 0.5); fillStroke("#2f4f8f", 2.5);
+    ctx.beginPath(); ctx.arc(px - f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.4, PRAM_R * s * 0.75, Math.PI, 0); ctx.closePath(); fillStroke("#3d66b3", 2); // kaleche
+    circle(px + f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.25, PRAM_R * s * 0.38, "#f7d3b5", 1.5); // babyen
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(px + f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.55, PRAM_R * s * 0.3, Math.PI, 0); ctx.fill(); // hue
+  };
+  const pramBehind = py < y; // tegn det der er længst væk først
+  if (pramBehind) drawPram();
+  // håndtag fra konen til barnevognen
+  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.5, 2.5 * s);
+  ctx.beginPath(); ctx.moveTo(x + Math.cos(w.a) * R * 0.6, y - R * 0.2 + Math.sin(w.a) * R * 0.3); ctx.lineTo(px - Math.cos(w.a) * PRAM_R * s * 0.8, py - PRAM_R * s * 0.5); ctx.stroke();
+  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.95, R * 1.1, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  // kjole
+  ctx.beginPath(); ctx.moveTo(x - R * 0.5, y - R * 0.6); ctx.lineTo(x + R * 0.5, y - R * 0.6); ctx.lineTo(x + R * 0.95, y + R * 0.9); ctx.lineTo(x - R * 0.95, y + R * 0.9); ctx.closePath();
+  fillStroke(COLORS[w.c] || "#c8102e", 2.5);
+  ctx.fillStyle = "#fff"; ctx.fillRect(x - R * 0.85, y + R * 0.55, R * 1.7, R * 0.18);
+  // hoved med langt hår
+  const hy = y - R * 1.1, hair = HAIR[w.i % HAIR.length];
+  ctx.beginPath(); ctx.ellipse(x, hy + R * 0.25, R * 0.82, R * 0.95, 0, 0, Math.PI * 2); fillStroke(hair, 2);
+  circle(x, hy, R * 0.62, "#f7d3b5", 2);
+  ctx.beginPath(); ctx.arc(x, hy - R * 0.12, R * 0.66, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); fillStroke(hair, 1.5);
+  ctx.fillStyle = INK;
+  for (const ex of [-0.22, 0.22]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.1, hy + R * 0.02, R * 0.08, 0, Math.PI * 2); ctx.fill(); }
+  // sur mund (hun leder efter sin mand)
+  ctx.strokeStyle = INK; ctx.lineWidth = 1.8 * s; ctx.beginPath(); ctx.arc(x + f * R * 0.1, hy + R * 0.42, R * 0.17, Math.PI + 0.3, -0.3); ctx.stroke();
+  if (!pramBehind) drawPram();
+  // hvem er hun gift med?
+  const info = lobby.players.find(q => q.id === w.owner);
+  if (info) {
+    let n = info.name; if (n.length > 9) n = n.slice(0, 8) + "…";
+    label("♥ " + n, x, hy - R * 1.25, Math.max(9, 10.5 * s), "#ffb3c7");
+  }
 }
 
 function drawTegner(e, wx, wy, now) {
@@ -1722,6 +1827,10 @@ function drawMinimap() {
     const ex = role === "client" ? e.dx : e.x, ey = role === "client" ? e.dy : e.y;
     ctx.fillStyle = "#1d1a16"; ctx.fillRect(x0 + ex * k - 2, y0 + ey * k - 2, 4, 4);
   }
+  if (S.wives) for (const w of S.wives) {
+    const wx = role === "client" ? w.dx : w.x, wy = role === "client" ? w.dy : w.y;
+    ctx.beginPath(); ctx.arc(x0 + wx * k, y0 + wy * k, 2.5, 0, Math.PI * 2); ctx.fillStyle = "#ff6fa5"; ctx.fill();
+  }
   for (const p of kidsToDraw()) {
     if (p.gone) continue;
     ctx.beginPath(); ctx.arc(x0 + p.x * k, y0 + p.y * k, p.isMe ? 4 : 3, 0, Math.PI * 2);
@@ -1783,13 +1892,13 @@ function frame(now) {
         const t0 = clientTime();
         while (rest > 0) { const step = Math.min(rest, 1 / 60); moveMe(step, t0); rest -= step; }
       } else ME.moving = false;
-      smoothList(S.enemies, dt, false); smoothList(Object.values(S.players), dt, true);
+      smoothList(S.enemies, dt, false); smoothList(S.wives, dt, false); smoothList(Object.values(S.players), dt, true);
       if (now - lastSend >= CLIENT_SEND_MS) {
         lastSend = now;
         sendMine("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: ME.fx, m: ME.moving ? 1 : 0, b: ME.boost > 0 ? ME.bkind : 0 });
       }
     } else if (state === "pause" && S) {
-      smoothList(S.enemies, dt, false); smoothList(Object.values(S.players), dt, true);
+      smoothList(S.enemies, dt, false); smoothList(S.wives, dt, false); smoothList(Object.values(S.players), dt, true);
       if (now - lastSend >= 1000) { lastSend = now; sendMine("pos", { id: MY_ID, x: r1(ME.x), y: r1(ME.y), fx: ME.fx, m: 0, b: 0 }); }
     }
     if ((state === "lobby" || state === "end") && now - lastLobbyPing >= LOBBY_PING_MS) {
