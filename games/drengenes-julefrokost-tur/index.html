@@ -261,6 +261,7 @@ const VIEW_UNITS_SMALL = 470;    // ... på en lille telefon (lidt mere zoomet i
 const PLAYER_R = 16;
 const PLAYER_SPEED = 220;
 const ENEMY_R = 17;
+const ENEMY_GAP = 110;           // så tæt må to tegnere højst komme på hinanden
 const STOP_R = 70;               // hvor tæt man skal stå på et stop
 const INV_TIME = 2.0;            // sekunder man er usårlig efter at have mistet tøj
 const DRAW_TIME = 1.6;           // så længe står tegneren og tegner bagefter
@@ -919,22 +920,32 @@ function hostUpdateEnemies(dt, act, n) {
   const speed = enemySpeed(t);
   // drenge i et fristed kan ikke tegnes
   const targets = act.filter(p => p.inv <= 0 && !inSafe(p));
+  // Vælg bytte: den dreng der er tættest på ad gaderne – men helst en, som ingen
+  // anden tegner allerede jagter (så de fordeler sig i stedet for at klumpe)
+  const chasers = {};
+  for (const e of G.enemies) {
+    e.td = FAR;
+    if (e.mode !== "walk") continue;
+    const c = cellOf(e.x, e.y);
+    let P = null, bd = 1e9, real = FAR;
+    for (const p of (targets.length ? targets : act)) {
+      const ff = G.ff[p.id];
+      const d = ff ? ff[c] : Math.hypot(p.x - e.x, p.y - e.y) / CELL;
+      const score = d + (chasers[p.id] || 0) * 8;
+      if (score < bd) { bd = score; P = p; real = d; }
+    }
+    e.target = P ? P.id : null; e.td = real;
+    if (P) chasers[P.id] = (chasers[P.id] || 0) + 1;
+  }
   for (const e of G.enemies) {
     if (e.mode === "spawn" || e.mode === "draw") {
       e.timer -= dt;
       if (e.timer <= 0) e.mode = "walk";
       continue;
     }
-    // vælg den dreng, der er tættest på ad gaderne
     const c = cellOf(e.x, e.y);
-    let P = null, bd = FAR + 1;
-    for (const p of (targets.length ? targets : act)) {
-      const ff = G.ff[p.id];
-      const d = ff ? ff[c] : Math.hypot(p.x - e.x, p.y - e.y) / CELL;
-      if (d < bd) { bd = d; P = p; }
-    }
+    const P = G.players[e.target];
     if (!P) continue;
-    e.target = P.id;
     let tx = P.x, ty = P.y;
     const ff = G.ff[P.id];
     if (ff && ff[c] > 1) {
@@ -965,11 +976,19 @@ function hostUpdateEnemies(dt, act, n) {
       break;
     }
   }
-  // tegnerne skubber lidt til hinanden, så de ikke klumper
-  for (let i = 0; i < G.enemies.length; i++) for (let j = i + 1; j < G.enemies.length; j++) {
-    const a = G.enemies[i], b = G.enemies[j];
-    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, o = a.r + b.r - d;
-    if (o > 0) { a.x -= dx / d * o / 2; a.y -= dy / d * o / 2; b.x += dx / d * o / 2; b.y += dy / d * o / 2; }
+  // Tegnerne holder afstand: kommer to tættere end ENEMY_GAP, skubbes den, der er
+  // længst fra sit bytte, væk. Den forreste jagter altså uforstyrret.
+  for (let it = 0; it < 3; it++) {
+    for (let i = 0; i < G.enemies.length; i++) for (let j = i + 1; j < G.enemies.length; j++) {
+      const a = G.enemies[i], b = G.enemies[j];
+      let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      if (d >= ENEMY_GAP) continue;
+      if (d < 0.01) { dx = 1; dy = 0; d = 1; }
+      const o = Math.min(ENEMY_GAP - d, 450 * dt), ux = dx / d, uy = dy / d; // glider fra hinanden (hurtigere end de går)
+      if (a.td < b.td) { b.x += ux * o; b.y += uy * o; collideWorld(b); }
+      else if (b.td < a.td) { a.x -= ux * o; a.y -= uy * o; collideWorld(a); }
+      else { a.x -= ux * o / 2; a.y -= uy * o / 2; b.x += ux * o / 2; b.y += uy * o / 2; collideWorld(a); collideWorld(b); }
+    }
   }
 }
 
