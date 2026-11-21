@@ -254,7 +254,8 @@ const LOBBY_PING_MS = 1500;
    INDSTILLINGER – pil gerne ved disse tal
    ===================================================================== */
 const SEED = 20261224;
-const WORLD = 1400;              // København er 1400×1400 enheder
+const MAP_K = 1.5;               // banens størrelse: kortet herunder er tegnet i 1400×1400 og ganges op
+const WORLD = 1400 * MAP_K;      // København er 2100×2100 enheder
 const VIEW_UNITS = 560;          // så mange enheder kan man se på den korteste led af skærmen
 const VIEW_UNITS_SMALL = 470;    // ... på en lille telefon (lidt mere zoomet ind)
 const PLAYER_R = 16;
@@ -267,7 +268,7 @@ const ALIVE_POINTS = 2;          // point pr. sekund med tøj på
 const STOP_POINTS = 100;         // pr. klaret stop (+50 for hver ekstra omgang)
 const FIRST_BONUS = 25;          // til den første ved stoppet
 const PICKUP_POINTS = 10;
-const TOJ_ON_MAP = 5;             // så mange stykker tøj ligger der altid på kortet
+const TOJ_ON_MAP = 10;            // så mange stykker tøj ligger der altid på kortet
 // Alle stop er fristeder: tegnerne kan ikke komme ind, og man kan ikke tegnes derinde
 const inSafe = p => STOPS.some(st => Math.hypot(p.x - st.x, p.y - st.y) < STOP_R);
 const SING_AT = [35, 80];        // "Syng LAST CHRISTMAS!!!" efter så mange sekunders spil
@@ -279,7 +280,7 @@ const PIGEON_SLOW = 0.55;
 // Tegnerne: flere og hurtigere med tiden – et normalt spil slutter inden for ca. 2 min.
 const enemySpeed = t => 100 + 1.3 * t + Math.max(0, t - 95) * 3.5;
 const enemyCount = (t, n) => Math.min(12, 2 + Math.floor(t / 15) + Math.floor((n - 1) / 2));
-const foodOnMap = n => 3 + Math.floor(n / 3);
+const foodOnMap = n => 5 + Math.floor(n / 3);
 
 // Tøj – mistes i denne rækkefølge
 const CLOTHES = [
@@ -305,8 +306,9 @@ const STOPS = [
   { name: "Snapsbaren",            short: "Snapsbaren",  emoji: "🥃", x: 1210, y: 190 },
   { name: "Natklubben",            short: "Natklubben",  emoji: "🪩", x: 620,  y: 440 },
   { name: "Pølsevognen kl. 04",    short: "Pølsevognen", emoji: "🌭", x: 1200, y: 1240 },
-];
-const START = { x: 470, y: 560 }; // Hovedbanegården
+].map(st => ({ ...st, x: st.x * MAP_K, y: st.y * MAP_K }));
+const START = { x: 470 * MAP_K, y: 560 * MAP_K }; // Hovedbanegården
+const scaleRect = r => ({ ...r, x: r.x * MAP_K, y: r.y * MAP_K, w: r.w * MAP_K, h: r.h * MAP_K });
 
 // Kanaler (vand) – hullerne er broer
 const WATER = [
@@ -314,15 +316,15 @@ const WATER = [
   { x: 700,  y: 660, w: 410, h: 75 }, { x: 1200, y: 660, w: 200, h: 75 },
   { x: 880,  y: 0,   w: 75,  h: 270 }, { x: 880, y: 360, w: 75, h: 300 },
   { x: 420,  y: 735, w: 75,  h: 265 }, { x: 420, y: 1090, w: 75, h: 310 },
-];
+].map(scaleRect);
 const CANALS = [ // hele kanalerne (inkl. broer) – her bygges ingen huse
   { x: 0, y: 660, w: 1400, h: 75 }, { x: 880, y: 0, w: 75, h: 735 }, { x: 420, y: 660, w: 75, h: 740 },
-];
+].map(scaleRect);
 const BRIDGES = [
   { x: 170, y: 660, w: 90, h: 75, v: true }, { x: 610, y: 660, w: 90, h: 75, v: true },
   { x: 1110, y: 660, w: 90, h: 75, v: true },
   { x: 880, y: 270, w: 75, h: 90, v: false }, { x: 420, y: 1000, w: 75, h: 90, v: false },
-];
+].map(scaleRect);
 const PIGEON_R = 38;
 // Konerne: én pr. dreng. Hun jagter sin egen mand og skubber en barnevogn foran sig.
 // Alle koner og barnevogne spærrer vejen for alle drenge.
@@ -366,7 +368,8 @@ const HOUSES = [], TREES = [];
     ].filter(p => p.w >= 55 && p.h >= 55).sort((a, b) => b.w * b.h - a.w * a.h);
     return parts[0] || null;
   };
-  for (let gy = 0; gy < 8; gy++) for (let gx = 0; gx < 8; gx++) {
+  const GRID = Math.floor((WORLD - 120) / 175) + 1;
+  for (let gy = 0; gy < GRID; gy++) for (let gx = 0; gx < GRID; gx++) {
     // gaderne er mindst 75 brede, så tegnerne altid kan finde vej
     const w = 95 + rnd() * 5, h = 95 + rnd() * 5;
     let r = { x: 45 + gx * 175 + rnd() * 3, y: 45 + gy * 175 + rnd() * 3, w, h };
@@ -396,8 +399,8 @@ function makeSpots(seed, n, pad) {
   }
   return out;
 }
-const ITEM_SPOTS = makeSpots(SEED + 1, 300, 28);
-const PIGEONS = makeSpots(SEED + 7, 8, 45).filter(p => Math.hypot(p.x - START.x, p.y - START.y) > 150).slice(0, 7);
+const ITEM_SPOTS = makeSpots(SEED + 1, 600, 28);
+const PIGEONS = makeSpots(SEED + 7, 16, 45).filter(p => Math.hypot(p.x - START.x, p.y - START.y) > 150).slice(0, 14);
 
 const pramOf = w => ({ x: w.x + Math.cos(w.a) * PRAM_D, y: w.y + Math.sin(w.a) * PRAM_D });
 
@@ -470,7 +473,7 @@ function flowField(x, y) {
 }
 // Startpladser for tegnerne (i byens yderkanter), flyttet til nærmeste fri felt
 const ENEMY_SPAWNS = [[40, 40], [840, 40], [1360, 40], [1360, 620], [40, 620], [40, 1360], [380, 1360], [1360, 1360], [560, 1360], [1360, 790], [560, 790], [40, 790]]
-  .map(([x, y]) => {
+  .map(([x, y]) => [x * MAP_K, y * MAP_K]).map(([x, y]) => {
     let best = null, bd = 1e9;
     for (let c = 0; c < GN * GN; c++) if (!BLOCK[c]) {
       const cx = (c % GN + 0.5) * CELL, cy = (((c / GN) | 0) + 0.5) * CELL, d = Math.hypot(cx - x, cy - y);
@@ -843,11 +846,10 @@ function hostUpdate(dt) {
   }
 
   // ---- Ting på gaden: hvem kommer først? ----
-  const pickers = Object.values(G.players).filter(p => performance.now() - p.last < 4000);
+  const pickers = Object.values(G.players) // (også nøgne drenge kan samle op).filter(p => performance.now() - p.last < 4000);
   for (const p of pickers) {
     for (let i = G.items.length - 1; i >= 0; i--) {
       const it = G.items[i];
-      if (p.out && it.k !== "toj") continue; // nøgne drenge kan kun samle tøj op
       if (it.k === "toj" && !p.out && p.clothes >= CLOTHES.length) continue; // har allerede alt tøjet på
       if (Math.hypot(it.x - p.x, it.y - p.y) > p.r + 16) continue;
       G.items.splice(i, 1);
