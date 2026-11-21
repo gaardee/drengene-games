@@ -93,6 +93,7 @@
     padding: 11px 14px; min-height: 52px; width: 100%; cursor: pointer;
   }
   .big:active { transform: translateY(3px); box-shadow: 0 2px 0 #5a3b22; }
+  .big:disabled { opacity: .55; cursor: default; }
   .btnrow { display: flex; gap: 8px; margin-top: 10px; align-items: stretch; }
   .btnrow .big { font-size: 16px; padding: 9px 6px; }
   .big.alt { background: #3b78c9; }
@@ -156,13 +157,13 @@
     <div class="screen" id="startScreen">
       <div class="card">
         <h1>🧗 TrækkerDrenge</h1>
-        <p class="tagline">2-10 spillere (op til 5 på hvert hold) på hver sin telefon eller computer. Kom igennem <b>3 baner</b> – men kun hvis I <b>hjælper hinanden</b>!</p>
+        <p class="tagline">4-10 spillere (2-5 på hvert hold) på hver sin telefon eller computer. Kom igennem <b>3 baner</b> – men kun hvis I <b>hjælper hinanden</b>!</p>
         <ul class="rules">
           <li>⭐ Stjerne = <b>10 point</b></li>
           <li>🤝 Hjælp en makker = <b>5 point</b>: hiv ham op over en kant (sker af sig selv), lad ham stå på dit hoved, skub en tung kasse sammen, eller hold en dør åben</li>
           <li>🏁 Hele holdet i mål = <b>20 point</b> hver (+10 til første hold)</li>
           <li>❓ Mysteriekasser: superhop, stærk, lang arm, fart… eller <b>"En Hinge"</b> 🤕 og <b>"En Korff"</b> 🐌</li>
-          <li>👩 Pas på konen! Fanger hun dig, får du en <b>baby</b> 👶 om benene</li>
+          <li>👩 Pas på konen! Fanger hun dig, får du en grædende <b>baby</b> 👶 om benene – længe!</li>
         </ul>
         <div class="controls" id="ctrlHelp"></div>
         <input id="nameInput" maxlength="16" placeholder="Skriv dit navn" autocomplete="off">
@@ -253,6 +254,7 @@
 const GAME_NAME = "traekker-drenge"; // = mappenavnet (bruges til ranglisten og kanalnavne)
 const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
 const MAX_PLAYERS = 10;   // 5 på hvert hold
+const MIN_PLAYERS = 4;    // mindst 2 på hvert hold
 const HOST_SEND_MS = 125;   // værten sender 8 gange/sek
 const CLIENT_SEND_MS = 140; // spillerne sender ~7 gange/sek
 const LOBBY_PING_MS = 1500;
@@ -270,7 +272,7 @@ const CRATE = 60;           // tung kasse: 60×60
 const CRATE_SPEED = 115;
 const INTER_TIME = 3.5;     // pause mellem banerne ("Bane 2 – klar…")
 const EFFECT_TIME = 8;      // mysteriekasser virker i 8 sek.
-const BABY_TIME = 10;       // babyen hænger på i 10 sek.
+const BABY_TIME = 25;       // babyen hænger på i 25 sek. (også over i næste bane)
 const HELP_POINTS = 5, STAR_POINTS = 10, TEAM_POINTS = 20, FIRST_BONUS = 10;
 const HELP_CAP = 4;         // max 4 hjælpe-bonusser af hver slags pr. bane pr. spiller
 const HELP_COOLDOWN = 4;    // sek. før samme to spillere kan give bonus igen
@@ -282,7 +284,7 @@ const EFFECTS = {
   langarm:  { icon: "🦵", name: "Lang arm! Hiv langt nede fra", good: true },
   fart:     { icon: "⚡", name: "Fart!", good: true },
   hinge:    { icon: "🤕", name: "En Hinge! Armen er skadet", good: false },
-  korff:    { icon: "🐌", name: "En Korff! Langsom og vimset", good: false },
+  korff:    { icon: "🌀", name: "En Korff! Alt går i kage", good: false },
 };
 const EFF_CODES = ["", "superhop", "staerk", "langarm", "fart", "hinge", "korff"];
 
@@ -354,8 +356,8 @@ const LEVELS = [
   },
 ];
 
-// Holdene. Med 2-3 spillere er alle på samme hold (I spiller mod uret),
-// med 4+ bliver I delt i Rødt og Blåt hold, der kører hver sin kopi af banen.
+// Holdene: man bliver delt i Rødt og Blåt hold (mindst 2 og højst 5 på hvert),
+// der kører hver sin kopi af banen.
 const TEAMS = [
   { name: "Rødt hold", body: "#d9482f", dark: "#8f2a19" },
   { name: "Blåt hold", body: "#3b78c9", dark: "#21487e" },
@@ -367,6 +369,15 @@ const HATS = ["#f2c230", "#4dbb5a", "#a259d9", "#ff8a3d", "#2fc4c4", "#ff6fae", 
    Hjælpefunktioner
    ===================================================================== */
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// Tilfældige tal med fast "seed" (så begge hold får samme tilfældighed)
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
 const fmtNum = n => n.toLocaleString("da-DK");
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -544,9 +555,9 @@ let myStats = null;
 let roundResult = null;
 let lastPhaseKey = "";
 
-const numTeams = n => n >= 4 ? 2 : 1;
+const numTeams = () => 2;
 // Holdene fordeles automatisk på skift i den rækkefølge, man kom ind i rummet
-const teamOf = (idx, n) => numTeams(n) === 2 ? idx % 2 : 0;
+const teamOf = idx => idx % 2;
 
 function newMe() {
   return { x: LEV.spawnX, y: (ROWS - 1) * T, vx: 0, vy: 0, onGround: false, standOn: null, onCrate: -1, f: 1, a: 0, step: 0,
@@ -642,7 +653,7 @@ function moveMe(dt) {
 
   // Bliver jeg hevet op? (lille animation op over kanten)
   if (P.hoist) {
-    const h = P.hoist; h.t += dt / 0.32;
+    const h = P.hoist; h.t += dt / 0.6;
     const k = Math.min(1, h.t), e = k * k * (3 - 2 * k);
     P.x = h.fx + (h.tx - h.fx) * clamp(k * 1.6 - 0.6, 0, 1);
     P.y = h.fy + (h.ty - h.fy) * Math.min(1, e * 1.25);
@@ -652,13 +663,25 @@ function moveMe(dt) {
   }
 
   const eff = me.eff, baby = me.baby > 0;
-  const speed = SPEED * (eff === "fart" ? 1.5 : 1) * (eff === "korff" ? 0.6 : 1) * (baby ? 0.65 : 1);
+  const speed = SPEED * (eff === "fart" ? 1.5 : 1) * (baby ? 0.65 : 1);
   const jv = JUMP_V * (eff === "superhop" ? 1.45 : 1) * (baby ? 0.86 : 1);
   let ix = inputX();
-  if (eff === "korff") { // "En Korff": bevægelserne bliver lidt tilfældige
-    const t = performance.now() / 1000;
-    ix = clamp(ix * 0.85 + Math.sin(t * 2.3) * Math.sin(t * 3.7 + 1) * 0.9, -1, 1);
-  }
+  // "En Korff": alt går i kage! Hvert øjeblik sker der noget nyt og tilfældigt:
+  // omvendt styring, vimser af sted, snubler og hopper, eller står og tøver.
+  if (eff === "korff") {
+    const K = P.korff || (P.korff = { t: 0, mode: 0, dir: 1 });
+    K.t -= dt;
+    if (K.t <= 0) {
+      K.t = 0.3 + Math.random() * 0.5; K.mode = Math.floor(Math.random() * 5); K.dir = Math.random() < 0.5 ? -1 : 1;
+      if (K.mode === 3 && P.onGround) jumpQueued = true;
+    }
+    if (K.mode === 1) ix = -ix;                              // omvendt styring
+    else if (K.mode === 2) ix = K.dir;                       // vimser af sted
+    else if (K.mode === 3) ix = clamp(ix * 0.4 + K.dir, -1, 1); // snubler og hopper
+    else if (K.mode === 4) ix *= 0.15;                       // står og tøver
+    ix = clamp(ix + Math.sin(performance.now() / 85) * 0.45, -1, 1);
+    P.korffMode = K.mode;
+  } else P.korffMode = 0;
   P.vx += (ix * speed - P.vx) * Math.min(1, dt * 16);
   if (Math.abs(ix) > 0.1) P.f = ix > 0 ? 1 : -1;
 
@@ -780,11 +803,11 @@ function sendAct(m) {
    ===================================================================== */
 function hostNewGame() {
   const n = lobby.players.length;
-  G = { lv: 0, phase: "inter", it: INTER_TIME, t: 0, paused: false, over: false, players: {}, teams: [], nTeams: numTeams(n),
+  G = { lv: 0, phase: "inter", it: INTER_TIME, t: 0, paused: false, over: false, players: {}, teams: [], nTeams: numTeams(),
     floaters: [], evq: [], lastTick: -1, levelMsg: "", teamTotals: [0, 0] };
   lobby.players.forEach((p, i) => {
     G.players[p.id] = {
-      id: p.id, name: p.name, c: p.c, tm: teamOf(i, n),
+      id: p.id, name: p.name, c: p.c, tm: teamOf(i),
       x: 0, y: 0, dx: 0, dy: 0, pdx: 0, f: 1, a: 0, step: 0, score: 0, eff: "", effT: 0, baby: 0, done: false, rs: 0,
       last: performance.now(), push: 0, pushAt: 0, gone: false, side: {}, caps: {}, cool: {},
       st: { stars: 0, help: 0, hoists: 0, heads: 0, doors: 0, crates: 0, babies: 0, boxes: 0, goals: 0 },
@@ -808,19 +831,22 @@ function hostSetupLevel(lv) {
   const slots = [0, 0];
   for (const p of Object.values(G.players)) {
     p.x = p.dx = p.pdx = spawnPos(slots[p.tm]++); p.y = p.dy = (ROWS - 1) * T;
-    p.done = false; p.eff = ""; p.effT = 0; p.baby = 0; p.rs++; p.push = 0; p.side = {}; p.caps = {}; p.cool = {};
+    p.done = false; p.eff = ""; p.effT = 0; p.rs++;   // (babyen bliver hængende!)
+    p.push = 0; p.side = {}; p.caps = {}; p.cool = {};
     if (p.id === MY_ID) applyReset(p);
   }
 }
 // Svævende tekst + lyd. pid = lyden spilles kun hos den spiller (null = alle)
-function hostEvent(x, y, text, color = "#fff", sound = null, pid = null, tm = -1) {
+function hostEvent(x, y, text, color = "#fff", sound = null, pid = null, tm = -1, anim = null) {
   const ev = [r1(x), r1(y), text, color, sound, pid, tm];
+  if (anim) ev.push(anim);
   G.evq.push(ev);
   applyEvent(ev);
 }
-function applyEvent([x, y, text, color, sound, pid, tm]) {
+function applyEvent([x, y, text, color, sound, pid, tm, anim]) {
   const mine = !pid || pid === MY_ID;
   const sameTeam = tm < 0 || !S || tm === myTeam();
+  if (anim && S && sameTeam) { S.anims = S.anims || []; S.anims.push({ k: anim[0], a: anim[1], b: anim[2], t: 0, life: 0.9 }); if (anim[2] !== MY_ID) Sound.hoist(); }
   if (text && S && sameTeam) S.floaters.push({ x, y, text, color, life: 1.3 });
   if (sound && Sound[sound] && mine && sameTeam) Sound[sound]();
 }
@@ -864,6 +890,8 @@ function hostAct(id, m) {
   } else if (m.k === "hoist") {
     const A = G.players[m.by];
     if (!A || A.tm !== p.tm || A.id === p.id || Math.hypot(A.x - p.x, A.y - p.y) > 220) return;
+    // animation hos alle på holdet: makkeren læner sig ned og hiver
+    hostEvent(A.x, A.y - PH - 40, "HIV! 💪", "#fff", null, null, A.tm, ["h", A.id, p.id]);
     helpAward(A, p.id, "hoist", "hev op!");
   } else if (m.k === "head") {
     const C = G.players[m.on];
@@ -995,7 +1023,8 @@ function hostUpdateTeam(k, dt) {
     if (targets.length) {
       const cx = targets.reduce((a, p) => a + p.x, 0) / targets.length;
       const fromLeft = W.wi % 2 === 1;
-      W.w = { x: cx + (fromLeft ? -560 : 560), y: 2.5 * T, mode: 0, t: 0, dir: fromLeft ? 1 : -1 };
+      // samme "tilfældighed" for begge hold, så det er fair
+      W.w = { x: cx + (fromLeft ? -520 : 520), y: 2.5 * T, mode: 0, t: 0, dir: fromLeft ? 1 : -1, wa: 0, nt: 0, rnd: mulberry32(G.lv * 100 + W.wi) };
       hostEvent(cx, 3 * T, "KONEN KOMMER! 👩", "#ff9ad5", "scream", null, k);
     }
   }
@@ -1010,16 +1039,21 @@ function hostUpdateTeam(k, dt) {
       for (const p of pool) { const dd = Math.hypot(p.x - wf.x, p.y - PH / 2 - wf.y); if (dd < bd) { bd = dd; best = p; } }
       if (best) {
         const ty = best.y - PH / 2, dx = best.x - wf.x, dy = ty - wf.y, dd = Math.hypot(dx, dy) || 1;
-        const sp = 290;
-        wf.x += dx / dd * Math.min(sp * dt, dd); wf.y += dy / dd * Math.min(sp * dt, dd);
-        wf.dir = dx > 0 ? 1 : -1;
+        // Hun slingrer og skifter pludselig retning – og haster/tøver på skift
+        wf.nt -= dt;
+        if (wf.nt <= 0) { wf.nt = 0.5 + wf.rnd() * 0.7; wf.wa = (wf.rnd() - 0.5) * 2.6; }
+        const ang = Math.atan2(dy, dx) + wf.wa * clamp(dd / 120, 0.25, 1) + Math.sin(wf.t * 4.3) * 0.35;
+        const sp = 185 * (0.65 + 0.7 * Math.abs(Math.sin(wf.t * 1.9 + wf.wa)));
+        wf.x += Math.cos(ang) * sp * dt; wf.y += Math.sin(ang) * sp * dt;
+        wf.y = clamp(wf.y, T, LEV.H - T);
+        wf.dir = Math.cos(ang) > 0 ? 1 : -1;
         if (dd < 34) {
           best.baby = BABY_TIME; best.st.babies++;
           hostEvent(best.x, best.y - PH - 20, `${best.name} fik en baby! 👶`, "#ff9ad5", "baby", null, k);
           wf.mode = 1; wf.t = 0;
         }
       }
-      if (!best || wf.t > 4.2) { wf.mode = 1; wf.t = 0; }
+      if (!best || wf.t > 6.5) { wf.mode = 1; wf.t = 0; }
       if (wf.mode === 1) hostEvent(wf.x, wf.y - 40, "AAAAAH!", "#ff9ad5", "scream", null, k);
     } else {
       // løber skrigende ud af banen
@@ -1250,25 +1284,25 @@ function leaveRoom() {
   showPreview();
 }
 function renderLobby() {
-  const list = lobby.players, n = list.length, nt = numTeams(Math.max(1, n));
+  const list = lobby.players, n = list.length, nt = 2;
   const li = (p, i) => `<li><span class="dot" style="background:${HATS[p.c] || "#ccc"}"></span>${esc(p.name)}${i === 0 ? " 👑" : ""}${p.id === MY_ID ? " <small>(dig)</small>" : ""}</li>`;
   let html = "";
   for (let k = 0; k < nt; k++) {
-    const members = list.map((p, i) => ({ p, i })).filter(o => teamOf(o.i, n) === k);
+    const members = list.map((p, i) => ({ p, i })).filter(o => teamOf(o.i) === k);
     html += `<div class="team" style="background:${k ? "#d6e6fb" : "#fbdcd6"}"><h4 style="color:${TEAMS[k].dark}">${nt > 1 ? TEAMS[k].name : "Jeres hold"}</h4><ul>${members.map(o => li(o.p, o.i)).join("") || "<li>…</li>"}</ul></div>`;
   }
   $("lobbyTeams").innerHTML = html;
-  $("teamInfo").textContent = n >= 4 ? "Holdene fordeles automatisk (max 5 på hvert). Begge hold kører samme bane – hvem kommer først i mål?"
-    : n >= 2 ? "Med 2-3 spillere er I ét hold mod uret. Fra 4 spillere bliver det Rødt mod Blåt!"
-    : "Venter på venner… (I skal være mindst 2 for at hjælpe hinanden)";
+  $("teamInfo").textContent = n >= MIN_PLAYERS ? "Holdene fordeles automatisk (2-5 på hvert). Begge hold kører samme bane – hvem kommer først i mål?"
+    : `Venter på venner… I skal være mindst ${MIN_PLAYERS} (2 på hvert hold).`;
   $("hostStartBtn").hidden = role !== "host";
-  $("hostStartBtn").textContent = n > 1 ? `Start spillet! (${n} spillere)` : "Start alene (bare for at øve)";
+  $("hostStartBtn").disabled = n < MIN_PLAYERS;
+  $("hostStartBtn").textContent = n >= MIN_PLAYERS ? `Start spillet! (${n} spillere)` : `Venter på spillere (${n}/${MIN_PLAYERS})`;
 }
 function roomLink() { return location.origin + location.pathname + "#" + roomCode; }
 
 /* ---------- Start af runde ---------- */
 function hostStart() {
-  if (role !== "host" || state !== "lobby") return;
+  if (role !== "host" || state !== "lobby" || lobby.players.length < MIN_PLAYERS) return;
   lobby.started = true;
   sendMain("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })) });
   ME = newMe();
@@ -1478,8 +1512,9 @@ function drawBoy(P, now, ghost) {
     const off = air ? k * 2 : sw * 4 * k;
     rr(x + k * 6 * s - 4 * s + off * s, legY, 8 * s, 14 * s - (air && k > 0 ? 3 * s : 0), 3 * s); ctx.fill(); ctx.stroke();
   }
-  // krop (strikket trøje)
-  const bob = walking ? Math.abs(sw) * 2 * s : 0;
+  // krop (strikket trøje). Når han hiver, bøjer han sig ned.
+  const crouch = P.pulling ? Math.sin(Math.min(1, P.pulling.t / 0.9) * Math.PI) * 9 * s : 0;
+  const bob = (walking ? Math.abs(sw) * 2 * s : 0) - crouch;
   const by = y - 38 * s - bob;
   rr(x - 13 * s, by, 26 * s, 25 * s, 7 * s); fillStroke(team.body);
   ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 1.3 * s;
@@ -1488,6 +1523,7 @@ function drawBoy(P, now, ghost) {
   ctx.strokeStyle = team.dark; ctx.lineWidth = 5 * s; ctx.lineCap = "round";
   const armUp = air || P.hoisting;
   for (const k of [-1, 1]) {
+    if (P.pulling) continue; // armene tegnes som et langt "hiv" (se drawPull)
     ctx.beginPath(); ctx.moveTo(x + k * 11 * s, by + 6 * s);
     if (P.eff === "hinge" && k === f) { ctx.lineTo(x + k * 13 * s, by + 16 * s); }
     else ctx.lineTo(x + k * (armUp ? 17 : 15) * s, by + (armUp ? -6 : 18) * s + (walking ? sw * 3 * k * s : 0));
@@ -1509,6 +1545,10 @@ function drawBoy(P, now, ghost) {
   ctx.beginPath(); ctx.arc(x, hy - 2 * s, 13.5 * s, Math.PI, 0); ctx.closePath(); fillStroke(hat, 2);
   ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(x - 13 * s, hy - 5 * s, 27 * s, 3 * s);
   circle(x - f * 3 * s, hy - 17 * s, 4.5 * s, hat, 1.5);
+  if (P.eff === "korff") { // svimmel
+    ctx.font = `900 ${Math.max(9, 13 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.fillStyle = "#a259d9";
+    ctx.fillText(["?", "?!", "@#!", "øh?", "…"][Math.floor(now / 400) % 5], x - 18 * s, hy - 16 * s + Math.sin(now / 150) * 2 * s);
+  }
   // effekt-ikon
   if (P.eff && EFFECTS[P.eff]) {
     ctx.font = `${Math.max(10, 15 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -1516,10 +1556,23 @@ function drawBoy(P, now, ghost) {
   }
   // baby om benene
   if (P.baby > 0) {
-    const bx = x - f * 12 * s + Math.sin(now / 120) * 3 * s, byy = y - 6 * s;
+    const bx = x - f * 17 * s + Math.sin(now / 120) * 3 * s, byy = y - 9 * s;
     ctx.strokeStyle = INK; ctx.lineWidth = 1.2 * s; ctx.beginPath(); ctx.moveTo(x, y - 12 * s); ctx.lineTo(bx, byy); ctx.stroke();
+    ctx.save(); ctx.translate(bx, byy); ctx.scale(1.6, 1.6); ctx.translate(-bx, -byy); // babyen tegnes lidt større
     ctx.beginPath(); ctx.ellipse(bx, byy, 7 * s, 5 * s, 0, 0, Math.PI * 2); fillStroke("#bfe3ff", 1.5);
-    circle(bx + 4 * s, byy - 4 * s, 4 * s, "#f6d2a8", 1.2);
+    const fx2 = bx + 4 * s, fy2 = byy - 4 * s;
+    circle(fx2, fy2, 4 * s, "#f6d2a8", 1.2);
+    // grædende mund og tårer der triller ned
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(fx2, fy2 + 1.6 * s, 1.3 * s, 1 * s, 0, 0, Math.PI * 2); ctx.fill();
+    for (let k = 0; k < 3; k++) {
+      const ph = (now / 520 + k / 3) % 1, side = k % 2 ? 1 : -1;
+      ctx.globalAlpha = (ghost ? 0.3 : 1) * (1 - ph);
+      ctx.fillStyle = "#4fb3ff";
+      ctx.beginPath(); ctx.ellipse(fx2 + side * (2.5 + ph * 5) * s, fy2 - 1 * s + ph * 14 * s, 1.5 * s, 2.3 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = ghost ? 0.3 : P.gone ? 0.4 : 1;
+    if (Math.floor(now / 700) % 3 === 0) { ctx.font = `900 ${Math.max(6, 7 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.fillStyle = "#4fb3ff"; ctx.fillText("buhu!", fx2, fy2 - 8 * s); }
+    ctx.restore();
   }
   // navn
   ctx.font = `900 ${Math.max(9, 12 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -1527,6 +1580,29 @@ function drawBoy(P, now, ghost) {
   ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.strokeText(label, x, hy - 28 * s);
   ctx.fillStyle = P.isMe ? "#fff" : ghost ? "#eee" : hat; ctx.fillText(label, x, hy - 28 * s);
   if (P.isMe && !P.done) { ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(x - 5 * s, hy - 40 * s); ctx.lineTo(x + 5 * s, hy - 40 * s); ctx.lineTo(x, hy - 35 * s); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+}
+
+// "HIV!": hjælperen strækker armene ned og trækker makkeren op i hænderne
+function drawPull(an, now) {
+  const pos = id => id === MY_ID && ME ? { x: ME.x, y: ME.y } : S.players[id] ? { x: S.players[id].dx, y: S.players[id].dy } : null;
+  const A = pos(an.a), B = pos(an.b);
+  if (!A || !B) return;
+  const s = view.s, k = Math.min(1, an.t / 0.9);
+  const crouch = Math.sin(k * Math.PI) * 9 * s;
+  const ax = sx(A.x), ay = sy(A.y) - 30 * s + crouch;
+  const bx = sx(B.x), by = sy(B.y) - PH * s - 4 * s;
+  const tm = (S.players[an.a] || {}).tm || 0;
+  ctx.save();
+  ctx.lineCap = "round"; ctx.strokeStyle = TEAMS[tm].dark; ctx.lineWidth = 5 * s;
+  for (const o of [-4, 4]) { ctx.beginPath(); ctx.moveTo(ax + o * s, ay); ctx.lineTo(bx + o * s, by); ctx.stroke(); }
+  // hænderne der holder fast
+  circle(bx - 4 * s, by, 4 * s, "#f6d2a8", 1.5); circle(bx + 4 * s, by, 4 * s, "#f6d2a8", 1.5);
+  // sved og stjerner
+  ctx.globalAlpha = 1 - k;
+  ctx.font = `${Math.max(10, 14 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("💦", ax + 16 * s, ay - 26 * s - k * 10 * s);
+  ctx.fillText("✨", (ax + bx) / 2 + Math.sin(now / 60) * 6 * s, (ay + by) / 2);
   ctx.restore();
 }
 
@@ -1604,7 +1680,8 @@ function draw(now) {
   const boys = [];
   for (const p of Object.values(S.players)) {
     const isMe = p.id === MY_ID && ME;
-    const info = { ...p, x: isMe ? ME.x : p.dx, y: isMe ? ME.y : p.dy, isMe, f: isMe ? ME.f : p.f, a: isMe ? ME.a : p.a, step: isMe ? ME.step : p.step, hoisting: false };
+    const pull = (S.anims || []).find(a => a.a === p.id), pulled = (S.anims || []).some(a => a.b === p.id) || (isMe && ME.hoist);
+    const info = { ...p, x: isMe ? ME.x : p.dx, y: isMe ? ME.y : p.dy, isMe, f: isMe ? ME.f : p.f, a: isMe ? ME.a : p.a, step: isMe ? ME.step : p.step, hoisting: !!pulled, pulling: pull };
     boys.push({ info, ghost: p.tm !== tm });
   }
   for (const b of boys) if (b.ghost) drawBoy(b.info, now, true);
@@ -1612,6 +1689,7 @@ function draw(now) {
   for (const b of boys) if (b.info.isMe) drawBoy(b.info, now, false);
   if (ME && !S.players[MY_ID]) drawBoy({ x: ME.x, y: ME.y, f: ME.f, a: ME.a, step: ME.step, tm: 0, c: 0, name: getName(), isMe: true }, now, false);
 
+  for (const a of S.anims || []) drawPull(a, now);
   if (W.w) drawWife(role === "host" ? { ...W.w, dx: W.w.x, dy: W.w.y } : W.w, now);
 
   for (const f of S.floaters) {
@@ -1705,6 +1783,7 @@ function frame(now) {
   if (S) {
     if (dt > 0 && S.players) smoothAll(dt);
     for (const f of S.floaters) { f.life -= dt; f.y -= 35 * dt; }
+    if (S.anims) { for (const a of S.anims) a.t += dt; S.anims = S.anims.filter(a => a.t < a.life); }
     S.floaters = S.floaters.filter(f => f.life > 0);
     // lyd når en ny bane går i gang (spillerne)
     const key = S.lv + ":" + S.phase;
