@@ -1314,15 +1314,29 @@ function rr(x, y, w, h, r) {
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
+// Realistisk stil: bløde, tynde konturer i stedet for tykke sorte streger
+const OUTLINE = "rgba(18,20,28,.5)";
 function fillStroke(fill, lw = 3) {
   ctx.fillStyle = fill; ctx.fill();
-  ctx.lineWidth = Math.max(1.2, lw * view.s); ctx.strokeStyle = INK; ctx.stroke();
+  ctx.lineWidth = Math.max(0.7, lw * 0.4 * view.s); ctx.strokeStyle = OUTLINE; ctx.stroke();
+}
+// lodret/vandret toning af en farve (lys fra øverst til venstre)
+function tone(x0, y0, x1, y1, color, light = 0.22, dark = -0.28) {
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  g.addColorStop(0, shade(color, light)); g.addColorStop(1, shade(color, dark));
+  return g;
+}
+function softShadow(x, y, rx, ry, a = 0.3) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, rx);
+  g.addColorStop(0, `rgba(10,14,30,${a})`); g.addColorStop(1, "rgba(10,14,30,0)");
+  ctx.save(); ctx.translate(x, y); ctx.scale(1, ry / rx); ctx.translate(-x, -y);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rx, 0, Math.PI * 2); ctx.fill(); ctx.restore();
 }
 function circle(x, y, r, fill, lw = 3) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); fillStroke(fill, lw); }
 function rectS(r) { const [x, y] = toS(r.x, r.y); return [x, y, r.w * view.s, r.h * view.s]; }
 function label(text, x, y, size, fill = "#fff", stroke = INK) {
   ctx.font = `900 ${size}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.lineWidth = Math.max(3, size / 5); ctx.strokeStyle = stroke; ctx.lineJoin = "round"; ctx.strokeText(text, x, y);
+  ctx.lineWidth = Math.max(3, size / 4.5); ctx.strokeStyle = stroke === INK ? "rgba(10,12,20,.8)" : stroke; ctx.lineJoin = "round"; ctx.strokeText(text, x, y);
   ctx.fillStyle = fill; ctx.fillText(text, x, y);
 }
 
@@ -1335,6 +1349,26 @@ function makeIce() {
   return out;
 }
 const SNOWDOTS = (() => { const rnd = mulberry32(SEED + 12), o = []; for (let i = 0; i < 500; i++) o.push({ x: rnd() * WORLD, y: rnd() * WORLD, r: 2 + rnd() * 5 }); return o; })();
+// Brosten-mønster (tegnes én gang, gentages over hele byen)
+const COBBLE = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d"), rnd = mulberry32(SEED + 21);
+  g.fillStyle = "#9198a1"; g.fillRect(0, 0, 128, 128);
+  for (let row = 0; row < 8; row++) for (let col = 0; col <= 8; col++) {
+    const x = col * 16 - (row % 2) * 8, y = row * 16, v = 150 + Math.floor(rnd() * 16);
+    g.fillStyle = `rgb(${v - 10},${v - 2},${v + 8})`;
+    g.beginPath(); g.roundRect ? g.roundRect(x + 1, y + 1, 14, 14, 4) : g.rect(x + 1, y + 1, 14, 14); g.fill();
+    g.fillStyle = "rgba(255,255,255,.12)"; g.fillRect(x + 3, y + 2, 8, 2);
+  }
+  for (let i = 0; i < 120; i++) { // sne i fugerne
+    g.fillStyle = `rgba(245,250,255,${0.2 + rnd() * 0.35})`;
+    g.beginPath(); g.arc(rnd() * 128, rnd() * 128, 1 + rnd() * 3.5, 0, Math.PI * 2); g.fill();
+  }
+  return c;
+})();
+let cobblePattern = null;
+const LAMPS = makeSpots(SEED + 31, 90, 26);
+const ROOFS = ["#93402e", "#7c3426", "#a24a33", "#4b525c", "#3f4650", "#41665e", "#5d8a7e", "#6b4a3a"];
 const FLAKES = Array.from({ length: 70 }, (_, i) => ({ x: Math.random(), y: Math.random(), r: 1 + Math.random() * 2.5, sp: 20 + Math.random() * 40, ph: Math.random() * 6 }));
 
 function draw(now, dt) {
@@ -1343,62 +1377,120 @@ function draw(now, dt) {
   ctx.fillStyle = "#123524"; ctx.fillRect(0, 0, view.cw, view.ch);
   const t = S ? gameTime() : 0;
 
-  // gade (sne-belagt brosten)
-  { const [x, y, w, h] = rectS({ x: 0, y: 0, w: WORLD, h: WORLD }); ctx.fillStyle = "#dde4ea"; ctx.fillRect(x, y, w, h); }
-  ctx.fillStyle = "rgba(255,255,255,.75)";
-  for (const d of SNOWDOTS) if (visible(d.x, d.y, 10)) { const [x, y] = toS(d.x, d.y); ctx.beginPath(); ctx.arc(x, y, d.r * s, 0, Math.PI * 2); ctx.fill(); }
-
-  // kanaler
-  for (const w of WATER) {
-    const [x, y, ww, hh] = rectS(w);
-    ctx.fillStyle = "#2f6fa3"; ctx.fillRect(x, y, ww, hh);
-    ctx.strokeStyle = "#1b4a72"; ctx.lineWidth = 3 * s; ctx.strokeRect(x, y, ww, hh);
+  // gade: brosten med sne
+  {
+    const [x, y, w, h] = rectS({ x: 0, y: 0, w: WORLD, h: WORLD });
+    if (!cobblePattern) cobblePattern = ctx.createPattern(COBBLE, "repeat");
+    const k = s * 100 / 128, [ox, oy] = toS(0, 0);
+    if (cobblePattern.setTransform) cobblePattern.setTransform(new DOMMatrix([k, 0, 0, k, ox, oy]));
+    ctx.fillStyle = cobblePattern; ctx.fillRect(Math.max(0, x), Math.max(0, y), Math.min(view.cw, x + w) - Math.max(0, x), Math.min(view.ch, y + h) - Math.max(0, y));
   }
-  ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 2 * s;
+  // snedriver
+  for (const d of SNOWDOTS) if (visible(d.x, d.y, 60)) {
+    const [x, y] = toS(d.x, d.y), r = d.r * 9 * s;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, "rgba(246,250,255,.45)"); g.addColorStop(1, "rgba(246,250,255,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  // fortove langs husene
+  for (const h of HOUSES) if (visible(h.x + h.w / 2, h.y + h.h / 2, 140)) {
+    const [x, y, w, hh] = rectS({ x: h.x - 12, y: h.y - 12, w: h.w + 24, h: h.h + 24 });
+    ctx.fillStyle = "#b8bec6"; ctx.fillRect(x, y, w, hh);
+    ctx.strokeStyle = "rgba(90,96,108,.35)"; ctx.lineWidth = Math.max(0.6, s * 0.8);
+    for (let k = 12; k < h.w + 24; k += 12) { ctx.beginPath(); ctx.moveTo(x + k * s, y); ctx.lineTo(x + k * s, y + 12 * s); ctx.moveTo(x + k * s, y + hh - 12 * s); ctx.lineTo(x + k * s, y + hh); ctx.stroke(); }
+    ctx.strokeStyle = "rgba(70,74,84,.6)"; ctx.lineWidth = Math.max(1, 1.5 * s); ctx.strokeRect(x, y, w, hh); // kantsten
+    ctx.fillStyle = "rgba(250,252,255,.55)"; ctx.fillRect(x, y, w, 4 * s);
+  }
+
+  // kanaler: mørkt vand, kajkanter i sten
+  for (const w of WATER) {
+    const [x, y, ww, hh] = rectS(w), horiz = w.w > w.h;
+    const g = horiz ? ctx.createLinearGradient(0, y, 0, y + hh) : ctx.createLinearGradient(x, 0, x + ww, 0);
+    g.addColorStop(0, "#1d3f57"); g.addColorStop(0.5, "#2b5a78"); g.addColorStop(1, "#1a3a50");
+    ctx.fillStyle = g; ctx.fillRect(x, y, ww, hh);
+  }
+  ctx.strokeStyle = "rgba(200,225,240,.18)"; ctx.lineWidth = Math.max(0.8, 1.2 * s);
   for (const w of WATER) {
     const horiz = w.w > w.h;
-    for (let k = 0; k < (horiz ? w.w : w.h); k += 60) {
-      const wx = horiz ? w.x + k + ((now / 40) % 60) : w.x + w.w * 0.5, wy = horiz ? w.y + w.h * 0.5 : w.y + k + ((now / 40) % 60);
+    for (let k = 0; k < (horiz ? w.w : w.h); k += 34) for (const off of [0.3, 0.68]) {
+      const shift = ((now / 60) + k * 7) % 34;
+      const wx = horiz ? w.x + k + shift : w.x + w.w * off, wy = horiz ? w.y + w.h * off : w.y + k + shift;
       if (!inRect(wx, wy, w) || !visible(wx, wy, 30)) continue;
       const [x, y] = toS(wx, wy);
       ctx.beginPath();
-      if (horiz) { ctx.moveTo(x - 12 * s, y); ctx.quadraticCurveTo(x - 6 * s, y - 5 * s, x, y); ctx.quadraticCurveTo(x + 6 * s, y + 5 * s, x + 12 * s, y); }
-      else { ctx.moveTo(x, y - 12 * s); ctx.quadraticCurveTo(x - 5 * s, y - 6 * s, x, y); ctx.quadraticCurveTo(x + 5 * s, y + 6 * s, x, y + 12 * s); }
+      if (horiz) { ctx.moveTo(x - 9 * s, y); ctx.quadraticCurveTo(x, y - 2.5 * s, x + 9 * s, y); } else { ctx.moveTo(x, y - 9 * s); ctx.quadraticCurveTo(x - 2.5 * s, y, x, y + 9 * s); }
       ctx.stroke();
     }
   }
-  ctx.fillStyle = "rgba(240,248,255,.85)";
-  for (const i of ICE) if (visible(i.x, i.y, 20)) { const [x, y] = toS(i.x, i.y); ctx.beginPath(); ctx.ellipse(x, y, i.r * s, i.r * 0.65 * s, i.a, 0, Math.PI * 2); ctx.fill(); }
-
-  // broer
-  for (const b of BRIDGES) {
-    const [x, y, w, h] = rectS(b);
-    ctx.fillStyle = "#a0784f"; ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = "rgba(60,35,15,.5)"; ctx.lineWidth = 2 * s;
-    if (b.v) { for (let k = 8; k < b.h; k += 12) { ctx.beginPath(); ctx.moveTo(x, y + k * s); ctx.lineTo(x + w, y + k * s); ctx.stroke(); } }
-    else { for (let k = 8; k < b.w; k += 12) { ctx.beginPath(); ctx.moveTo(x + k * s, y); ctx.lineTo(x + k * s, y + h); ctx.stroke(); } }
-    ctx.fillStyle = "#5b3a1e";
-    if (b.v) { ctx.fillRect(x - 3 * s, y, 6 * s, h); ctx.fillRect(x + w - 3 * s, y, 6 * s, h); }
-    else { ctx.fillRect(x, y - 3 * s, w, 6 * s); ctx.fillRect(x, y + h - 3 * s, w, 6 * s); }
+  for (const i of ICE) if (visible(i.x, i.y, 20)) {
+    const [x, y] = toS(i.x, i.y);
+    ctx.fillStyle = "rgba(225,238,248,.8)"; ctx.beginPath(); ctx.ellipse(x, y, i.r * s, i.r * 0.6 * s, i.a, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.beginPath(); ctx.ellipse(x - i.r * 0.2 * s, y - i.r * 0.15 * s, i.r * 0.55 * s, i.r * 0.3 * s, i.a, 0, Math.PI * 2); ctx.fill();
+  }
+  for (const w of WATER) { // kajkant
+    const [x, y, ww, hh] = rectS(w), q = 6 * s;
+    ctx.fillStyle = "rgba(10,20,30,.35)"; // skygge på vandet langs kajen
+    if (w.w > w.h) { ctx.fillRect(x, y, ww, q * 1.6); } else { ctx.fillRect(x, y, q * 1.6, hh); }
+    ctx.fillStyle = "#9aa1a9";
+    if (w.w > w.h) { ctx.fillRect(x, y - q, ww, q); ctx.fillRect(x, y + hh, ww, q); } else { ctx.fillRect(x - q, y, q, hh); ctx.fillRect(x + ww, y, q, hh); }
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    if (w.w > w.h) { ctx.fillRect(x, y - q, ww, q * 0.35); ctx.fillRect(x, y + hh, ww, q * 0.35); } else { ctx.fillRect(x - q, y, q * 0.4, hh); ctx.fillRect(x + ww, y, q * 0.4, hh); }
   }
 
-  // stop-pladser
+  // broer: brostensbelagt med stenrækværk
+  for (const b of BRIDGES) {
+    const [x, y, w, h] = rectS(b), rail = 7 * s;
+    ctx.fillStyle = "rgba(10,20,30,.35)"; ctx.fillRect(x + 6 * s, y + 6 * s, w, h);
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = cobblePattern || "#888"; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    ctx.fillStyle = "#8d949c";
+    if (b.v) { ctx.fillRect(x - rail * 0.3, y - 4 * s, rail, h + 8 * s); ctx.fillRect(x + w - rail * 0.7, y - 4 * s, rail, h + 8 * s); }
+    else { ctx.fillRect(x - 4 * s, y - rail * 0.3, w + 8 * s, rail); ctx.fillRect(x - 4 * s, y + h - rail * 0.7, w + 8 * s, rail); }
+    ctx.fillStyle = "rgba(255,255,255,.8)"; // sne på rækværket
+    if (b.v) { ctx.fillRect(x - rail * 0.3, y - 4 * s, rail * 0.45, h + 8 * s); ctx.fillRect(x + w - rail * 0.7, y - 4 * s, rail * 0.45, h + 8 * s); }
+    else { ctx.fillRect(x - 4 * s, y - rail * 0.3, w + 8 * s, rail * 0.45); ctx.fillRect(x - 4 * s, y + h - rail * 0.7, w + 8 * s, rail * 0.45); }
+  }
+
+  // huse med skygger
+  for (const h of HOUSES) if (visible(h.x + h.w / 2, h.y + h.h / 2, 140)) {
+    const [x, y, w, hh] = rectS(h);
+    ctx.fillStyle = "rgba(12,16,34,.32)"; ctx.fillRect(x + 9 * s, y + 9 * s, w, hh);
+  }
+  for (const h of HOUSES) if (visible(h.x + h.w / 2, h.y + h.h / 2, 120)) drawHouse(h, now);
+  for (const tr of TREES) if (visible(tr.x, tr.y, 60)) drawTree(tr, now);
+
+  // aftenmørke + gadelygter
+  ctx.fillStyle = "rgba(14,22,56,.30)"; ctx.fillRect(0, 0, view.cw, view.ch);
+  ctx.globalCompositeOperation = "lighter";
+  for (const L of LAMPS) if (visible(L.x, L.y, 130)) {
+    const [x, y] = toS(L.x, L.y), r = 115 * s;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, "rgba(255,190,110,.32)"); g.addColorStop(0.5, "rgba(255,170,90,.10)"); g.addColorStop(1, "rgba(255,160,80,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalCompositeOperation = "source-over";
+  for (const L of LAMPS) if (visible(L.x, L.y, 30)) {
+    const [x, y] = toS(L.x, L.y);
+    softShadow(x + 3 * s, y + 3 * s, 6 * s, 4 * s, 0.4);
+    ctx.fillStyle = "#2b2f36"; ctx.beginPath(); ctx.arc(x, y, 3.2 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffe7a8"; ctx.beginPath(); ctx.arc(x, y, 2 * s, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // stop-pladser (tegnes oven på mørket, så de er lette at se)
   const curStop = S ? S.stop % STOPS.length : 0;
   STOPS.forEach((st, i) => drawStop(st, i === curStop && !!ME, now));
   // Hovedbanegården (start)
   if (visible(START.x, START.y, 120)) { const [x, y] = toS(START.x, START.y + 70); label("🚉 Hovedbanegården", x, y, Math.max(10, 13 * s), "#fff"); }
 
-  // juletræer og duer
-  for (const tr of TREES) if (visible(tr.x, tr.y, 60)) drawTree(tr, now);
+  // duer
   const peopleNear = [];
   if (S) for (const k of kidsToDraw()) peopleNear.push(k);
   for (const p of PIGEONS) if (visible(p.x, p.y, 60)) drawPigeons(p, now, peopleNear);
 
   // ting på gaden
   if (S) for (const it of S.items) if (visible(it.x, it.y, 40)) drawItem(it, now);
-
-  // huse (tegnet efter gaden, så de står "oven på")
-  for (const h of HOUSES) if (visible(h.x + h.w / 2, h.y + h.h / 2, 120)) drawHouse(h, now);
 
   // personer sorteret oppefra og ned
   const people = [];
@@ -1442,28 +1534,66 @@ function draw(now, dt) {
 
 function drawHouse(h, now) {
   const s = view.s, [x, y, w, hh] = rectS(h);
-  const front = 26 * s; // facaden (nederste del af huset)
-  // tag
-  rr(x, y, w, hh, 4 * s); fillStroke(shade(h.color, -0.25), 3);
-  // sne på taget
-  rr(x + 6 * s, y + 5 * s, w - 12 * s, hh - front - 12 * s, 8 * s); ctx.fillStyle = "#f7fbff"; ctx.fill();
-  // facade med vinduer
-  ctx.fillStyle = h.color; ctx.fillRect(x + 1.5 * s, y + hh - front, w - 3 * s, front - 1.5 * s);
-  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.2, 3 * s); ctx.strokeRect(x, y + hh - front, w, front);
-  const nw = Math.max(2, Math.floor(h.w / 26));
+  const F = 20 * s;                  // facaden ses skråt nederst
+  const roofH = hh - F;
+  const roof = ROOFS[Math.floor(h.x * 7 + h.y * 3) % ROOFS.length];
+  const hz = w >= roofH;            // tagryggen går langs den længste side
+  // facade i pudsfarve med oplyste vinduer
+  ctx.fillStyle = tone(x, 0, x + w, 0, h.color, 0.15, -0.15); ctx.fillRect(x, y + roofH, w, F);
+  const nw = Math.max(2, Math.floor(h.w / 22));
   for (let i = 0; i < nw; i++) {
-    const wx = x + (i + 0.5) * (w / nw) - 5 * s;
-    ctx.fillStyle = ((i + Math.floor(h.x)) % 3) ? "#ffe27a" : "#ffcf4d";
-    ctx.fillRect(wx, y + hh - front + 6 * s, 10 * s, 12 * s);
+    const wx = x + (i + 0.5) * (w / nw) - 4 * s, lit = ((i * 7 + Math.floor(h.x)) % 5) !== 0;
+    ctx.fillStyle = lit ? "#ffd987" : "#3a4150"; ctx.fillRect(wx, y + roofH + 5 * s, 8 * s, 10 * s);
+    ctx.fillStyle = "rgba(255,255,255,.55)"; ctx.fillRect(wx + 3.5 * s, y + roofH + 5 * s, 1 * s, 10 * s);
   }
-  // julelys langs tagkanten
+  ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(x, y + roofH, w, 2.5 * s); // tagudhæng
+  // tag: to flader – den lyse vender mod lyset (øverst/venstre)
+  const light = shade(roof, 0.18), dark = shade(roof, -0.22);
+  if (hz) {
+    ctx.fillStyle = light; ctx.fillRect(x, y, w, roofH / 2);
+    ctx.fillStyle = dark; ctx.fillRect(x, y + roofH / 2, w, roofH / 2);
+  } else {
+    ctx.fillStyle = light; ctx.fillRect(x, y, w / 2, roofH);
+    ctx.fillStyle = dark; ctx.fillRect(x + w / 2, y, w / 2, roofH);
+  }
+  // tagsten
+  ctx.strokeStyle = "rgba(0,0,0,.16)"; ctx.lineWidth = Math.max(0.5, 0.8 * s); ctx.beginPath();
+  if (hz) for (let k = 6; k < h.h - 20; k += 6) { ctx.moveTo(x, y + k * s); ctx.lineTo(x + w, y + k * s); }
+  else for (let k = 6; k < h.w; k += 6) { ctx.moveTo(x + k * s, y); ctx.lineTo(x + k * s, y + roofH); }
+  ctx.stroke();
+  // sne: tykt på den lyse flade, pletvis på den mørke
+  { // et let lag sne på den lyse flade, tykkest ved tagryggen
+    const g = hz ? ctx.createLinearGradient(0, y, 0, y + roofH / 2) : ctx.createLinearGradient(x, 0, x + w / 2, 0);
+    g.addColorStop(0, "rgba(244,248,252,.25)"); g.addColorStop(1, "rgba(244,248,252,.6)");
+    ctx.fillStyle = g;
+    if (hz) ctx.fillRect(x, y, w, roofH / 2); else ctx.fillRect(x, y, w / 2, roofH);
+  }
+  ctx.fillStyle = "rgba(244,248,252,.55)";
+  for (let i = 0; i < 4; i++) {
+    const px = hz ? x + ((i * 37 + h.x) % (h.w - 20) + 10) * s : x + w / 2 + ((i * 11 + h.y) % (h.w / 2 - 14) + 7) * s;
+    const py = hz ? y + roofH / 2 + ((i * 13 + h.y) % Math.max(6, (h.h - 20) / 2 - 10) + 4) * s : y + ((i * 29 + h.x) % (h.h - 30) + 8) * s;
+    ctx.beginPath(); ctx.ellipse(px, py, 9 * s, 3.5 * s, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  // tagryg
+  ctx.fillStyle = "rgba(255,255,255,.9)";
+  if (hz) ctx.fillRect(x, y + roofH / 2 - 1.5 * s, w, 3 * s); else ctx.fillRect(x + w / 2 - 1.5 * s, y, 3 * s, roofH);
+  // skorsten
+  const cx = hz ? x + w * 0.72 : x + w / 2 + 6 * s, cy = hz ? y + roofH / 2 - 9 * s : y + roofH * 0.3;
+  ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.fillRect(cx + 3 * s, cy + 3 * s, 9 * s, 9 * s);
+  ctx.fillStyle = "#6e3b2c"; ctx.fillRect(cx, cy, 9 * s, 9 * s);
+  ctx.fillStyle = "#f4f8fc"; ctx.fillRect(cx, cy, 9 * s, 3 * s);
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = Math.max(0.7, 1 * s); ctx.strokeRect(x, y, w, hh);
+  // julelys langs tagkanten (lyser)
   if (h.lights) {
-    const cols = ["#ff4d4d", "#ffd84d", "#4dff88", "#4dc3ff"];
-    const n = Math.max(3, Math.floor(h.w / 14));
+    const cols = ["#ff6b5a", "#ffd76a", "#7dffa8", "#7ac8ff"];
+    const n = Math.max(3, Math.floor(h.w / 12));
     for (let i = 0; i < n; i++) {
-      const lx = x + (i + 0.5) * (w / n), ly = y + hh - front - 2 * s + Math.sin(i * 1.3) * 2 * s;
-      ctx.fillStyle = cols[(i + Math.floor(now / 400)) % 4];
-      ctx.beginPath(); ctx.arc(lx, ly, 2.6 * s, 0, Math.PI * 2); ctx.fill();
+      const lx = x + (i + 0.5) * (w / n), ly = y + roofH + Math.sin(i * 1.3) * 1.5 * s;
+      const c = cols[(i + Math.floor(now / 500)) % 4];
+      const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, 6 * s);
+      g.addColorStop(0, c); g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, 6 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(lx, ly, 1.2 * s, 0, Math.PI * 2); ctx.fill();
     }
   }
 }
@@ -1477,42 +1607,62 @@ function shade(hex, k) {
 function drawStop(st, current, now) {
   if (!visible(st.x, st.y, STOP_R + 80)) return;
   const s = view.s, [x, y] = toS(st.x, st.y), R = STOP_R * s;
-  ctx.globalAlpha = current ? 1 : 0.55;
-  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2);
-  ctx.fillStyle = current ? "rgba(245,197,66,.35)" : "rgba(255,255,255,.4)"; ctx.fill();
-  ctx.setLineDash([10 * s, 8 * s]); ctx.lineDashOffset = current ? -now / 40 : 0;
-  ctx.lineWidth = (current ? 5 : 3) * s; ctx.strokeStyle = current ? "#c8102e" : "#7d7468"; ctx.stroke(); ctx.setLineDash([]);
+  // brolagt plads med lys
+  const g = ctx.createRadialGradient(x, y, R * 0.1, x, y, R);
+  g.addColorStop(0, current ? "rgba(255,226,160,.55)" : "rgba(230,232,236,.35)"); g.addColorStop(1, current ? "rgba(255,200,110,.25)" : "rgba(200,204,212,.25)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(60,60,70,.25)"; ctx.lineWidth = Math.max(0.6, 0.8 * s);
+  for (const k of [0.35, 0.6, 0.85]) { ctx.beginPath(); ctx.arc(x, y, R * k, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.lineWidth = (current ? 4 : 2.5) * s; ctx.strokeStyle = current ? "#d6a63a" : "rgba(120,124,132,.8)";
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.stroke();
   if (current) {
-    const pulse = (now / 900) % 1;
-    ctx.globalAlpha = 1 - pulse; ctx.beginPath(); ctx.arc(x, y, R * (1 + pulse * 0.35), 0, Math.PI * 2);
-    ctx.lineWidth = 3 * s; ctx.strokeStyle = "#f5c542"; ctx.stroke(); ctx.globalAlpha = 1;
+    const pulse = (now / 1100) % 1;
+    ctx.globalAlpha = 1 - pulse; ctx.beginPath(); ctx.arc(x, y, R * (1 + pulse * 0.3), 0, Math.PI * 2);
+    ctx.lineWidth = 3 * s; ctx.strokeStyle = "#ffd36b"; ctx.stroke(); ctx.globalAlpha = 1;
   }
-  ctx.font = `${Math.max(18, 38 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(st.emoji, x, y - 4 * s);
-  label(st.name, x, y + R * 0.62, Math.max(10, 14 * s), current ? "#fff" : "#eee");
-  label("🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), current ? "#7dffb0" : "#e6fff0");
-  ctx.globalAlpha = 1;
+  // skilt
+  const sw = Math.max(46, 64 * s), sh = Math.max(34, 44 * s);
+  softShadow(x + 4 * s, y + sh * 0.55, sw * 0.55, 6 * s, 0.35);
+  rr(x - sw / 2, y - sh / 2 - 4 * s, sw, sh, 6 * s);
+  ctx.fillStyle = current ? "#173f2c" : "rgba(23,63,44,.75)"; ctx.fill();
+  ctx.lineWidth = Math.max(1, 2 * s); ctx.strokeStyle = current ? "#d6a63a" : "rgba(214,166,58,.6)"; ctx.stroke();
+  ctx.font = `${Math.max(18, 30 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.globalAlpha = current ? 1 : 0.8; ctx.fillText(st.emoji, x, y - 4 * s); ctx.globalAlpha = 1;
+  label(st.name, x, y + R * 0.62, Math.max(10, 14 * s), current ? "#fff" : "#e8eaee");
+  label("🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), current ? "#9dffc4" : "#e6fff0");
 }
 
 function drawTree(tr, now) {
   const s = view.s, [x, y] = toS(tr.x, tr.y);
-  ctx.fillStyle = "rgba(0,0,0,.15)"; ctx.beginPath(); ctx.ellipse(x, y + 22 * s, 22 * s, 7 * s, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#6b4423"; ctx.fillRect(x - 4 * s, y + 10 * s, 8 * s, 12 * s);
-  for (let i = 0; i < 3; i++) {
-    const w = (26 - i * 6) * s, ty = y + (12 - i * 14) * s;
-    ctx.beginPath(); ctx.moveTo(x - w, ty); ctx.lineTo(x + w, ty); ctx.lineTo(x, ty - 22 * s); ctx.closePath(); fillStroke("#1f8a4c", 2.5);
+  softShadow(x + 10 * s, y + 10 * s, 30 * s, 26 * s, 0.4);
+  // grangrene i lag (set oppefra)
+  for (let layer = 0; layer < 3; layer++) {
+    const R = (28 - layer * 8) * s, n = 9;
+    ctx.beginPath();
+    for (let i = 0; i <= n * 2; i++) {
+      const a = i / (n * 2) * Math.PI * 2 + layer * 0.35, r = i % 2 ? R : R * 0.7;
+      const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = tone(x - R, y - R, x + R, y + R, ["#1f5a3a", "#24683f", "#2d7a4a"][layer], 0.15, -0.35); ctx.fill();
   }
-  const cols = ["#ff4d4d", "#ffd84d", "#4dc3ff"];
-  [[-12, 6], [10, 2], [-4, -8], [6, -18], [-8, -22]].forEach(([dx, dy], i) => {
-    ctx.fillStyle = cols[(i + Math.floor(now / 500)) % 3]; ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, 2.8 * s, 0, Math.PI * 2); ctx.fill();
-  });
-  ctx.font = `${Math.max(10, 14 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⭐", x, y - 34 * s);
+  ctx.fillStyle = "rgba(244,248,252,.7)";
+  for (const [dx, dy, r] of [[-8, -10, 5], [6, -4, 4], [-2, 8, 4], [10, 9, 3]]) { ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, r * s, 0, Math.PI * 2); ctx.fill(); }
+  // lyskæde
+  const cols = ["#ffd76a", "#ff7a6a", "#9fd8ff"];
+  for (let i = 0; i < 10; i++) {
+    const a = i * 0.9, r = (8 + (i % 3) * 7) * s, lx = x + Math.cos(a) * r, ly = y + Math.sin(a) * r;
+    const on = (i + Math.floor(now / 450)) % 3 !== 0, c = cols[i % 3];
+    if (on) { const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, 5 * s); g.addColorStop(0, c); g.addColorStop(1, "rgba(255,255,255,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, 5 * s, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.fillStyle = "#ffe08a"; ctx.beginPath(); ctx.arc(x, y, 2.5 * s, 0, Math.PI * 2); ctx.fill();
 }
 
 function drawPigeons(p, now, people) {
   const s = view.s, [x, y] = toS(p.x, p.y);
   const scared = people.some(k => Math.hypot(k.x - p.x, k.y - p.y) < PIGEON_R + 20);
-  ctx.beginPath(); ctx.arc(x, y, PIGEON_R * s, 0, Math.PI * 2); ctx.fillStyle = "rgba(120,120,130,.12)"; ctx.fill();
+  softShadow(x, y, PIGEON_R * s, PIGEON_R * s * 0.8, 0.12);
   for (let i = 0; i < 6; i++) {
     const a = i * 1.05 + p.x, r = (10 + (i % 3) * 9) * s;
     const bx = x + Math.cos(a) * r, by = y + Math.sin(a) * r - (scared ? (6 + Math.sin(now / 60 + i) * 4) * s : 0);
@@ -1564,83 +1714,89 @@ function drawItem(it, now) {
   }
 }
 
-// Konen (kjole i samme farve som mandens trøje) med barnevogn
+// Konen (frakke i samme farve som mandens trøje) med barnevogn
 function drawWife(w, wx, wy, now) {
   const s = view.s, R = WIFE_R * s;
   const pram = pramOf({ x: wx, y: wy, a: w.a });
   const [x, y] = toS(wx, wy), [px, py] = toS(pram.x, pram.y);
-  const f = Math.cos(w.a) >= 0 ? 1 : -1;
+  const f = Math.cos(w.a) >= 0 ? 1 : -1, P = PRAM_R * s;
   const drawPram = () => {
-    ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(px, py + PRAM_R * s * 0.9, PRAM_R * s * 1.1, PRAM_R * s * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-    for (const [ox, oy] of [[-0.7, 0.75], [0.7, 0.75]]) circle(px + ox * PRAM_R * s, py + oy * PRAM_R * s, PRAM_R * s * 0.32, "#2b2b2b", 2);
-    rr(px - PRAM_R * s, py - PRAM_R * s * 0.55, PRAM_R * s * 2, PRAM_R * s * 1.15, PRAM_R * s * 0.5); fillStroke("#2f4f8f", 2.5);
-    ctx.beginPath(); ctx.arc(px - f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.4, PRAM_R * s * 0.75, Math.PI, 0); ctx.closePath(); fillStroke("#3d66b3", 2); // kaleche
-    circle(px + f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.25, PRAM_R * s * 0.38, "#f7d3b5", 1.5); // babyen
-    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(px + f * PRAM_R * s * 0.35, py - PRAM_R * s * 0.55, PRAM_R * s * 0.3, Math.PI, 0); ctx.fill(); // hue
+    softShadow(px + 3 * s, py + P * 0.9, P * 1.3, P * 0.45, 0.4);
+    for (const ox of [-0.68, 0.68]) { ctx.fillStyle = "#1b1d22"; ctx.beginPath(); ctx.ellipse(px + ox * P, py + P * 0.72, P * 0.3, P * 0.3, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#8b9099"; ctx.beginPath(); ctx.arc(px + ox * P, py + P * 0.72, P * 0.1, 0, Math.PI * 2); ctx.fill(); }
+    rr(px - P, py - P * 0.55, P * 2, P * 1.15, P * 0.5);
+    ctx.fillStyle = tone(px, py - P * 0.55, px, py + P * 0.6, "#2c3e63", 0.2, -0.35); ctx.fill(); ctx.lineWidth = Math.max(0.7, s); ctx.strokeStyle = OUTLINE; ctx.stroke();
+    ctx.beginPath(); ctx.arc(px - f * P * 0.35, py - P * 0.35, P * 0.78, Math.PI, 0); ctx.closePath(); // kaleche
+    ctx.fillStyle = tone(px, py - P * 1.1, px, py, "#34497a", 0.25, -0.3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#f1d2b6"; ctx.beginPath(); ctx.arc(px + f * P * 0.38, py - P * 0.2, P * 0.33, 0, Math.PI * 2); ctx.fill(); // babyen
+    ctx.fillStyle = "#f4f4f6"; ctx.beginPath(); ctx.arc(px + f * P * 0.38, py - P * 0.42, P * 0.3, Math.PI, 0); ctx.fill(); // hue
   };
-  const pramBehind = py < y; // tegn det der er længst væk først
+  const pramBehind = py < y;
   if (pramBehind) drawPram();
-  // håndtag fra konen til barnevognen
-  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.5, 2.5 * s);
-  ctx.beginPath(); ctx.moveTo(x + Math.cos(w.a) * R * 0.6, y - R * 0.2 + Math.sin(w.a) * R * 0.3); ctx.lineTo(px - Math.cos(w.a) * PRAM_R * s * 0.8, py - PRAM_R * s * 0.5); ctx.stroke();
-  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.95, R * 1.1, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-  // kjole
-  ctx.beginPath(); ctx.moveTo(x - R * 0.5, y - R * 0.6); ctx.lineTo(x + R * 0.5, y - R * 0.6); ctx.lineTo(x + R * 0.95, y + R * 0.9); ctx.lineTo(x - R * 0.95, y + R * 0.9); ctx.closePath();
-  fillStroke(COLORS[w.c] || "#c8102e", 2.5);
-  ctx.fillStyle = "#fff"; ctx.fillRect(x - R * 0.85, y + R * 0.55, R * 1.7, R * 0.18);
-  // hoved med langt hår
+  ctx.strokeStyle = "#2a2d33"; ctx.lineWidth = Math.max(1.2, 2 * s); // håndtag
+  ctx.beginPath(); ctx.moveTo(x + Math.cos(w.a) * R * 0.6, y - R * 0.2 + Math.sin(w.a) * R * 0.3); ctx.lineTo(px - Math.cos(w.a) * P * 0.8, py - P * 0.5); ctx.stroke();
+  softShadow(x + 3 * s, y + R * 0.95, R * 1.2, R * 0.42, 0.4);
+  // lang vinterfrakke
+  const coat = COLORS[w.c] || "#c8102e";
+  ctx.beginPath(); ctx.moveTo(x - R * 0.48, y - R * 0.62); ctx.lineTo(x + R * 0.48, y - R * 0.62); ctx.lineTo(x + R * 0.8, y + R * 0.92); ctx.lineTo(x - R * 0.8, y + R * 0.92); ctx.closePath();
+  ctx.fillStyle = tone(x - R, 0, x + R, 0, shade(coat, -0.1)); ctx.fill(); ctx.lineWidth = Math.max(0.7, s); ctx.strokeStyle = OUTLINE; ctx.stroke();
+  ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.moveTo(x, y - R * 0.55); ctx.lineTo(x, y + R * 0.9); ctx.stroke();
+  ctx.fillStyle = "#2a2a30"; ctx.fillRect(x - R * 0.42, y + R * 0.92, R * 0.3, R * 0.2); ctx.fillRect(x + R * 0.12, y + R * 0.92, R * 0.3, R * 0.2); // støvler
+  // hoved med langt hår og halstørklæde
   const hy = y - R * 1.1, hair = HAIR[w.i % HAIR.length];
-  ctx.beginPath(); ctx.ellipse(x, hy + R * 0.25, R * 0.82, R * 0.95, 0, 0, Math.PI * 2); fillStroke(hair, 2);
-  circle(x, hy, R * 0.62, "#f7d3b5", 2);
-  ctx.beginPath(); ctx.arc(x, hy - R * 0.12, R * 0.66, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); fillStroke(hair, 1.5);
-  ctx.fillStyle = INK;
-  for (const ex of [-0.22, 0.22]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.1, hy + R * 0.02, R * 0.08, 0, Math.PI * 2); ctx.fill(); }
-  // sur mund (hun leder efter sin mand)
-  ctx.strokeStyle = INK; ctx.lineWidth = 1.8 * s; ctx.beginPath(); ctx.arc(x + f * R * 0.1, hy + R * 0.42, R * 0.17, Math.PI + 0.3, -0.3); ctx.stroke();
+  ctx.fillStyle = tone(x - R, hy, x + R, hy + R * 1.2, hair, 0.18, -0.3);
+  ctx.beginPath(); ctx.ellipse(x, hy + R * 0.25, R * 0.72, R * 0.9, 0, 0, Math.PI * 2); ctx.fill();
+  const skin = ctx.createRadialGradient(x - R * 0.2, hy - R * 0.2, R * 0.1, x, hy, R * 0.6);
+  skin.addColorStop(0, "#f8dcc4"); skin.addColorStop(1, "#d9a888");
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, hy, R * 0.55, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = tone(x, hy - R, x, hy, hair, 0.2, -0.2); ctx.beginPath(); ctx.arc(x, hy - R * 0.1, R * 0.6, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#e9e3d6"; rr(x - R * 0.55, hy + R * 0.42, R * 1.1, R * 0.28, R * 0.12); ctx.fill();
+  ctx.fillStyle = "#2a2220";
+  for (const ex of [-0.2, 0.2]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.08, hy + R * 0.02, R * 0.065, 0, Math.PI * 2); ctx.fill(); }
+  ctx.strokeStyle = "#6b3a34"; ctx.lineWidth = Math.max(0.8, 1.3 * s); ctx.beginPath(); ctx.arc(x + f * R * 0.08, hy + R * 0.36, R * 0.13, Math.PI + 0.4, -0.4); ctx.stroke();
   if (!pramBehind) drawPram();
-  // hvem er hun gift med?
   const info = lobby.players.find(q => q.id === w.owner);
-  if (info) {
-    let n = info.name; if (n.length > 9) n = n.slice(0, 8) + "…";
-    label("♥ " + n, x, hy - R * 1.25, Math.max(9, 10.5 * s), "#ffb3c7");
-  }
+  if (info) { let n = info.name; if (n.length > 9) n = n.slice(0, 8) + "…"; label("♥ " + n, x, hy - R * 1.2, Math.max(9, 10.5 * s), "#ffc2d2"); }
 }
 
 function drawTegner(e, wx, wy, now) {
   const s = view.s, [x, y] = toS(wx, wy), R = ENEMY_R * s, f = e.fx || 1;
-  const bob = e.mode === "walk" ? Math.abs(Math.sin(now / 90 + e.i)) * 2.5 * s : 0;
+  const bob = e.mode === "walk" ? Math.abs(Math.sin(now / 90 + e.i)) * 2 * s : 0;
   if (e.mode === "spawn") ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(now / 80));
-  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.9, R * 1.1, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-  // staffeli når der tegnes
-  if (e.mode === "draw") {
-    ctx.strokeStyle = "#6b4423"; ctx.lineWidth = 3 * s;
-    ctx.beginPath(); ctx.moveTo(x + f * R * 1.2, y - R * 1.6); ctx.lineTo(x + f * R * 0.8, y + R * 0.9); ctx.moveTo(x + f * R * 1.2, y - R * 1.6); ctx.lineTo(x + f * R * 1.8, y + R * 0.9); ctx.stroke();
-    rr(x + f * R * 1.3 - R * 0.75, y - R * 1.5, R * 1.5, R * 1.2, 2 * s); fillStroke("#fff", 2);
-    ctx.strokeStyle = INK; ctx.lineWidth = 1.5 * s; ctx.beginPath();
-    const cx = x + f * R * 1.3, cy = y - R * 0.9;
-    for (let k = 0; k < 6; k++) { const a = now / 120 + k; ctx.lineTo(cx + Math.cos(a) * R * 0.45, cy + Math.sin(a * 1.3) * R * 0.35); }
+  softShadow(x + 3 * s, y + R * 0.9, R * 1.25, R * 0.42, 0.42);
+  if (e.mode === "draw") { // staffeli
+    ctx.strokeStyle = "#6b4a2e"; ctx.lineWidth = Math.max(1.2, 2.2 * s);
+    ctx.beginPath(); ctx.moveTo(x + f * R * 1.25, y - R * 1.6); ctx.lineTo(x + f * R * 0.8, y + R * 0.9); ctx.moveTo(x + f * R * 1.25, y - R * 1.6); ctx.lineTo(x + f * R * 1.8, y + R * 0.9); ctx.stroke();
+    rr(x + f * R * 1.3 - R * 0.75, y - R * 1.5, R * 1.5, R * 1.15, 1.5 * s); ctx.fillStyle = "#f6f1e6"; ctx.fill(); ctx.lineWidth = Math.max(0.7, s); ctx.strokeStyle = OUTLINE; ctx.stroke();
+    ctx.strokeStyle = "#3a3a3a"; ctx.lineWidth = Math.max(0.7, 1 * s); ctx.beginPath();
+    const cx = x + f * R * 1.3, cy = y - R * 0.95;
+    for (let k = 0; k < 7; k++) { const a = now / 120 + k; ctx.lineTo(cx + Math.cos(a) * R * 0.45, cy + Math.sin(a * 1.3) * R * 0.32); }
     ctx.stroke();
   }
-  // krop: stribet bluse
-  rr(x - R * 0.8, y - R * 0.6 - bob, R * 1.6, R * 1.5, R * 0.5); fillStroke("#fff", 2.5);
-  ctx.fillStyle = "#1d1a16";
-  for (let k = 0; k < 3; k++) ctx.fillRect(x - R * 0.75, y - R * 0.35 + k * R * 0.42 - bob, R * 1.5, R * 0.16);
+  // ben + krop i stribet trøje under en åben frakke
+  ctx.fillStyle = "#2d2f36"; ctx.fillRect(x - R * 0.45, y + R * 0.45 - bob * 0.3, R * 0.35, R * 0.55); ctx.fillRect(x + R * 0.1, y + R * 0.45 - bob * 0.3, R * 0.35, R * 0.55);
+  rr(x - R * 0.75, y - R * 0.6 - bob, R * 1.5, R * 1.25, R * 0.45);
+  ctx.fillStyle = tone(x - R, 0, x + R, 0, "#ecebe6", 0.05, -0.25); ctx.fill();
+  ctx.save(); ctx.clip(); ctx.fillStyle = "#23252c";
+  for (let k = 0; k < 4; k++) ctx.fillRect(x - R, y - R * 0.45 + k * R * 0.32 - bob, R * 2, R * 0.13);
+  ctx.fillStyle = "rgba(60,48,40,.9)"; ctx.fillRect(x - R * 0.75, y - R * 0.6 - bob, R * 0.32, R * 1.3); ctx.fillRect(x + R * 0.43, y - R * 0.6 - bob, R * 0.32, R * 1.3); // frakke
+  ctx.restore();
   // hoved
-  const hy = y - R * 1.15 - bob;
-  circle(x, hy, R * 0.65, "#f2d2b0", 2.5);
-  // overskæg + øjne
-  ctx.fillStyle = INK;
-  ctx.beginPath(); ctx.ellipse(x + f * R * 0.12 - R * 0.18, hy + R * 0.25, R * 0.2, R * 0.08, 0.3, 0, Math.PI * 2); ctx.ellipse(x + f * R * 0.12 + R * 0.18, hy + R * 0.25, R * 0.2, R * 0.08, -0.3, 0, Math.PI * 2); ctx.fill();
-  for (const ex of [-0.22, 0.22]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.12, hy, R * 0.08, 0, Math.PI * 2); ctx.fill(); }
+  const hy = y - R * 1.12 - bob;
+  const skin = ctx.createRadialGradient(x - R * 0.2, hy - R * 0.2, R * 0.1, x, hy, R * 0.62);
+  skin.addColorStop(0, "#f5d6bd"); skin.addColorStop(1, "#cf9e80");
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, hy, R * 0.58, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#2a2220";
+  ctx.beginPath(); ctx.ellipse(x + f * R * 0.1 - R * 0.15, hy + R * 0.24, R * 0.17, R * 0.06, 0.3, 0, Math.PI * 2); ctx.ellipse(x + f * R * 0.1 + R * 0.15, hy + R * 0.24, R * 0.17, R * 0.06, -0.3, 0, Math.PI * 2); ctx.fill();
+  for (const ex of [-0.2, 0.2]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.1, hy, R * 0.065, 0, Math.PI * 2); ctx.fill(); }
   // baret
-  ctx.beginPath(); ctx.ellipse(x - f * R * 0.1, hy - R * 0.5, R * 0.75, R * 0.3, -0.15 * f, 0, Math.PI * 2); fillStroke("#1d1a16", 2);
-  ctx.fillRect(x - f * R * 0.1 - 1.5 * s, hy - R * 0.95, 3 * s, R * 0.25);
-  // blyant
-  if (e.mode !== "draw") {
-    ctx.strokeStyle = "#f5c542"; ctx.lineWidth = 3.5 * s; ctx.beginPath();
-    ctx.moveTo(x + f * R * 0.8, y - R * 0.2 - bob); ctx.lineTo(x + f * R * 1.35, y - R * 0.75 - bob); ctx.stroke();
+  ctx.fillStyle = tone(x - R, hy - R, x + R, hy, "#22242a", 0.25, -0.2);
+  ctx.beginPath(); ctx.ellipse(x - f * R * 0.08, hy - R * 0.45, R * 0.68, R * 0.27, -0.15 * f, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(x - f * R * 0.08 - 1 * s, hy - R * 0.85, 2 * s, R * 0.2);
+  if (e.mode !== "draw") { // blyant
+    ctx.strokeStyle = "#e0b23c"; ctx.lineWidth = Math.max(1.2, 2.4 * s); ctx.beginPath();
+    ctx.moveTo(x + f * R * 0.75, y - R * 0.15 - bob); ctx.lineTo(x + f * R * 1.3, y - R * 0.7 - bob); ctx.stroke();
   }
-  if (e.mode === "spawn") { label("!", x, hy - R * 1.4, Math.max(16, 26 * s), "#f5c542"); }
+  if (e.mode === "spawn") label("!", x, hy - R * 1.3, Math.max(16, 26 * s), "#ffd36b");
   ctx.globalAlpha = 1;
 }
 
@@ -1665,78 +1821,87 @@ function kidsToDraw() {
 
 function drawDreng(k, now) {
   const s = view.s, [x, y] = toS(k.x, k.y), R = PLAYER_R * s, f = k.fx || 1;
-  const SKIN = "#f2c6a0";
   if (k.inv > 0 && !k.out && Math.floor(now / 100) % 2) ctx.globalAlpha = 0.45;
-  if (k.out || k.gone) ctx.globalAlpha = 0.6;
-  const bob = k.moving ? Math.abs(Math.sin(k.step)) * 2.5 * s : 0;
-  ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.95, R * 1.1, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-  // fart-streger
-  if (k.boost) {
-    ctx.strokeStyle = k.boost === 2 ? "#4dc3ff" : "#f5c542"; ctx.lineWidth = 3 * s;
-    for (const dy of [-0.6, 0, 0.6]) { ctx.beginPath(); ctx.moveTo(x - f * R * 1.3, y + dy * R - bob); ctx.lineTo(x - f * R * 2.3, y + dy * R - bob); ctx.stroke(); }
+  if (k.out || k.gone) ctx.globalAlpha = 0.65;
+  const bob = k.moving ? Math.abs(Math.sin(k.step)) * 2 * s : 0;
+  softShadow(x + 3 * s, y + R * 0.95, R * 1.25, R * 0.42, 0.42);
+  if (k.boost) { // fartstriber
+    ctx.strokeStyle = k.boost === 2 ? "rgba(120,200,255,.8)" : "rgba(255,210,110,.8)"; ctx.lineWidth = Math.max(1, 2 * s);
+    for (const dy of [-0.6, 0, 0.6]) { ctx.beginPath(); ctx.moveTo(x - f * R * 1.3, y + dy * R - bob); ctx.lineTo(x - f * R * 2.4, y + dy * R - bob); ctx.stroke(); }
   }
   const wHue = wears(k.clothes, 0), wTor = wears(k.clothes, 1), wBuk = wears(k.clothes, 2), wSw = wears(k.clothes, 3);
-  // ben
+  const SKIN = "#e8b896";
+  const skinFill = (x0, y0, x1, y1) => tone(x0, y0, x1, y1, SKIN, 0.15, -0.2);
+  // ben (jeans eller bare ben) + sko
   const leg = k.moving ? Math.sin(k.step) * 3 * s : 0;
-  for (const [lx, ly] of [[-0.35, leg], [0.35, -leg]]) { rr(x + lx * R - R * 0.22, y + R * 0.4 + ly - bob * 0.3, R * 0.44, R * 0.65, 3 * s); fillStroke(wBuk ? "#2f3d66" : SKIN, 2); }
-  // krop
-  rr(x - R * 0.8, y - R * 0.55 - bob, R * 1.6, R * 1.35, R * 0.5); fillStroke(wSw ? COLORS[k.c] : SKIN, 2.5);
-  if (wSw) { // julesweater-mønster
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * s; ctx.beginPath();
-    for (let i = 0; i <= 6; i++) ctx.lineTo(x - R * 0.7 + i * R * 0.233, y - R * 0.3 - bob + (i % 2 ? -R * 0.12 : R * 0.06));
-    ctx.stroke();
+  for (const [lx, ly] of [[-0.32, leg], [0.32, -leg]]) {
+    const bx = x + lx * R - R * 0.2, by = y + R * 0.38 + ly - bob * 0.3;
+    rr(bx, by, R * 0.4, R * 0.62, 2 * s); ctx.fillStyle = wBuk ? tone(bx, 0, bx + R * 0.4, 0, "#3b4f78", 0.15, -0.3) : skinFill(bx, 0, bx + R * 0.4, 0); ctx.fill();
+    ctx.fillStyle = "#2a2622"; rr(bx - 0.5 * s, by + R * 0.52, R * 0.45, R * 0.2, 2 * s); ctx.fill();
+  }
+  // krop: julesweater eller bar overkrop
+  const bx = x - R * 0.78, by = y - R * 0.55 - bob, bw = R * 1.56, bh = R * 1.3;
+  rr(bx, by, bw, bh, R * 0.45);
+  ctx.fillStyle = wSw ? tone(bx, by, bx + bw, by + bh, COLORS[k.c], 0.2, -0.32) : skinFill(bx, by, bx + bw, by + bh); ctx.fill();
+  ctx.lineWidth = Math.max(0.7, s); ctx.strokeStyle = OUTLINE; ctx.stroke();
+  if (wSw) {
+    // strikmønster: hvid bort med små prikker
+    ctx.save(); rr(bx, by, bw, bh, R * 0.45); ctx.clip();
+    ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(bx, by + bh * 0.12, bw, bh * 0.1);
+    ctx.fillStyle = "rgba(255,255,255,.6)"; for (let i = 0; i < 6; i++) ctx.fillRect(bx + (i + 0.3) * bw / 6, by + bh * 0.27, 1.5 * s, 1.5 * s);
+    ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(bx, by + bh * 0.85, bw, bh * 0.15); // ribkant
+    ctx.restore();
     // tallet = hvor mange stykker tøj man har på
     ctx.font = `900 ${Math.max(15, R * 1.05)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.lineWidth = Math.max(4, R * 0.25); ctx.strokeStyle = INK; ctx.lineJoin = "round";
-    ctx.strokeText(String(k.clothes), x, y + R * 0.2 - bob); ctx.fillStyle = "#fff"; ctx.fillText(String(k.clothes), x, y + R * 0.2 - bob);
-  } else { // navle
-    ctx.fillStyle = "rgba(120,60,30,.6)"; ctx.beginPath(); ctx.arc(x, y + R * 0.15 - bob, 1.6 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = Math.max(4, R * 0.25); ctx.strokeStyle = "rgba(15,15,22,.9)"; ctx.lineJoin = "round";
+    ctx.strokeText(String(k.clothes), x, y + R * 0.22 - bob); ctx.fillStyle = "#fff"; ctx.fillText(String(k.clothes), x, y + R * 0.22 - bob);
+  } else {
+    ctx.fillStyle = "rgba(120,60,40,.45)"; ctx.beginPath(); ctx.arc(x, y + R * 0.15 - bob, 1.3 * s, 0, Math.PI * 2); ctx.fill();
   }
-  // underbukser / censur
   if (!wBuk) {
     if (k.out) {
       ctx.fillStyle = "#000"; ctx.fillRect(x - R * 1.15, y + R * 0.25 - bob, R * 2.3, R * 0.6);
       ctx.font = `900 ${Math.max(6, R * 0.42)}px sans-serif`; ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("CENSUR", x, y + R * 0.56 - bob);
     } else {
-      rr(x - R * 0.82, y + R * 0.3 - bob, R * 1.64, R * 0.5, 3 * s); fillStroke("#fff", 2);
-      ctx.fillStyle = "#e84393";
-      for (const hx of [-0.45, 0, 0.45]) { ctx.beginPath(); ctx.arc(x + hx * R, y + R * 0.55 - bob, 1.8 * s, 0, Math.PI * 2); ctx.fill(); }
+      rr(x - R * 0.8, y + R * 0.3 - bob, R * 1.6, R * 0.48, 3 * s); ctx.fillStyle = "#f2f2f4"; ctx.fill(); ctx.strokeStyle = OUTLINE; ctx.stroke();
+      ctx.fillStyle = "#e05a8a";
+      for (const hx of [-0.45, 0, 0.45]) { ctx.beginPath(); ctx.arc(x + hx * R, y + R * 0.54 - bob, 1.5 * s, 0, Math.PI * 2); ctx.fill(); }
     }
   }
   // hoved
-  const hy = y - R * 1.15 - bob;
-  circle(x, hy, R * 0.68, SKIN, 2.5);
-  // halstørklæde
-  if (wTor) {
-    rr(x - R * 0.7, hy + R * 0.48, R * 1.4, R * 0.32, 3 * s); fillStroke("#c8102e", 2);
-    rr(x - f * R * 0.45 - R * 0.13, hy + R * 0.6, R * 0.26, R * 0.65, 2 * s); fillStroke("#c8102e", 2);
-    ctx.fillStyle = "#fff"; ctx.fillRect(x - R * 0.35, hy + R * 0.52, R * 0.15, R * 0.24); ctx.fillRect(x + R * 0.2, hy + R * 0.52, R * 0.15, R * 0.24);
+  const hy = y - R * 1.12 - bob;
+  const skin = ctx.createRadialGradient(x - R * 0.2, hy - R * 0.2, R * 0.1, x, hy, R * 0.66);
+  skin.addColorStop(0, "#f7d2b4"); skin.addColorStop(1, "#cf9a78");
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, hy, R * 0.6, 0, Math.PI * 2); ctx.fill();
+  if (wTor) { // strikket halstørklæde
+    rr(x - R * 0.65, hy + R * 0.42, R * 1.3, R * 0.3, 3 * s); ctx.fillStyle = tone(x - R, 0, x + R, 0, "#b3172f", 0.2, -0.3); ctx.fill();
+    rr(x - f * R * 0.42 - R * 0.12, hy + R * 0.55, R * 0.24, R * 0.6, 2 * s); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.fillRect(x - R * 0.3, hy + R * 0.45, R * 0.12, R * 0.24); ctx.fillRect(x + R * 0.18, hy + R * 0.45, R * 0.12, R * 0.24);
   }
-  // ansigt
-  ctx.fillStyle = INK;
-  for (const ex of [-0.24, 0.24]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.12, hy - R * 0.02, R * 0.09, 0, Math.PI * 2); ctx.fill(); }
-  if (k.out || k.clothes <= 1) { // genert / chokeret
-    ctx.fillStyle = "rgba(232,69,44,.5)";
-    for (const ex of [-0.42, 0.42]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.1, hy + R * 0.22, R * 0.13, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(x + f * R * 0.12, hy + R * 0.32, R * 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#231c1a";
+  for (const ex of [-0.21, 0.21]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.1, hy - R * 0.02, R * 0.07, 0, Math.PI * 2); ctx.fill(); }
+  if (k.out || k.clothes <= 1) {
+    ctx.fillStyle = "rgba(220,70,60,.4)";
+    for (const ex of [-0.38, 0.38]) { ctx.beginPath(); ctx.arc(x + ex * R + f * R * 0.08, hy + R * 0.2, R * 0.12, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = "#5a2a26"; ctx.beginPath(); ctx.arc(x + f * R * 0.1, hy + R * 0.3, R * 0.08, 0, Math.PI * 2); ctx.fill();
   } else {
-    ctx.strokeStyle = INK; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.arc(x + f * R * 0.12, hy + R * 0.15, R * 0.22, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.strokeStyle = "#7a3e36"; ctx.lineWidth = Math.max(0.8, 1.4 * s); ctx.beginPath(); ctx.arc(x + f * R * 0.1, hy + R * 0.14, R * 0.18, 0.3, Math.PI - 0.3); ctx.stroke();
   }
-  // nissehue eller hår
-  if (wHue) {
-    ctx.beginPath(); ctx.moveTo(x - R * 0.72, hy - R * 0.3); ctx.lineTo(x + R * 0.72, hy - R * 0.3);
-    ctx.quadraticCurveTo(x + R * 0.3, hy - R * 1.2, x - f * R * 1.0, hy - R * 1.05); ctx.closePath(); fillStroke("#c8102e", 2);
-    rr(x - R * 0.78, hy - R * 0.45, R * 1.56, R * 0.3, R * 0.15); fillStroke("#fff", 2);
-    circle(x - f * R * 1.0, hy - R * 1.05, R * 0.2, "#fff", 2);
+  if (wHue) { // nissehue med pelskant og kvast
+    ctx.beginPath(); ctx.moveTo(x - R * 0.64, hy - R * 0.28); ctx.lineTo(x + R * 0.64, hy - R * 0.28);
+    ctx.quadraticCurveTo(x + R * 0.25, hy - R * 1.15, x - f * R * 0.95, hy - R * 0.98); ctx.closePath();
+    ctx.fillStyle = tone(x - R, hy - R, x + R, hy, "#b81f2c", 0.2, -0.35); ctx.fill();
+    rr(x - R * 0.7, hy - R * 0.42, R * 1.4, R * 0.28, R * 0.14); ctx.fillStyle = "#f3f1ec"; ctx.fill();
+    ctx.fillStyle = "#f3f1ec"; ctx.beginPath(); ctx.arc(x - f * R * 0.95, hy - R * 0.98, R * 0.18, 0, Math.PI * 2); ctx.fill();
   } else {
-    ctx.beginPath(); ctx.arc(x, hy - R * 0.15, R * 0.7, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); fillStroke("#6b4423", 2);
+    ctx.fillStyle = tone(x, hy - R, x, hy, "#5b3a22", 0.2, -0.25);
+    ctx.beginPath(); ctx.arc(x, hy - R * 0.12, R * 0.63, Math.PI * 1.05, -0.05 * Math.PI); ctx.closePath(); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  // navn
   let n = k.name || ""; if (n.length > 10) n = n.slice(0, 9) + "…";
-  label(k.out ? n + " 🙈" : n, x, y + R * 1.75, Math.max(9, 11 * s), k.isMe ? "#f5c542" : "#fff");
-  if (k.isMe && !k.out) { ctx.fillStyle = "#f5c542"; ctx.beginPath(); ctx.moveTo(x - 6 * s, hy - R * 1.55); ctx.lineTo(x + 6 * s, hy - R * 1.55); ctx.lineTo(x, hy - R * 1.2); ctx.closePath(); ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = INK; ctx.stroke(); }
+  label(k.out ? n + " 🙈" : n, x, y + R * 1.75, Math.max(9, 11 * s), k.isMe ? "#ffd36b" : "#fff");
+  if (k.isMe && !k.out) { ctx.fillStyle = "#ffd36b"; ctx.beginPath(); ctx.moveTo(x - 6 * s, hy - R * 1.5); ctx.lineTo(x + 6 * s, hy - R * 1.5); ctx.lineTo(x, hy - R * 1.15); ctx.closePath(); ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(10,10,20,.7)"; ctx.stroke(); }
 }
 
 // Pil ved skærmkanten mod næste stop
