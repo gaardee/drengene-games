@@ -268,8 +268,9 @@ const BOSS_R = 50, BOSS_SPEED = 48, BOSS_DMG = 4, BOSS_HIT_PTS = 5, BOSS_KILL_PT
 const bossHp = n => 30 + 12 * (n - 1);
 
 // Power-ups: 1 = gulerod, 2 = mega-kast, 3 = løbesko
-const POW_TIMES = [12, 24, 40, 50, 66, 78, 96, 106];
-const POW_ORDER = [1, 2, 3, 2, 1, 3, 1, 2];
+// En ny power-up hvert 6. sekund (8, 14, 20 … 116) – hver anden er en gulerod
+const POW_TIMES = Array.from({ length: 19 }, (_, i) => 8 + i * 6);
+const POW_ORDER = POW_TIMES.map((_, i) => i % 2 === 0 ? 1 : [3, 2][(i >> 1) % 2]);
 const POW_TTL = 10, POW_DUR = 8;
 const POW_EMOJI = { 1: "🥕", 2: "🔱", 3: "👟" };
 
