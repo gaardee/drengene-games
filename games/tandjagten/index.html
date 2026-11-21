@@ -144,7 +144,7 @@
         <ul class="rules">
           <li>🧦 <b>Fang</b> tænder i sokken og <b>skyd</b> dem i <b>din Simon</b>: <b>10</b> (✨ guld: <b>25</b>)</li>
           <li>🍪 Skyd <b>brunkager</b> i den <b>anden Simon</b>, så ryger en tand: <b>15</b></li>
-          <li>🌲 Undgå grankogler · 🪄 tryllestav = kæmpe sok</li>
+          <li>⚫ Undgå <b>kul</b> – det tømmer sokken · 🪄 tryllestav = kæmpe sok</li>
           <li>🎅 Team Nisse mod 🧚 Team Tandfe · vinderne får <b>+30</b> · ⏱ <b>90 sek.</b></li>
         </ul>
         <div class="controls" id="ctrlHelp"></div>
@@ -225,7 +225,7 @@
    TANDJAGTEN – lavet af Marcus & Nicolas (med Claude)
 
    Spillet:
-   - Tænder, brunkager, grankogler og tryllestave falder ned fra himlen.
+   - Tænder, brunkager, kul og tryllestave falder ned fra himlen.
    - Man fanger dem i sin julesok nederst og skyder dem op igen (først-ind-først-ud).
    - Tænder skal i ens EGET holds Simon. Brunkager skal i det ANDET holds Simon
      (de slår en tand ud). Simons læsper, så længe han mangler tænder.
@@ -276,7 +276,7 @@ const SWING = 62;                // hvor langt Simon svinger fra side til side
 const P_TOOTH = 10, P_GOLD = 25, P_COOKIE = 15, P_COOKIE_GOLD = 20, P_FULL = 50, P_LAST = 20, P_WIN = 30, P_OWN = -10;
 const WAND_TIMES = [22, 50, 74];
 
-// Ting der falder: 0 tand, 1 guldtand, 2 brunkage, 3 grankogle, 4 tryllestav
+// Ting der falder: 0 tand, 1 guldtand, 2 brunkage, 3 kul (hedder K_CONE i koden), 4 tryllestav
 const K_TOOTH = 0, K_GOLD = 1, K_COOKIE = 2, K_CONE = 3, K_WAND = 4;
 
 const TEAMS = [
@@ -709,7 +709,7 @@ function doCatch(p, id, remote) {
   if (it.kind === K_CONE) {
     p.stun = STUN_TIME; p.q = []; p.st.cones++;
     if (p.id === MY_ID) ME.stun = STUN_TIME;
-    hostEvent(p.x, SOCK_Y - 60, "AV! Grankogle! 🌲", "#ff8a7a", "bonk", p.id, skip);
+    hostEvent(p.x, SOCK_Y - 60, "AV! Kul i sokken! ⚫", "#ff8a7a", "bonk", p.id, skip);
   } else if (it.kind === K_WAND) {
     p.wand = WAND_TIME;
     hostEvent(p.x, SOCK_Y - 60, "TRYLLESTAV! 🪄", "#f5c542", "magic", p.id, skip);
@@ -804,7 +804,7 @@ function botUpdate(p, dt, t) {
   p.think -= dt;
   if (p.think <= 0) {
     p.think = 0.3 + rnd() * 0.24;
-    // 1) undgå grankogler, der er lige ved at lande
+    // 1) undgå kul, der er lige ved at lande
     let dodge = null;
     for (const id of G.items) {
       const it = SCHED[id]; if (it.kind !== K_CONE) continue;
@@ -917,7 +917,7 @@ function clientCatch(t) {
     const c = ++catchSeq;
     pendingCatches.push({ c, k: it.kind, at: performance.now() });
     sendMine("catch", { i: id, c });
-    if (it.kind === K_CONE) { ME.stun = STUN_TIME; pendingCatches = []; S.floaters.push({ x: ME.x, y: SOCK_Y - 60, text: "AV! Grankogle! 🌲", color: "#ff8a7a", life: 1.3 }); Sound.bonk(); }
+    if (it.kind === K_CONE) { ME.stun = STUN_TIME; pendingCatches = []; S.floaters.push({ x: ME.x, y: SOCK_Y - 60, text: "AV! Kul i sokken! ⚫", color: "#ff8a7a", life: 1.3 }); Sound.bonk(); }
     else if (it.kind === K_WAND) { S.floaters.push({ x: ME.x, y: SOCK_Y - 60, text: "TRYLLESTAV! 🪄", color: "#f5c542", life: 1.3 }); Sound.magic(); }
     else Sound.catch();
   }
@@ -1354,10 +1354,18 @@ function drawItem(kind, x, y, now, k = 1, rot = 0) {
     ctx.beginPath(); ctx.arc(0, 0, 10 * k, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,210,150,.25)"; ctx.fill();
     ell(0, 0, 4.5 * k, 7 * k, "#f2d8a7", 1.5);
   } else if (kind === K_CONE) {
-    ell(0, 0, 12 * k, 18 * k, "#6b3e1f", 2.5);
-    ctx.strokeStyle = "#3d2210"; ctx.lineWidth = 1.5;
-    for (let r = -12; r <= 12; r += 6) { ctx.beginPath(); ctx.moveTo(-11 * k, r * k); ctx.quadraticCurveTo(0, (r + 6) * k, 11 * k, r * k); ctx.stroke(); }
-    ell(0, -18 * k, 3 * k, 4 * k, "#2e6b2e", 1.5);
+    // kul: sort og kantet, med gløder – til uartige børn
+    ctx.fillStyle = `rgba(255,110,40,${0.45 + 0.2 * Math.sin(now / 120 + x)})`;
+    ctx.beginPath(); ctx.arc(0, 0, 25 * k, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    [[-16, -4], [-9, -15], [4, -17], [15, -8], [17, 6], [8, 15], [-6, 16], [-15, 9]].forEach(([a, b]) => ctx.lineTo(a * k, b * k));
+    ctx.closePath(); ctx.fillStyle = "#1b1b1f"; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = "#ffb27a"; ctx.stroke();
+    ctx.fillStyle = "#4a4a55";
+    ctx.beginPath(); ctx.moveTo(-9 * k, -13 * k); ctx.lineTo(3 * k, -15 * k); ctx.lineTo(-2 * k, -5 * k); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(8 * k, 2 * k); ctx.lineTo(15 * k, 5 * k); ctx.lineTo(7 * k, 12 * k); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#ff7a2a";
+    ctx.fillRect(-11 * k, 4 * k, 4 * k, 3 * k); ctx.fillRect(2 * k, -9 * k, 3 * k, 3 * k);
   } else if (kind === K_WAND) {
     ctx.fillStyle = "rgba(255,230,120,.4)"; ctx.beginPath(); ctx.arc(0, -8 * k, 26 * k, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = INK; ctx.lineWidth = 6 * k; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 22 * k); ctx.stroke();
@@ -1410,7 +1418,16 @@ function drawSock(P, now, t) {
   ctx.globalAlpha = 1;
   // køen af ting i sokken (den der skydes først er størst)
   const q = P.q || [];
-  q.forEach((k, i) => drawItem(k, x + (i - (q.length - 1) / 2) * 20, y - 36 - (i === 0 ? 4 : 0), now, i === 0 ? 0.75 : 0.55));
+  if (q.length) {
+    // næste skud: stort og med en farvet ring (grøn = tand til din Simon, orange = brunkage til modstanderen)
+    const nx = x, ny = y - 52;
+    ctx.beginPath(); ctx.arc(nx, ny, 22, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = q[0] === K_COOKIE ? "#ff8a1e" : "#2ecc71"; ctx.stroke();
+    drawItem(q[0], nx, ny, now, 0.95, 0);
+    // resten af sokken (små, i rækkefølge)
+    q.slice(1).forEach((k, i) => drawItem(k, x + 34 + i * 18, y - 30, now, 0.5));
+  }
   // navn
   screenT();
   const [sx, sy] = toS(x, y + 62);
@@ -1429,12 +1446,24 @@ function drawAim(now, t) {
   ctx.setLineDash([6, 10]); ctx.lineDashOffset = -now / 30;
   ctx.strokeStyle = q[0] === K_COOKIE ? "rgba(255,180,120,.55)" : "rgba(255,255,255,.4)"; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(ME.x, SOCK_Y - 50); ctx.lineTo(ME.x, MOUTH_Y + 40); ctx.stroke(); ctx.setLineDash([]);
+  // sigtekorn på den Simon, skuddet skal i
+  const cookie = q[0] === K_COOKIE, col = cookie ? "#ff8a1e" : "#2ecc71";
+  const pulse = 1 + 0.08 * Math.sin(now / 120);
+  ctx.save(); ctx.translate(mouthX(target, t), headY(target, t) + MOUTH_DY); ctx.scale(pulse, pulse);
+  ctx.setLineDash([12, 8]); ctx.lineDashOffset = now / 40;
+  ctx.lineWidth = 5; ctx.strokeStyle = col;
+  ctx.beginPath(); ctx.ellipse(0, 0, 72, 52, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  ctx.restore();
   screenT();
-  const [x, y] = toS(ME.x, SOCK_Y - 66);
-  ctx.font = `900 ${Math.max(11, 13 * view.s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  const txt = q[0] === K_COOKIE ? `🍪 → ${TEAMS[target].emoji} modstanderen!` : `🦷 → ${TEAMS[target].emoji} din Simon`;
-  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.strokeText(txt, x, y);
-  ctx.fillStyle = q[0] === K_COOKIE ? "#ffcf9a" : "#fff"; ctx.fillText(txt, x, y);
+  const [x, y] = toS(ME.x, SOCK_Y - 96);
+  const fz = Math.max(12, 15 * view.s);
+  ctx.font = `900 ${fz}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const txt = cookie ? `🍪 Brunkage → ${TEAMS[target].emoji} modstanderen!` : q[0] === K_GOLD ? `✨ Guldtand → ${TEAMS[target].emoji} din Simon` : `🦷 Tand → ${TEAMS[target].emoji} din Simon`;
+  const w = ctx.measureText(txt).width + 16;
+  const lx = clamp(x, w / 2 + 4, view.cw - w / 2 - 4);
+  rr(lx - w / 2, y - fz * 0.8, w, fz * 1.6, 10); ctx.fillStyle = col; ctx.fill();
+  ctx.lineWidth = 2.5; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.fillStyle = "#fff"; ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.strokeText(txt, lx, y); ctx.fillText(txt, lx, y);
 }
 
 function draw(now, dt) {
@@ -1634,7 +1663,7 @@ function showEnd(msg) {
       `😁 Fulde smil: <b>${st.last}</b>`,
       `🙈 Forkert Simon: <b>${st.wrong}</b>`,
       `🤦 Selvmål: <b>${st.own}</b>`,
-      `🌲 Grankogler: <b>${st.cones}</b>`,
+      `⚫ Kul i sokken: <b>${st.cones}</b>`,
       `😋 Kager Simon spiste: <b>${st.eaten}</b>`,
     ].map(x => `<div>${x}</div>`).join("");
     if (window.gemScore) {
