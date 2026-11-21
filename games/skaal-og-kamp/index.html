@@ -289,6 +289,7 @@ const RUM_KEY = "skaalOgKamp_rum";            // telefonens sidste rum
 const GEMT_KEY = "skaalOgKamp_gemt";          // hvilket spil telefonen allerede har gemt score for
 const TOP_KEY = "skaalOgKamp_top";            // lokal top 10
 const LYD_KEY = "skaalOgKamp_lyd";
+const VAERT_KEY = "skaalOgKamp_vaert";        // skærmens rumkode (genbruges efter genindlæsning)
 // Spillets længde. Kan ændres med ?minutter=10 i adressen (fx til en kort runde).
 const MINUTTER = (() => {
   const m = parseFloat(new URLSearchParams(location.search).get("minutter"));
@@ -693,6 +694,7 @@ const smidtUd = new Set();
 const sidstSet = new Map(); // SKÆRMEN: id -> hvornår vi sidst hørte fra telefonen
 let pauset = false;
 let afslutSikker = false;
+let fjernVent = "";       // SKÆRMEN: spiller, der venter på andet tryk for at blive fjernet
 let sidstRender = 0, renderNoegle = "", sidstHtml = "";
 
 /* =====================================================================
@@ -705,7 +707,11 @@ const online = id => { const t = sidstSet.get(id); return t != null && performan
 const indeks = id => S.spillere.findIndex(p => p.id === id);
 
 function opretRum(genbrugKode) {
-  rolle = "skaerm"; kode = genbrugKode || nyKode(); netOk = false;
+  // Genbrug skærmens kode fra de sidste 12 timer, så links i gruppechatten stadig virker efter en genindlæsning
+  const gl = hent(VAERT_KEY, null);
+  const gammel = gl && /^[A-Z]{4}$/.test(gl.kode) && Date.now() - gl.tid < 12 * 3600e3 ? gl.kode : "";
+  rolle = "skaerm"; kode = genbrugKode || gammel || nyKode(); netOk = false;
+  gem(VAERT_KEY, { kode, tid: Date.now() });
   Net.onMsg = vaertBesked;
   Net.onStatus = st => { netOk = st === "ok"; if (netOk) udsend(); vis(); };
   Net.open(mainTopic());
@@ -939,6 +945,7 @@ function udsend() {
   let v;
   if (!S) {
     v = { k: "lobby", sp: lobby.map(p => [p.id, p.navn, 0, online(p.id) ? 1 : 0]) };
+    if (smidtUd.size) v.ud = [...smidtUd];
   } else {
     const id = i => S.spillere[i].id, r = S.r;
     v = { k: S.fase, d: S.dato, n: S.runde, tid: Math.round(Math.max(0, S.tilbageMs)), x2: S.finale ? 1 : 0, pa: pauset ? 1 : 0, tu: S.tidUde ? 1 : 0,
@@ -1045,7 +1052,7 @@ function lobbyHtml() {
     </div>
     <div class="kort">
       <h3>Spillere (${lobby.length}/${MAKS_SPILLERE})</h3>
-      <div class="chips">${lobby.length ? lobby.map((p, i) => `<button class="chip ${online(p.id) ? "" : "offline"}" data-act="smidUd" data-arg="${i}"><span class="prik"></span>${esc(p.navn)}<i>✕</i></button>`).join("") : `<p class="lille">Ingen endnu…</p>`}</div>
+      <div class="chips">${lobby.length ? lobby.map((p, i) => `<button class="chip ${online(p.id) ? "" : "offline"}" data-act="smidUd" data-arg="${i}"><span class="prik"></span>${fjernVent === p.id ? `Fjern ${esc(p.navn)}? Tryk igen` : esc(p.navn)}<i>✕</i></button>`).join("") : `<p class="lille">Ingen endnu…</p>`}</div>
     </div>
     <button class="primaer stor" data-act="start" ${lobby.length < 2 ? "disabled" : ""}>▶ Start festen${lobby.length >= 2 ? ` (${lobby.length} spillere)` : " – I skal være mindst 2"}</button>
     <div class="knaprad"><button class="graa lilleknap" data-act="lukRum">✕ Luk rummet</button></div>`;
@@ -1282,6 +1289,7 @@ let ordPriv = null;        // det hemmelige mime-ord { rid, ord, m }
 let mitBuzz = "";          // runde-id hvor jeg har buzzet (venter på svar)
 const mineStemmer = {};    // runde-id -> min stemme
 let joinTid = 0;
+let sidstHoertSkaerm = 0;  // hvornår telefonen sidst hørte fra skærmen
 let forrigeV = null;
 
 function deltag(k, n) {
@@ -1301,6 +1309,7 @@ function sendHello() {
 }
 function telefonBesked(kanal, ev, d) {
   if (kanal === mainTopic() && ev === "s") {
+    sidstHoertSkaerm = performance.now();
     const foer = V;
     V = d; vModtaget = performance.now();
     telefonOvergang(foer, V);
@@ -1337,14 +1346,21 @@ function visTelefon() {
   let h;
   const m = mig();
   if (!V || !m) {
-    const venteTekst = !ON_PAGES ? forbindTekst()
-      : !netOk ? "Forbinder…"
-      : performance.now() - joinTid > 7000 ? "Kan ikke finde rummet. Er koden rigtig, og er skærmen åben?"
+    const ventet = performance.now() - joinTid > 7000;
+    const venteTekst = !ON_PAGES ? esc(forbindTekst())
+      : !netOk ? "Forbinder til serveren…"
+      : V && V.ud && V.ud.includes(MIT_ID) ? "Skærmen har fjernet dig fra rummet. 😢"
+      : V && V.sp && V.sp.length >= MAKS_SPILLERE ? `Rummet er fyldt (max ${MAKS_SPILLERE} spillere).`
+      : V ? "Skærmen har hørt dig – melder dig ind…"
+      : ventet ? `Ingen skærm svarer på koden <b>${esc(kode)}</b>. Tjek at koden er den samme, som står på den store skærm – den kan have fået en ny kode.`
       : "Melder dig ind…";
+    const hoert = sidstHoertSkaerm ? `hørt for ${Math.round((performance.now() - sidstHoertSkaerm) / 1000)} sek. siden` : "ikke hørt endnu";
     h = `<div class="titel lille-titel">SKÅL <span class="og">&amp;</span> KAMP</div>
-      ${gmHtml(esc(venteTekst))}
-      <div class="kort"><div class="kat midt">Rum</div><div class="kodevis">${esc(kode)}</div></div>
-      <div class="fyld"></div><button class="graa" data-act="forlad">✕ Forlad rummet</button>`;
+      ${gmHtml(venteTekst)}
+      <div class="kort"><div class="kat midt">Rum</div><div class="kodevis">${esc(kode)}</div>
+        <p class="lille midt">📡 Server: ${netOk ? "forbundet ✓" : "ikke forbundet"} · 📺 Skærm: ${hoert}${V && V.sp ? ` · ${V.sp.length} i rummet` : ""}</p></div>
+      ${ventet ? `<button class="primaer" data-act="proevIgen">🔄 Prøv igen</button>` : ""}
+      <div class="fyld"></div><button class="graa" data-act="forlad">✕ Forlad rummet (ret koden)</button>`;
   } else if (V.k === "lobby") {
     h = `<div class="titel lille-titel">SKÅL <span class="og">&amp;</span> KAMP</div>
       ${gmHtml(`Du er med, <b>${esc(m[1])}</b>! Kig på den store skærm – festen starter, når alle er klar.`)}
@@ -1534,9 +1550,13 @@ const A = {
     Lyd.klik(); deltag(k, n);
   },
   kopierLink() { kopierTekst(rumLink(), "Link kopieret! 📋"); },
-  smidUd(i) { const p = lobby[i]; if (!p) return; smidtUd.add(p.id); lobby.splice(i, 1); Net.leave(playerTopic(p.id)); Lyd.klik(); vis(); },
+  smidUd(i) {
+    const p = lobby[i]; if (!p) return;
+    if (fjernVent !== p.id) { fjernVent = p.id; Lyd.klik(); vis(); setTimeout(() => { if (fjernVent === p.id) { fjernVent = ""; vis(); } }, 3000); return; }
+    fjernVent = ""; smidtUd.add(p.id); lobby.splice(i, 1); Net.leave(playerTopic(p.id)); Lyd.klik(); vis();
+  },
   start() { if (lobby.length >= 2) nyFest(lobby.slice()); },
-  lukRum() { Net.close(); rolle = null; lobby = []; vis(); },
+  lukRum() { Net.close(); slet(VAERT_KEY); rolle = null; lobby = []; vis(); },
 
   // Runder (skærmen)
   spring() { S.runde--; Lyd.klik(); nyRunde(); },
@@ -1602,12 +1622,13 @@ const A = {
     sendMine("stem", { rid: V.rid, v });
     vis();
   },
+  proevIgen() { Lyd.klik(); deltag(kode, hent(NAVN_KEY, "Anonym")); },
   kopierTelefon() { kopierTekst(telefonResultatTekst(), "Kopieret! 📋"); },
   async delTelefon() { try { await navigator.share({ text: telefonResultatTekst() }); } catch (e) {} },
   forlad() {
     if (rolle === "telefon") sendMine("bye", {});
     setTimeout(() => Net.close(), 100);
-    rolle = null; V = null; slet(RUM_KEY);
+    rolle = null; V = null; sidstHoertSkaerm = 0;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     overlay.hidden = true; vis();
   },
@@ -1690,7 +1711,7 @@ function tegnBg(dt) {
   }
 }
 
-let sidst = performance.now(), gemTaeller = 0, helloTaeller = 0, sekTaeller = 0;
+let sidst = performance.now(), gemTaeller = 0, helloTaeller = 0;
 function loop(nu) {
   const dt = Math.min(100, nu - sidst); sidst = nu;
   tegnBg(dt);
@@ -1719,20 +1740,24 @@ function loop(nu) {
     gemTaeller += dt;
     if (gemTaeller > 2000) { gemTaeller = 0; gemState(); }
   }
-  // Skærmen: send tilstanden jævnligt (nye/genforbundne telefoner) og opdatér "forbundet"-prikker
-  if (rolle === "skaerm") {
-    if (nu - sidstUdsendt > SEND_MS) udsend();
-    sekTaeller += dt;
-    if (sekTaeller > 1000) { sekTaeller = 0; if (!S) vis(); else tjekAutoAfsloer(); }
-  }
-  // Telefonen: sig "jeg er her" jævnligt, og opdatér ventetekster
-  if (rolle === "telefon") {
-    helloTaeller += dt;
-    if (helloTaeller > HELLO_MS) { helloTaeller = 0; if (netOk) sendHello(); if (!mig()) vis(); }
-  }
   opdaterHud(false);
   requestAnimationFrame(loop);
 }
+
+// Netværks-hjerteslag. Ligger i setInterval (ikke i tegneløkken), så det også kører,
+// når skærmens fane ligger i baggrunden (fx mens linket sendes i gruppechatten).
+setInterval(() => {
+  const nu = performance.now();
+  if (rolle === "skaerm") {
+    if (nu - sidstUdsendt > SEND_MS) udsend();
+    if (!S) vis(); else tjekAutoAfsloer();
+  }
+  if (rolle === "telefon") {
+    helloTaeller += 1000;
+    if (helloTaeller >= HELLO_MS) { helloTaeller = 0; if (netOk) sendHello(); }
+    if (!mig()) vis();
+  }
+}, 1000);
 
 /* ---------- Opstart ---------- */
 addEventListener("resize", bgResize);
