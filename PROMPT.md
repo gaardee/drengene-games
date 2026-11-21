@@ -1,6 +1,8 @@
 # Prompt til at lave et nyt spil
 
-Kopiér alt mellem de to streger herunder ind til Claude. Udfyld afsnittet **"MIT SPIL"** nederst – resten skal du ikke røre.
+Det nemmeste er bare at starte en ny Claude Code-session i dette repo og skrive **"Vi vil lave et nyt spil"**. Så spørger Claude først, hvem I er, og guider jer derefter igennem alle beslutningerne (se `CLAUDE.md`).
+
+Vil du hellere give det hele på én gang, kan du kopiere alt mellem de to streger herunder ind til Claude og udfylde afsnittet **"MIT SPIL"** nederst. Det, du lader stå tomt, spørger Claude ind til.
 
 ---
 
@@ -87,12 +89,13 @@ Når en spiller abonnerer på mange kanaler på én gang, tæller det også med 
 
 ## Fremgangsmåde
 
-1. Læs beskrivelsen i "MIT SPIL" nedenfor. Hvis noget vigtigt er uklart, så stil mig højst 3 korte spørgsmål – ellers træf selv fornuftige valg og fortæl hvilke.
-2. Byg spillet.
-3. Test at det virker: tjek gerne i en headless browser både i mobil-størrelse (fx 390×844 med touch) og desktop-størrelse (fx 1280×800), og at et spil faktisk slutter inden for ca. 2 minutter.
-4. Følg git-reglerne i `CLAUDE.md`: arbejd på en branch (aldrig direkte på `main`), rør kun filer i din egen spilmappe, og push branchen.
-5. Opret en pull request mod `main`. Når en af os har merget den, ligger spillet på `https://gaardee.github.io/drengene-games/games/<mappenavn>/` og dukker selv op på forsiden.
-6. Giv mig til sidst et link til pull requesten og en kort opsummering: hvordan spillet spilles, hvordan man får point, og eventuelle ting du var i tvivl om.
+1. Spørg først, hvem der laver spillet, og omdøb samtalen med deres navne (se "Nyt spil" i `CLAUDE.md`).
+2. Læs "MIT SPIL" nedenfor, og guid os igennem de punkter, der er tomme eller uklare: ét emne ad gangen, med 2-4 forslag vi kan vælge imellem. Opsummér planen, og få den godkendt, før du bygger.
+3. Byg spillet.
+4. Test at det virker: tjek gerne i en headless browser både i mobil-størrelse (fx 390×844 med touch) og desktop-størrelse (fx 1280×800), og at et spil faktisk slutter inden for ca. 2 minutter.
+5. Følg git-reglerne i `CLAUDE.md`: arbejd på en branch (aldrig direkte på `main`), rør kun filer i din egen spilmappe, og push branchen.
+6. Opret en pull request mod `main`. Når en af os har merget den, ligger spillet på `https://gaardee.github.io/drengene-games/games/<mappenavn>/` og dukker selv op på forsiden.
+7. Giv mig til sidst et link til pull requesten og en kort opsummering: hvordan spillet spilles, hvordan man får point, og eventuelle ting du var i tvivl om. Skriv navnene på dem, der har lavet spillet, i pull requesten.
 
 ## MIT SPIL
 
