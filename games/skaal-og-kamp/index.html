@@ -1,0 +1,1751 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b0620">
+<title>Skål & Kamp</title>
+<style>
+  /* =========================================================
+     Skål & Kamp – et festspil hvor en fræk pixel-nisse er
+     gamemaster. Én fælles skærm (værten) + alle spillere på
+     deres egen telefon (buzzer og hemmelige afstemninger).
+     ========================================================= */
+  :root {
+    --bg: #0b0620; --panel: #170c38; --kant: #4a33a0;
+    --pink: #ff2bd6; --cyan: #22f3ff; --gul: #ffe14d; --groen: #39ff88; --roed: #ff3b5c;
+    --tekst: #f2ecff; --svag: #a99bd6;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; overflow: hidden; background: var(--bg); color: var(--tekst);
+    font-family: var(--mono);
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  input { user-select: text; -webkit-user-select: text; }
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; }
+  /* CRT-scanlines over det hele */
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 60;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px);
+  }
+
+  #app {
+    position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column;
+    max-width: 860px; margin: 0 auto;
+    padding: max(6px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
+  }
+
+  /* ---------- Topbjælke ---------- */
+  #hud { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 52px; }
+  #hudTid {
+    font-size: clamp(22px, 6.5vw, 32px); font-weight: 900; color: var(--gul);
+    text-shadow: 0 0 10px #ffb800, 3px 3px 0 #000; letter-spacing: 2px;
+  }
+  #hudTid.travlt { color: var(--roed); text-shadow: 0 0 10px var(--roed), 3px 3px 0 #000; animation: blink 1s steps(2) infinite; }
+  #hudX2 {
+    background: var(--pink); color: #fff; font-weight: 900; padding: 3px 7px; font-size: 16px;
+    box-shadow: 3px 3px 0 #000, 0 0 14px var(--pink); animation: blink .8s steps(2) infinite;
+  }
+  #hudRunde { flex: 1; min-width: 0; text-align: center; color: var(--cyan); font-weight: 900; letter-spacing: 2px; font-size: clamp(12px, 3.4vw, 16px); text-shadow: 0 0 8px var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #hudNet { font-size: 13px; font-weight: 900; color: var(--svag); white-space: nowrap; }
+  .ikon {
+    width: 46px; height: 46px; min-height: 46px; padding: 0; font-size: 20px; flex: 0 0 auto;
+    border: 3px solid var(--kant); background: #120a2e; box-shadow: 3px 3px 0 #000;
+  }
+
+  /* ---------- Scene ---------- */
+  #scene {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-y;
+    display: flex; flex-direction: column; gap: 12px; padding: 6px 2px 10px;
+  }
+  #scene * { touch-action: manipulation; }
+  .fyld { flex: 1; }
+
+  button {
+    font: inherit; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;
+    min-height: 50px; padding: 10px 14px; color: var(--tekst); cursor: pointer;
+    border: 3px solid var(--cyan); background: #0d1d3a; border-radius: 0;
+    box-shadow: 4px 4px 0 #000, 0 0 12px rgba(34,243,255,.3);
+    touch-action: manipulation; position: relative;
+  }
+  button:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; }
+  button:disabled { opacity: .35; cursor: default; }
+  .primaer { border-color: var(--pink); background: #3a0a35; box-shadow: 4px 4px 0 #000, 0 0 18px rgba(255,43,214,.55); font-size: clamp(16px, 4.4vw, 20px); }
+  .stor { width: 100%; min-height: 60px; }
+  .groen { border-color: var(--groen); background: #0b3020; box-shadow: 4px 4px 0 #000, 0 0 14px rgba(57,255,136,.4); }
+  .roed { border-color: var(--roed); background: #3a0a14; box-shadow: 4px 4px 0 #000, 0 0 14px rgba(255,59,92,.4); }
+  .graa { border-color: var(--kant); background: #120a2e; box-shadow: 3px 3px 0 #000; color: var(--svag); }
+  .valgt { border-color: var(--gul) !important; background: #4a3c06 !important; color: #fff !important; box-shadow: 4px 4px 0 #000, 0 0 18px rgba(255,225,77,.6) !important; }
+  .lilleknap { min-height: 44px; font-size: 13px; padding: 8px 12px; }
+  .knaprad { display: flex; gap: 10px; flex-wrap: wrap; }
+  .knaprad > * { flex: 1 1 140px; }
+  /* Tastatur-hjælp vises kun på computer */
+  .tast { display: none; position: absolute; top: 2px; left: 4px; font-size: 10px; color: var(--svag); }
+  body.mus .tast { display: block; }
+
+  .kort { background: var(--panel); border: 3px solid var(--kant); padding: 14px; box-shadow: 6px 6px 0 #000; }
+  .lille { font-size: 13px; color: var(--svag); line-height: 1.45; }
+  .midt { text-align: center; }
+  .advarselstekst { color: var(--gul); font-weight: 700; font-size: 14px; line-height: 1.4; text-align: center; }
+
+  /* ---------- Titel ---------- */
+  .titel {
+    text-align: center; font-weight: 900; line-height: .95; letter-spacing: 3px;
+    font-size: clamp(42px, 14vw, 84px); color: var(--gul);
+    text-shadow: 4px 4px 0 var(--pink), 8px 8px 0 #000, 0 0 30px rgba(255,225,77,.5);
+    margin-top: 6px;
+  }
+  .titel.lille-titel { font-size: clamp(28px, 9vw, 48px); }
+  .titel .og { color: var(--cyan); text-shadow: 4px 4px 0 #000, 0 0 20px var(--cyan); }
+  .undertitel { text-align: center; color: var(--pink); font-weight: 900; letter-spacing: 3px; font-size: clamp(12px, 3.5vw, 16px); text-shadow: 0 0 10px var(--pink); }
+  .blink { animation: blink 1.2s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  /* ---------- Gamemaster-nissen ---------- */
+  .gm { display: flex; gap: 10px; align-items: flex-start; }
+  .gm canvas { width: 54px; height: 63px; flex: 0 0 auto; image-rendering: pixelated; animation: hop 1.4s steps(2) infinite; filter: drop-shadow(3px 3px 0 #000); }
+  @keyframes hop { 50% { transform: translateY(-3px); } }
+  .boble {
+    position: relative; background: #fffbe8; color: #16102a; padding: 10px 12px; border: 3px solid #000;
+    box-shadow: 4px 4px 0 #000; font-weight: 700; font-size: clamp(14px, 3.9vw, 17px); line-height: 1.35;
+    animation: pop .25s ease-out;
+  }
+  .boble::before { content: ""; position: absolute; left: -13px; top: 14px; border: 6px solid transparent; border-right: 8px solid #000; }
+  .boble b { color: #c0127f; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+
+  /* ---------- Start og lobby ---------- */
+  form.felt { display: flex; flex-direction: column; gap: 10px; }
+  form.felt input {
+    width: 100%; font: inherit; font-weight: 700; font-size: 18px; padding: 10px; min-height: 50px;
+    background: #07031a; color: var(--tekst); border: 3px solid var(--cyan); border-radius: 0; outline: none;
+  }
+  form.felt input:focus { box-shadow: 0 0 14px var(--cyan); }
+  form.felt input.kodefelt { text-transform: uppercase; letter-spacing: 8px; font-size: 26px; text-align: center; }
+  h3 { color: var(--cyan); letter-spacing: 2px; font-size: 15px; margin-bottom: 8px; text-transform: uppercase; }
+  .kodevis { font-size: clamp(56px, 18vw, 110px); font-weight: 900; letter-spacing: 12px; text-align: center; color: var(--gul); text-shadow: 5px 5px 0 var(--pink), 0 0 30px rgba(255,225,77,.6); line-height: 1.05; }
+  .link { text-align: center; color: var(--cyan); font-weight: 700; font-size: clamp(12px, 3.4vw, 16px); word-break: break-all; margin: 6px 0 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { min-height: 44px; font-size: 15px; padding: 6px 10px; border-color: var(--gul); background: #2b2408; box-shadow: 3px 3px 0 #000; text-transform: none; }
+  .chip i { font-style: normal; color: var(--roed); margin-left: 6px; }
+  .chip.offline { opacity: .45; }
+  .prik { display: inline-block; width: 10px; height: 10px; margin-right: 6px; background: var(--groen); box-shadow: 0 0 8px var(--groen); }
+  .offline .prik { background: var(--roed); box-shadow: none; }
+  details summary { cursor: pointer; font-weight: 900; color: var(--cyan); letter-spacing: 1px; min-height: 28px; }
+  .regler ul { margin: 8px 0 0 18px; line-height: 1.6; font-size: 14px; }
+
+  /* ---------- Runde (skærmen) ---------- */
+  .rundehoved { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tag { font-weight: 900; padding: 5px 10px; font-size: clamp(16px, 4.6vw, 22px); letter-spacing: 2px; text-transform: uppercase; box-shadow: 3px 3px 0 #000; color: #0b0620; }
+  .tag.quiz { background: var(--cyan); } .tag.duel { background: var(--roed); color: #fff; }
+  .tag.skuespil { background: var(--gul); } .tag.sang { background: var(--pink); color: #fff; } .tag.peg { background: var(--groen); }
+  .pointinfo { font-size: 13px; color: var(--svag); font-weight: 700; }
+  .advarsel { background: var(--roed); color: #fff; font-weight: 900; padding: 8px 10px; text-align: center; box-shadow: 4px 4px 0 #000; animation: blink 1s steps(2) infinite; }
+  .kat { color: var(--svag); font-weight: 900; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
+  .spm { font-size: clamp(20px, 5.6vw, 30px); font-weight: 900; line-height: 1.25; margin-top: 6px; }
+  .svar { margin-top: 12px; padding: 10px; border: 3px dashed var(--groen); color: var(--groen); font-weight: 900; font-size: clamp(20px, 5.6vw, 30px); text-shadow: 0 0 10px rgba(57,255,136,.6); }
+  .vs { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; text-align: center; }
+  .vs .navn { font-size: clamp(22px, 7vw, 38px); font-weight: 900; color: var(--gul); text-shadow: 3px 3px 0 #000, 0 0 12px rgba(255,225,77,.5); word-break: break-word; }
+  .vs .mod { font-size: clamp(18px, 5vw, 26px); font-weight: 900; color: var(--roed); text-shadow: 0 0 12px var(--roed); }
+  .opgave { margin-top: 10px; font-size: clamp(17px, 4.6vw, 23px); font-weight: 800; line-height: 1.35; text-align: center; }
+  .hemmeligt { font-size: clamp(30px, 9vw, 54px); font-weight: 900; text-align: center; color: var(--gul); text-shadow: 4px 4px 0 var(--pink), 0 0 20px rgba(255,225,77,.6); padding: 12px 0; word-break: break-word; }
+  .spoerg { font-weight: 900; color: var(--cyan); letter-spacing: 1px; text-transform: uppercase; font-size: 14px; }
+  .spillergrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .spillergrid button { text-transform: none; font-size: clamp(16px, 4.4vw, 19px); word-break: break-word; }
+  .rtimer { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .rtal { font-size: 34px; font-weight: 900; color: var(--gul); min-width: 64px; text-align: right; text-shadow: 3px 3px 0 #000; }
+  .rtal.lav { color: var(--roed); animation: blink .5s steps(2) infinite; }
+  .rbar { flex: 1; height: 18px; border: 3px solid var(--kant); background: #07031a; }
+  .rbar i { display: block; height: 100%; background: repeating-linear-gradient(90deg, var(--gul) 0 10px, #ffb800 10px 14px); }
+  .ventbuzz { text-align: center; font-weight: 900; color: var(--cyan); font-size: clamp(16px, 4.6vw, 22px); text-shadow: 0 0 10px var(--cyan); animation: blink 1.4s steps(2) infinite; padding: 6px; }
+  .buzzer {
+    text-align: center; font-weight: 900; font-size: clamp(36px, 11vw, 72px); color: #fff; background: var(--roed);
+    border: 4px solid #000; box-shadow: 6px 6px 0 #000, 0 0 40px var(--roed); padding: 10px; word-break: break-word;
+    animation: buzzind .5s ease-out;
+  }
+  .buzzer small { display: block; font-size: clamp(14px, 4vw, 20px); letter-spacing: 2px; }
+  @keyframes buzzind { 0% { transform: scale(.3) rotate(-6deg); } 60% { transform: scale(1.08) rotate(2deg); } }
+  .stemmer { text-align: center; font-weight: 900; font-size: clamp(18px, 5vw, 26px); color: var(--gul); }
+  .stemmer small { display: block; font-size: 13px; color: var(--svag); margin-top: 4px; }
+  .tromme { font-size: clamp(60px, 20vw, 110px); text-align: center; animation: hop .2s steps(2) infinite; }
+
+  /* ---------- Telefon ---------- */
+  .buzz {
+    display: block; width: min(76vw, 330px, 46vh); height: min(76vw, 330px, 46vh); min-height: 0; border-radius: 50%; margin: 6px auto;
+    font-size: clamp(44px, 14vw, 72px); color: #fff; text-shadow: 4px 4px 0 #000;
+    background: radial-gradient(circle at 35% 30%, #ff8a9e, #e0002f 58%, #7a0018); border: 6px solid #000;
+    box-shadow: 0 12px 0 #5a0012, 0 0 50px rgba(255,59,92,.7);
+  }
+  .buzz:active, .buzz.trykket { transform: translateY(10px); box-shadow: 0 2px 0 #5a0012, 0 0 50px rgba(255,59,92,.7); }
+  .stort { text-align: center; font-weight: 900; font-size: clamp(28px, 9vw, 48px); line-height: 1.15; word-break: break-word; }
+  .stort small { display: block; font-size: clamp(15px, 4.4vw, 20px); color: var(--svag); margin-top: 8px; letter-spacing: 1px; }
+  .stort.groen-t { color: var(--groen); text-shadow: 3px 3px 0 #000, 0 0 20px rgba(57,255,136,.6); }
+  .stort.gul-t { color: var(--gul); text-shadow: 3px 3px 0 #000, 0 0 20px rgba(255,225,77,.5); }
+  .stort.roed-t { color: var(--roed); text-shadow: 3px 3px 0 #000; }
+  .tommel { font-size: 46px; min-height: 110px; }
+
+  /* ---------- Resultat og stilling ---------- */
+  .plus { font-size: clamp(30px, 9vw, 52px); font-weight: 900; text-align: center; color: var(--groen); text-shadow: 4px 4px 0 #000, 0 0 20px rgba(57,255,136,.7); animation: pop .35s ease-out both; word-break: break-word; }
+  .plus.nul { color: var(--roed); text-shadow: 4px 4px 0 #000, 0 0 20px rgba(255,59,92,.6); }
+  .note { text-align: center; color: var(--svag); font-weight: 700; line-height: 1.5; }
+  .note b { color: var(--tekst); }
+  .stilling { display: flex; flex-direction: column; gap: 6px; }
+  .srk { display: grid; grid-template-columns: 30px minmax(70px, 34%) 1fr 44px; gap: 8px; align-items: center; font-weight: 900; font-size: clamp(14px, 3.9vw, 17px); }
+  .srk .nr { color: var(--svag); text-align: right; }
+  .srk .nv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srk .bar { height: 16px; background: #07031a; border: 2px solid var(--kant); }
+  .srk .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); transition: width .5s; }
+  .srk.ny .bar i { background: var(--groen); box-shadow: 0 0 10px var(--groen); }
+  .srk.ny .nv { color: var(--groen); }
+  .srk.mig .nv { color: var(--gul); }
+  .srk .pt { text-align: right; color: var(--gul); }
+
+  /* ---------- Slut ---------- */
+  .podie { display: flex; align-items: flex-end; justify-content: center; gap: 8px; margin-top: 6px; }
+  .podie > div { flex: 1 1 0; max-width: 180px; text-align: center; }
+  .podie .nv { font-weight: 900; font-size: clamp(14px, 4.2vw, 20px); word-break: break-word; }
+  .podie .blok { margin-top: 6px; border: 3px solid #000; box-shadow: 4px 4px 0 #000; font-weight: 900; font-size: 26px; display: flex; flex-direction: column; justify-content: center; color: #0b0620; }
+  .podie .blok small { font-size: 13px; }
+  .p1 .blok { height: 120px; background: var(--gul); } .p2 .blok { height: 88px; background: #cfd6ff; } .p3 .blok { height: 64px; background: #e0955a; }
+  .krone { font-size: 32px; animation: hop 1s steps(2) infinite; }
+  table.liste { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.liste td { padding: 5px 4px; border-bottom: 1px dashed var(--kant); }
+  table.liste td:first-child { width: 2.4em; color: var(--svag); }
+  table.liste td:last-child { text-align: right; color: var(--gul); font-weight: 900; }
+  table.liste tr.me td { color: var(--groen); }
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .stat { border: 2px solid var(--kant); padding: 8px; font-size: 14px; line-height: 1.4; }
+  .stat b { color: var(--gul); }
+
+  /* ---------- Overlay og bannere ---------- */
+  #overlay { position: fixed; inset: 0; z-index: 40; background: rgba(5,2,15,.86); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #overlay[hidden] { display: none; }
+  #overlay .kort { width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; text-align: center; }
+  #overlay h2 { font-size: 40px; color: var(--gul); text-shadow: 4px 4px 0 var(--pink); letter-spacing: 4px; }
+  .banner {
+    position: fixed; left: 50%; top: 42%; z-index: 50; transform: translate(-50%, -50%);
+    width: min(92vw, 560px); text-align: center; padding: 18px; pointer-events: none;
+    background: #0b0620; border: 4px solid var(--pink); box-shadow: 8px 8px 0 #000, 0 0 40px var(--pink);
+    font-weight: 900; font-size: clamp(24px, 7vw, 40px); color: var(--gul); text-shadow: 3px 3px 0 var(--pink);
+    animation: bannerind 3.2s ease-out both;
+  }
+  .banner small { display: block; font-size: 16px; color: var(--tekst); text-shadow: none; margin-top: 6px; }
+  @keyframes bannerind { 0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; } 10% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; } 15%, 85% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { opacity: 0; } }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 55; background: var(--groen); color: #0b0620; font-weight: 900; padding: 10px 16px; box-shadow: 4px 4px 0 #000; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+  #toast.vis { opacity: 1; }
+
+  @media (max-height: 640px) {
+    .gm canvas { width: 40px; height: 47px; }
+    .boble { padding: 7px 10px; }
+    button { min-height: 46px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="app">
+  <header id="hud">
+    <span id="hudTid" hidden>30:00</span>
+    <span id="hudX2" hidden>×2</span>
+    <span id="hudRunde"></span>
+    <span id="hudNet" hidden></span>
+    <button class="ikon" id="btnLyd" data-act="lyd" aria-label="Lyd til/fra">🔊</button>
+    <button class="ikon" id="btnPause" data-act="pause" aria-label="Pause" hidden>⏸</button>
+  </header>
+  <main id="scene"></main>
+</div>
+<div id="overlay" hidden></div>
+<div id="toast"></div>
+
+<script src="../../scores.js"></script>
+<script>
+"use strict";
+
+/* =====================================================================
+   SÅDAN VIRKER DET
+   - Én enhed er SKÆRMEN (værten): den kører hele spillet – runder, ur,
+     point – og viser gamemaster-nissen. Den, der sidder nærmest, trykker
+     "Rigtigt"/"Forkert" og vælger vindere af dueller.
+   - Alle spillere er med på deres egen TELEFON: buzzer til quiz og mime,
+     hemmelige afstemninger (pegeleg og sang) og det hemmelige mime-ord.
+   - Det kører over vores egen WebSocket-server (Laravel Reverb på
+     ws.realtime.gaarde.it). Serveren gemmer intet og tager kun imod spil
+     fra gaardee.github.io – så multiplayer virker ikke, når filen åbnes lokalt.
+   - KANALER: én fælles kanal pr. rum (kun skærmen sender: spillets
+     tilstand ca. hvert 2. sekund + ved hver ændring) og én kanal pr. spiller,
+     som kun spilleren og skærmen er med på (buzz, stemmer, mime-ordet).
+     Telefonerne sender kun "hello" på den fælles kanal, indtil de er med.
+   ===================================================================== */
+const SPIL = "skaal-og-kamp";                 // = mappenavnet (ranglisten og kanalnavne)
+const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
+const ON_PAGES = location.hostname === "gaardee.github.io";
+const GEM_KEY = "skaalOgKamp_spil";           // skærmens igangværende spil (overlever genindlæsning)
+const NAVN_KEY = "skaalOgKamp_navn";          // telefonens spillernavn
+const ID_KEY = "skaalOgKamp_id";              // telefonens faste id (så man kan komme tilbage)
+const RUM_KEY = "skaalOgKamp_rum";            // telefonens sidste rum
+const GEMT_KEY = "skaalOgKamp_gemt";          // hvilket spil telefonen allerede har gemt score for
+const TOP_KEY = "skaalOgKamp_top";            // lokal top 10
+const LYD_KEY = "skaalOgKamp_lyd";
+// Spillets længde. Kan ændres med ?minutter=10 i adressen (fx til en kort runde).
+const MINUTTER = (() => {
+  const m = parseFloat(new URLSearchParams(location.search).get("minutter"));
+  return m > 0 && m <= 120 ? m : 30;
+})();
+const FINALE_MS = Math.min(5 * 60000, MINUTTER * 60000 * 0.2); // dobbeltpoint de sidste 5 minutter
+const MAKS_SPILLERE = 12;
+const SEND_MS = 2000;      // skærmen sender tilstanden mindst hvert 2. sekund
+const HELLO_MS = 3000;     // telefonen siger "jeg er her" hvert 3. sekund
+const ONLINE_MS = 15000;   // hørt fra inden for 15 sek. = forbundet
+
+// Point pr. rundetype (ganges med 2 i finalen)
+const POINT = { quiz: 1, duel: 2, uafgjort: 1, skuespil: 1, sang: 2, peg: 1 };
+// Hvor ofte de forskellige runder kommer (vægte)
+const TYPER = [["quiz", 40], ["duel", 26], ["skuespil", 14], ["sang", 9], ["peg", 11]];
+
+/* =====================================================================
+/* =====================================================================
+   INDHOLD – ret og tilføj løs! (Husk at svarene skal være rigtige 😉)
+   ===================================================================== */
+// [kategori, spørgsmål, svar]
+const QUIZ = [
+  ["🎄 Jul", "Hvor mange rensdyr trækker julemandens slæde, når man ikke tæller Rudolf med?", "8"],
+  ["🎄 Jul", "Hvor bor julemanden ifølge danske børn?", "Grønland"],
+  ["🎄 Jul", "I hvilken finsk by har julemanden sit officielle værksted?", "Rovaniemi"],
+  ["🎄 Jul", "Hvad hedder de tre vise mænd?", "Kaspar, Melchior og Balthasar"],
+  ["🎄 Jul", "Hvilke tre gaver fik Jesusbarnet af de vise mænd?", "Guld, røgelse og myrra"],
+  ["🎄 Jul", "I hvilken by blev Jesus født ifølge juleevangeliet?", "Betlehem"],
+  ["🎄 Jul", "Hvilket firma får (lidt uretfærdigt) æren for den røde julemand?", "Coca-Cola"],
+  ["🎄 Jul", "Hvad er nissens yndlingsmad?", "Risengrød (med en klat smør)"],
+  ["🎄 Jul", "Hvad får man, hvis man finder mandlen i risalamanden?", "Mandelgaven"],
+  ["🎄 Jul", "Hvilken helgen fejres med optog den 13. december?", "Sankta Lucia"],
+  ["🎄 Jul", "Hvilket træ er det mest solgte juletræ i Danmark?", "Nordmannsgran"],
+  ["🎄 Jul", "Hvem skrev 'Et juleeventyr' om gnieren Scrooge?", "Charles Dickens"],
+  ["🎄 Jul", "Hvor mange spøgelser besøger Scrooge – ud over Marley?", "3"],
+  ["🎄 Jul", "Hvem har lavet det ældste kendte flettede julehjerte?", "H.C. Andersen"],
+  ["🎄 Jul", "Hvad hedder den røde juleblomst, der også kaldes poinsettia?", "Julestjerne"],
+  ["🎄 Jul", "Hvad hedder dagen den 23. december?", "Lillejuleaften"],
+  ["🎄 Jul", "Hvor mange lys er der i en almindelig adventskrans?", "4"],
+  ["🎄 Jul", "Hvilket land giver hvert år London det store juletræ på Trafalgar Square?", "Norge"],
+  ["🇩🇰 Danmark", "Hvilket år faldt Dannebrog ned fra himlen ifølge sagnet?", "1219"],
+  ["🇩🇰 Danmark", "Hvor mange kommuner er der i Danmark?", "98"],
+  ["🇩🇰 Danmark", "Hvor mange regioner er Danmark delt op i?", "5"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks højeste naturlige punkt?", "Møllehøj"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks længste å?", "Gudenåen"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks største sø?", "Arresø"],
+  ["🇩🇰 Danmark", "Hvad er Danmarks ældste by?", "Ribe"],
+  ["🇩🇰 Danmark", "Hvilket år åbnede Tivoli?", "1843"],
+  ["🇩🇰 Danmark", "Hvilket år blev Danmark medlem af EF (nu EU)?", "1973"],
+  ["🇩🇰 Danmark", "Hvilket år blev Margrethe 2. dronning?", "1972"],
+  ["🇩🇰 Danmark", "Hvad hedder Danmarks konge?", "Frederik 10."],
+  ["🇩🇰 Danmark", "Hvem skrev nationalsangen 'Der er et yndigt land'?", "Adam Oehlenschläger"],
+  ["🇩🇰 Danmark", "Hvad er Danmarks nationalfugl?", "Knopsvanen"],
+  ["🇩🇰 Danmark", "Hvem grundlagde LEGO?", "Ole Kirk Christiansen"],
+  ["🇩🇰 Danmark", "I hvilken by blev H.C. Andersen født?", "Odense"],
+  ["🇩🇰 Danmark", "Hvilket år vandt Danmark EM i fodbold?", "1992"],
+  ["🇩🇰 Danmark", "Hvilken dansk landsholdsspiller faldt om på banen under EM 2021?", "Christian Eriksen"],
+  ["🇩🇰 Danmark", "Hvilket land ligger Danmarks eneste landegrænse til?", "Tyskland"],
+  ["🎵 Musik", "Hvilken gruppe udgav 'Last Christmas'?", "Wham!"],
+  ["🎵 Musik", "Hvem synger 'All I Want for Christmas Is You'?", "Mariah Carey"],
+  ["🎵 Musik", "Hvilket år udkom 'All I Want for Christmas Is You'?", "1994"],
+  ["🎵 Musik", "Hvem skrev 'White Christmas'?", "Irving Berlin"],
+  ["🎵 Musik", "Hvad hedder The Pogues' juleklassiker med Kirsty MacColl?", "Fairytale of New York"],
+  ["🎵 Musik", "Hvad hed velgørenhedsprojektet bag 'Do They Know It's Christmas?'", "Band Aid"],
+  ["🎵 Musik", "Hvad trækker slæden i 'Jingle Bells'?", "Én hest (\"one-horse open sleigh\")"],
+  ["🎵 Musik", "Hvilken dansk gruppe sang 'Barbie Girl'?", "Aqua"],
+  ["🎵 Musik", "Hvem vandt Eurovision for Danmark i år 2000?", "Olsen Brothers"],
+  ["🎵 Musik", "Hvilken dansk sangerinde vandt Eurovision i 2013 med 'Only Teardrops'?", "Emmelie de Forest"],
+  ["🎵 Musik", "Hvem var forsanger i Gasolin'?", "Kim Larsen"],
+  ["🎵 Musik", "Hvilken dansk sangerinde synger på 'Lean On' med Major Lazer?", "MØ"],
+  ["🎵 Musik", "Hvilket band lavede 'Bohemian Rhapsody'?", "Queen"],
+  ["🎵 Musik", "Hvem sang 'Thriller'?", "Michael Jackson"],
+  ["🎬 Film & TV", "Hvad hedder drengen, der bliver glemt i 'Alene hjemme'?", "Kevin (McCallister)"],
+  ["🎬 Film & TV", "Hvilken by flyver familien til i 'Alene hjemme'?", "Paris"],
+  ["🎬 Film & TV", "Hvem spiller Kevin i 'Alene hjemme'?", "Macaulay Culkin"],
+  ["🎬 Film & TV", "Hvad hedder Grinchens hund?", "Max"],
+  ["🎬 Film & TV", "Hvad hedder bygningen i 'Die Hard'?", "Nakatomi Plaza"],
+  ["🎬 Film & TV", "Hvem spiller Buddy i filmen 'Elf'?", "Will Ferrell"],
+  ["🎬 Film & TV", "Hvad fejrer Miss Sophie i 'Dinner for One'?", "Sin 90-års fødselsdag"],
+  ["🎬 Film & TV", "Hvad hedder butleren i 'Dinner for One'?", "James"],
+  ["🎬 Film & TV", "Hvad hedder Disney-showet, som DR viser juleaften kl. 16?", "Fra alle os til alle jer"],
+  ["🎬 Film & TV", "Hvilken trio lavede 'The Julekalender' fra 1991?", "De Nattergale"],
+  ["🎬 Film & TV", "Hvilket pengeskab knækker Egon Olsen altid?", "Franz Jäger, Berlin"],
+  ["🎬 Film & TV", "Hvilken dansk film vandt Oscar for bedste internationale film i 2021?", "Druk"],
+  ["🎬 Film & TV", "Hvilken dansk skuespiller spiller skurken Le Chiffre i 'Casino Royale'?", "Mads Mikkelsen"],
+  ["🎬 Film & TV", "Hvad hedder snemanden i 'Frost'?", "Olaf"],
+  ["🎬 Film & TV", "Hvad hedder rensdyret i 'Frost'?", "Sven"],
+  ["🎬 Film & TV", "Hvad hedder Harry Potters ugle?", "Hedvig"],
+  ["🎬 Film & TV", "Hvilken film: 'Yippee-ki-yay …'?", "Die Hard"],
+  ["🍺 Mad & drikke", "Hvad hedder dagen, hvor Tuborg Julebryg kommer på hanerne?", "J-dag"],
+  ["🍺 Mad & drikke", "Hvornår er J-dag?", "Første fredag i november"],
+  ["🍺 Mad & drikke", "Hvor mange procent alkohol er der i en Tuborg Grøn?", "4,6 %"],
+  ["🍺 Mad & drikke", "Hvilket krydderi giver Aalborg Taffel Akvavit sin klassiske smag?", "Kommen"],
+  ["🍺 Mad & drikke", "Hvilket land kommer Jägermeister fra?", "Tyskland"],
+  ["🍺 Mad & drikke", "Hvad giver brunkager deres brune farve og søde smag?", "Sirup"],
+  ["🍺 Mad & drikke", "Hvilke to slags kød er mest almindelige juleaften i Danmark?", "And og flæskesteg"],
+  ["🍺 Mad & drikke", "Hvad kom der oprindeligt inden i æbleskiver?", "Æble"],
+  ["🧠 Hovedregning", "Hvad er 7 × 8?", "56"],
+  ["🧠 Hovedregning", "Hvad er 17 × 3?", "51"],
+  ["🧠 Hovedregning", "Hvor mange timer er der i en uge?", "168"],
+  ["🧠 Hovedregning", "Hvor mange sekunder er der i en time?", "3.600"],
+  ["🧠 Hovedregning", "Hvad er 25 % af 200?", "50"],
+  ["🌍 Alt muligt", "Hvad er hovedstaden i Australien?", "Canberra"],
+  ["🌍 Alt muligt", "Hvad er hovedstaden i Canada?", "Ottawa"],
+  ["🌍 Alt muligt", "Hvad er det kemiske tegn for guld?", "Au"],
+  ["🌍 Alt muligt", "Hvilken planet er tættest på Solen?", "Merkur"],
+  ["🌍 Alt muligt", "Hvilket år faldt Berlinmuren?", "1989"],
+  ["🌍 Alt muligt", "Hvor mange stjerner er der på EU's flag?", "12"],
+  ["🌍 Alt muligt", "Hvor mange ben har en edderkop?", "8"],
+];
+
+// [udfordring, sekunder (0 = ingen nedtælling)]
+const DUEL = [
+  ["Armlægning! Bedst af én. Albuen bliver på bordet.", 0],
+  ["Stå på ét ben med lukkede øjne. Den, der står længst, vinder.", 0],
+  ["Stabl flest pebernødder (eller mønter) i ét tårn.", 30],
+  ["Tommelfingerkrig – bedst af 3.", 0],
+  ["Sten, saks, papir – bedst af 5.", 0],
+  ["Stirrekonkurrence! Den første, der blinker eller griner, taber.", 0],
+  ["Sig 'Fem flade flødeboller på et fladt fad' tre gange hurtigt. Den hurtigste uden fejl vinder.", 0],
+  ["Nævn julesange på skift. Den, der går i stå eller gentager, taber.", 0],
+  ["Nævn danske byer på skift. Den, der går i stå eller gentager, taber.", 0],
+  ["Nævn ord, der rimer på 'jul', på skift. Den, der går i stå, taber.", 0],
+  ["Balancér en ske på næsen. Den, der holder den længst, vinder.", 0],
+  ["Planke! Den, der holder længst, vinder.", 0],
+  ["Hold et glas vand i strakt arm. Den, der holder længst, vinder.", 0],
+  ["Fold en serviet til det flotteste juletræ. Bordet dømmer.", 45],
+  ["Byg det højeste tårn af ting fra bordet. Ingen hjælp!", 45],
+  ["Tegn en nisse med den 'forkerte' hånd. Bordet dømmer den flotteste.", 30],
+  ["Læg en småkage på panden, og få den ned i munden uden hænder. Først til at spise den vinder.", 0],
+  ["Pust en serviet hen over bordet. Den første ud over kanten vinder.", 0],
+  ["Klap flest gange. Bordet tæller (deles i to hold).", 10],
+  ["Grimasse-duel: Lav den grimmeste grimasse. Bordet stemmer.", 0],
+  ["Bedste julemandslatter: 'HO HO HO!'. Bordet stemmer.", 0],
+  ["Wall sit: Sid op ad væggen uden stol. Den, der holder længst, vinder.", 0],
+  ["Sig alfabetet baglæns. Den hurtigste uden fejl vinder.", 0],
+  ["Nævn julemandens rensdyr på skift. Den, der går i stå, taber.", 0],
+  ["Balancér en tom flaske på hovedet. Den, der holder den længst, vinder.", 0],
+  ["Hvem kan holde en tone længst? Én tone, ét åndedrag.", 0],
+  ["Snak uafbrudt om sild i 20 sekunder uden at sige 'øh'. Den bedste vinder.", 20],
+];
+
+const MIME = [
+  "Julemanden sidder fast i skorstenen", "Rudolf med snue", "At pakke en gave ind", "At danse om juletræet",
+  "Skøjteløb på glat is", "Sneboldkamp", "At bage brunkager", "At finde mandlen", "Fuld onkel holder tale",
+  "At bære juletræet hjem", "Kø i Bilka den 23. december", "En snemand der smelter", "En nisse der driller",
+  "At få en gave, man ikke kan lide", "Taxachauffør kl. 3 om natten", "Pingvin på glatis", "En kalkun der flygter",
+  "At synge karaoke", "At spise risalamande", "At tabe telefonen i toilettet", "Vikinger der skåler",
+  "At hælde snaps op", "Luciaoptog", "At klippe julehjerter", "At skrive ønskeseddel", "At pynte juletræet",
+  "Julemanden på slankekur", "At skifte pære i julestjernen", "Et rensdyr der lærer at flyve", "At sove til julegudstjeneste",
+];
+
+const TEGN = [
+  "Snemand", "Rensdyr", "Juletræ", "Nisse", "Risalamande", "Julestjerne", "Slæde", "Skorsten", "Pebernød",
+  "Kirkeklokke", "Julegave", "Snefnug", "Adventskrans", "Mistelten", "Kirke", "Engel", "Skøjter", "Julehjerte",
+  "Ølflaske", "Sild", "Flæskesteg", "Pingvin", "Isbjørn", "Brunkage", "Kravlenisse", "Grønland", "Julemandens mave",
+  "Juleand", "Æbleskive", "Snapseglas",
+];
+
+const SANGE = [
+  "Højt fra træets grønne top", "Nu er det jul igen", "Glade jul", "Dejlig er jorden",
+  "Sikken voldsom trængsel og alarm", "På loftet sidder nissen med sin julegrød", "Jeg så julemanden kysse mor",
+  "Rudolf med den røde tud", "Jingle Bells", "Last Christmas", "All I Want for Christmas Is You",
+  "Juletræet med sin pynt", "Et barn er født i Betlehem", "Jul det' cool",
+];
+const STILE = [
+  "som en operasanger", "som en heavy metal-forsanger", "hviskende, som om alle sover", "på bred jysk",
+  "som Kim Larsen", "mens du danser", "så trist som overhovedet muligt", "som en rapper", "med en tyk tysk accent",
+  "som en robot", "som om du lige har vundet X Factor", "mens du står på ét ben",
+];
+
+const PEG = [
+  "Hvem ville overleve kortest i en zombie-apokalypse?", "Hvem falder først i søvn i aften?",
+  "Hvem har den vildeste dansestil?", "Hvem kommer sidst hjem i nat?", "Hvem ville være den bedste julemand?",
+  "Hvem har sendt den mest pinlige besked?", "Hvem ville vinde Robinson?", "Hvem bruger længst tid foran spejlet?",
+  "Hvem bliver først rig?", "Hvem klarer sig bedst på en øde ø?", "Hvem holder en tale, ingen har bedt om?",
+  "Hvem glemmer julegaverne til sidste øjeblik?", "Hvem har det bedste grin?", "Hvem kommer for sent til sin egen fødselsdag?",
+  "Hvem ville være den værste nisse?", "Hvem ender med at synge karaoke i aften?", "Hvem snyder i brætspil?",
+  "Hvem er hemmeligt den største julenørd?", "Hvem bliver kendt på TikTok?", "Hvem spiser mest risalamande?",
+  "Hvem ville kunne overleve en uge uden telefon?", "Hvem vinder det her spil?",
+];
+
+/* ---------- Gamemasterens replikker ({n}, {t}, {a}, {b}, {p}, {g} er navne) ---------- */
+const INTRO = {
+  quiz: ["Quiztid! Første der råber det rigtige svar, får pointet.", "Lad os se, om der er hjerneceller tilbage efter sildemaden.",
+    "Spørgsmål på vej. Ingen googling under bordet – jeg kan se jer.", "Skru op for hjernen og ned for snapsen.",
+    "Nu skal I bruge hovedet. Jeg ved godt, det er svært."],
+  duel: ["{a} mod {b}. Jeg har glædet mig til det her.", "DUEL! {a} og {b}, op og stå.",
+    "{a} mod {b}. Taberen skal høre for det resten af aftenen.", "{a} mod {b}. Ingen nåde i julen!",
+    "Hvem er stærkest: {a} eller {b}? Det finder vi ud af NU."],
+  skuespil: ["{p}, du er på. De andre gætter.", "{p}, nu skal vi se lidt skuespiltalent. Eller mangel på samme.",
+    "Scenen er din, {p}. Gør os ikke flove."],
+  sang: ["{p}, din stemme er efterspurgt. Desværre for os andre.", "Koncerttid! {p} synger, resten dømmer.",
+    "{p}, nu skal du synge. Tag det med ro, vi optager det ikke. Måske."],
+  peg: ["Pegeleg! På 3 peger alle på den, der passer bedst.", "Nu skal I være ærlige. Eller bare onde.",
+    "Ingen kan gemme sig nu. Klar til at pege?"],
+};
+const VIND = ["{n} tager pointet. Imponerende – eller også var det held.", "Point til {n}! Bliv nu ikke høj i hatten.",
+  "{n} scorer. Resten af jer burde skamme jer en lille smule.", "{n}! Det sad lige i skabet.",
+  "{n} vidste det. Har du siddet og læst op på det?"];
+const INGEN = ["Ingen? Seriøst? Jeg skal bruge et nyt publikum.", "Pinligt. Pointet går tilbage til nissen.",
+  "Ingen fik den. Det må være sildens skyld.", "Total stilhed. Jeg kunne høre jeres hjerner knirke."];
+const DUELVIND = ["{n} vinder duellen! {t}, det var pinligt at se på.", "{n} smadrer {t}. Ingen nåde i julen.",
+  "{t} taber til {n}. Jeg siger det bare: det så ikke godt ud.", "{n} vinder! {t}, gå hen i hjørnet og tænk over det."];
+const UAFGJORT = ["Uafgjort? Kedeligt! Et point til hver for indsatsen.", "Lige godt – eller lige dårligt. Et point hver."];
+const GAETTET = ["{g} gættede det! Point til både {g} og {p}.", "Bingo, {g}! {p} får også et point for skuespillet.",
+  "{g} læste {p} som en åben bog. Point til begge."];
+const IKKEGAETTET = ["Ingen gættede det. {p}, skuespilskolen ringer ikke.", "Nul. Niks. Nada. {p}, hvad var DET?"];
+const GODKENDT = ["Bordet har talt: {n} kan synge! Mere eller mindre.", "Godkendt! {n} er klar til X Factor. Til første audition.",
+  "{n} leverede! Mine pixelører har det fint."];
+const BUH = ["BUUH! {n}, mine pixelører bløder.", "Bordet siger nej. {n}, behold dit dagjob.", "Buh! {n}, det var en forbrydelse mod julen."];
+const PEGVIND = ["{n} fik flest fingre. Tillykke? Det er stadig et point.", "Folket har talt: {n}! Ingen overraskelse der.",
+  "{n}! I var vist ret enige."];
+const PEGUAFGJORT = ["Uafgjort? I kan ikke engang blive enige om at være onde. Ingen point."];
+const LEDER = ["{n} fører. Er der virkelig ingen, der tør udfordre?", "{n} i front – og lidt for selvglad, hvis du spørger mig.",
+  "Kan nogen stoppe {n}? Jeg begynder at kede mig."];
+const SIDST = ["{n} ligger sidst. Rolig, jeg sørger for, at du kommer med i næste duel.", "{n}, er du faldet i søvn? Op med pointene!",
+  "{n} ligger sidst. Jeg holder øje med dig."];
+
+/* =====================================================================
+   SMÅ HJÆLPERE
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const scene = $("#scene"), overlay = $("#overlay");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const tilf = a => a[Math.floor(Math.random() * a.length)];
+// Indsætter navne i en replik som fed tekst ({n} → <b>Anders</b>)
+const fyld = (t, v) => t.replace(/\{(\w+)\}/g, (_, k) => v[k] != null ? `<b>${esc(v[k])}</b>` : "");
+function hent(k, std) { try { const v = localStorage.getItem(k); return v == null ? std : JSON.parse(v); } catch (e) { return std; } }
+function gem(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function slet(k) { try { localStorage.removeItem(k); } catch (e) {} }
+const mmss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const fmt = n => Number(n).toLocaleString("da-DK");
+const rensNavn = n => String(n || "").trim().replace(/\s+/g, " ").slice(0, 16);
+
+if (!matchMedia("(pointer: coarse)").matches) document.body.classList.add("mus");
+
+// Telefonens faste id (starter med et bogstav, så det aldrig ligner et tal)
+const MIT_ID = (() => {
+  let id = hent(ID_KEY, null);
+  if (!/^p[a-z0-9]{5,10}$/.test(id || "")) { id = "p" + Math.random().toString(36).slice(2, 9); gem(ID_KEY, id); }
+  return id;
+})();
+
+/* =====================================================================
+   LYD (Web Audio – alt laves i kode, 8-bit stil)
+   ===================================================================== */
+const Lyd = {
+  ctx: null, til: hent(LYD_KEY, true),
+  start() {
+    if (!this.ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) this.ctx = new AC(); }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+  },
+  tone(f, d, { type = "square", vol = 0.1, t = 0, til = null } = {}) {
+    if (!this.til || !this.ctx) return;
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain(), s = c.currentTime + t;
+    o.type = type; o.frequency.setValueAtTime(f, s);
+    if (til) o.frequency.exponentialRampToValueAtTime(til, s + d);
+    g.gain.setValueAtTime(vol, s); g.gain.exponentialRampToValueAtTime(0.0001, s + d);
+    o.connect(g).connect(c.destination); o.start(s); o.stop(s + d + 0.02);
+  },
+  stoej(d, { vol = 0.08, t = 0 } = {}) {
+    if (!this.til || !this.ctx) return;
+    const c = this.ctx, n = Math.floor(c.sampleRate * d), buf = c.createBuffer(1, n, c.sampleRate), data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource(), g = c.createGain(), s = c.currentTime + t;
+    src.buffer = buf; g.gain.setValueAtTime(vol, s); g.gain.exponentialRampToValueAtTime(0.0001, s + d);
+    src.connect(g).connect(c.destination); src.start(s);
+  },
+  klik() { this.tone(660, 0.06, { vol: 0.07 }); },
+  point() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.13, { t: i * 0.07 })); },
+  fanfare() {
+    const n = [[392, 0], [392, .12], [392, .24], [523, .36], [659, .66], [784, .9], [659, 1.08], [784, 1.2]];
+    n.forEach(([f, t], i) => this.tone(f, i === n.length - 1 ? .6 : .14, { t, vol: .11 }));
+    n.forEach(([f, t], i) => this.tone(f / 2, i === n.length - 1 ? .6 : .14, { t, vol: .06, type: "triangle" }));
+  },
+  hvirvel() { for (let i = 0; i < 14; i++) this.stoej(0.05, { t: i * 0.05, vol: 0.04 + i * 0.006 }); this.stoej(0.35, { t: 0.72, vol: 0.18 }); this.tone(110, .3, { t: .72, type: "triangle", vol: .2 }); },
+  buh() { this.tone(220, 0.7, { type: "sawtooth", til: 80, vol: 0.1 }); this.tone(233, 0.7, { type: "sawtooth", til: 85, vol: 0.07 }); },
+  forkert() { this.tone(160, 0.35, { type: "sawtooth", vol: 0.12 }); },
+  tik() { this.tone(1200, 0.05, { vol: 0.06 }); },
+  horn() { this.tone(330, 0.45, { type: "sawtooth", vol: 0.12 }); this.tone(262, 0.8, { type: "sawtooth", t: 0.42, vol: 0.12 }); },
+  bip(hoej) { this.tone(hoej ? 1175 : 587, hoej ? 0.4 : 0.14, { vol: 0.1 }); },
+  ding() { this.tone(1568, 0.12, { vol: 0.13 }); this.tone(2093, 0.5, { t: 0.1, vol: 0.12 }); },
+  join() { this.tone(784, 0.08, { vol: 0.08 }); this.tone(1175, 0.12, { t: 0.08, vol: 0.08 }); },
+};
+function opdaterLydKnap() { $("#btnLyd").textContent = Lyd.til ? "🔊" : "🔇"; }
+const vibrer = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+
+/* =====================================================================
+   PIXEL-NISSEN (gamemasteren) – tegnes fra et lille kort
+   ===================================================================== */
+const NISSE = [
+  ".....RR.....",
+  "....RRRR....",
+  "...RRRRRR...",
+  "..RRRRRRRRW.",
+  ".WWWWWWWWWWW",
+  ".SSSSSSSSSS.",
+  ".SKKSSSSKKS.",
+  ".SSSSNNSSSS.",
+  ".WSSSSSSSSW.",
+  ".WWWMMMMWWW.",
+  ".WWWWWWWWWW.",
+  "..WWWWWWWW..",
+  "...WWWWWW...",
+  ".....WW.....",
+];
+const NFARVE = { R: "#ff2a55", W: "#f4f4ff", S: "#ffc8a0", K: "#111", N: "#ff6b6b", M: "#8a1030" };
+function tegnNisser() {
+  document.querySelectorAll("canvas.nisse").forEach(cv => {
+    if (cv.width === 12) return;
+    cv.width = 12; cv.height = 14;
+    const x = cv.getContext("2d");
+    NISSE.forEach((row, y) => [...row].forEach((ch, i) => { if (NFARVE[ch]) { x.fillStyle = NFARVE[ch]; x.fillRect(i, y, 1, 1); } }));
+  });
+}
+const gmHtml = tekst => `<div class="gm"><canvas class="nisse"></canvas><div class="boble">${tekst}</div></div>`;
+
+/* =====================================================================
+   NETVÆRK – lille Reverb/Pusher-klient (samme som i Pizza Party Multi)
+   - open(kanal): forbind og gå på rummets fælles kanal
+   - join(kanal) / leave(kanal): gå på / af en kanal
+   - send(kanal, event, data): når ud til alle ANDRE på kanalen
+   - onMsg(kanal, event, data) kaldes, når der kommer en besked
+   ===================================================================== */
+const Net = {
+  ws: null, want: false, main: "", idle: 0,
+  topics: new Set(), joined: new Set(),
+  onMsg: null, onStatus: null,
+  open(main) {
+    this.close();
+    this.want = true; this.main = main; this.topics = new Set([main]);
+    this._connect();
+  },
+  join(topic) { if (this.topics.has(topic)) return; this.topics.add(topic); this._raw("pusher:subscribe", { channel: topic }); },
+  leave(topic) { if (!this.topics.delete(topic)) return; this.joined.delete(topic); this._raw("pusher:unsubscribe", { channel: topic }); },
+  _raw(event, data) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ event, data })); },
+  _connect() {
+    const ws = new WebSocket(`wss://${RT.host}:${RT.port}/app/${RT.key}?protocol=7&client=js&version=8.4.0&flash=false`);
+    this.ws = ws; this.joined = new Set();
+    // Serveren lukker forbindelsen efter 30 sek. uden trafik – send et "ping", hvis der er stille
+    const resetIdle = () => { clearTimeout(this.idle); this.idle = setTimeout(() => this._raw("pusher:ping", {}), 20000); };
+    ws.onmessage = e => {
+      if (ws !== this.ws) return;
+      resetIdle();
+      let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+      let d = m.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch (err) {} }
+      if (m.event === "pusher:connection_established") {
+        for (const t of this.topics) this._raw("pusher:subscribe", { channel: t });
+      } else if (m.event === "pusher_internal:subscription_succeeded") {
+        if (this.topics.has(m.channel)) this.joined.add(m.channel);
+        if (m.channel === this.main && this.onStatus) this.onStatus("ok");
+      } else if (m.event === "pusher:ping") {
+        this._raw("pusher:pong", {});
+      } else if (m.event === "pusher:error") {
+        console.warn("Reverb-fejl:", d);
+      } else if (m.channel && m.event && m.event.startsWith("client-") && this.joined.has(m.channel) && this.onMsg) {
+        this.onMsg(m.channel, m.event.slice(7), d || {});
+      }
+    };
+    ws.onclose = () => {
+      clearTimeout(this.idle);
+      if (ws !== this.ws) return;
+      this.joined = new Set();
+      if (this.onStatus) this.onStatus("lukket");
+      if (this.want) setTimeout(() => { if (this.want && this.ws === ws) this._connect(); }, 1500);
+    };
+  },
+  send(topic, event, payload) {
+    if (!this.joined.has(topic) || !this.ws || this.ws.readyState !== 1) return false;
+    this.ws.send(JSON.stringify({ event: "client-" + event, channel: topic, data: payload || {} }));
+    return true;
+  },
+  close() {
+    this.want = false; this.joined = new Set(); this.topics = new Set(); clearTimeout(this.idle);
+    const w = this.ws; this.ws = null;
+    if (w) try { w.close(); } catch (e) {}
+  },
+};
+let kode = "";                 // rummets kode (4 bogstaver)
+let netOk = false;
+const mainTopic = () => `${SPIL}-${kode}`;
+const playerTopic = id => `${mainTopic()}-${id}`;
+const sendMain = (ev, d) => Net.send(mainTopic(), ev, d);
+const sendMine = (ev, d) => Net.send(playerTopic(MIT_ID), ev, d);
+function nyKode() {
+  const A = "ABCDEFGHJKLMNPRSTUVWXYZ";
+  let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
+  return s;
+}
+const rumLink = () => `${location.origin}${location.pathname}${location.search}#${kode}`;
+const forbindTekst = () => ON_PAGES ? "Forbinder…" : "Multiplayer virker kun på gaardee.github.io – ikke når spillet er åbnet lokalt.";
+
+/* =====================================================================
+   FÆLLES TILSTAND
+   ===================================================================== */
+let rolle = null;        // null (startskærm) | "skaerm" | "telefon"
+let S = null;            // SKÆRMEN: hele spillets tilstand (gemmes i localStorage)
+let lobby = [];          // SKÆRMEN: spillere i lobbyen [{ id, navn }]
+const smidtUd = new Set();
+const sidstSet = new Map(); // SKÆRMEN: id -> hvornår vi sidst hørte fra telefonen
+let pauset = false;
+let afslutSikker = false;
+let sidstRender = 0, renderNoegle = "", sidstHtml = "";
+
+/* =====================================================================
+   ============================  SKÆRMEN  ==============================
+   ===================================================================== */
+function gemState() { if (S) gem(GEM_KEY, S); }
+const navn = i => S.spillere[i].navn;
+const gange = () => (S.finale ? 2 : 1);
+const online = id => { const t = sidstSet.get(id); return t != null && performance.now() - t < ONLINE_MS; };
+const indeks = id => S.spillere.findIndex(p => p.id === id);
+
+function opretRum(genbrugKode) {
+  rolle = "skaerm"; kode = genbrugKode || nyKode(); netOk = false;
+  Net.onMsg = vaertBesked;
+  Net.onStatus = st => { netOk = st === "ok"; if (netOk) udsend(); vis(); };
+  Net.open(mainTopic());
+  for (const p of (S ? S.spillere : lobby)) Net.join(playerTopic(p.id));
+  // Skærmen har ingen #KODE i adressen (så en genindlæsning ikke gør den til en telefon)
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+}
+
+// Beskeder fra telefonerne
+function vaertBesked(kanal, ev, d) {
+  const main = mainTopic();
+  let id;
+  if (kanal === main) {
+    if (ev !== "hello") return;
+    id = String(d.id || "");
+    if (!/^p[a-z0-9]{5,10}$/.test(id)) return;
+  } else if (kanal.startsWith(main + "-")) {
+    id = kanal.slice(main.length + 1);
+  } else return;
+  if (smidtUd.has(id)) return;
+  const varOnline = online(id);
+  sidstSet.set(id, performance.now());
+  if (ev === "hello") return modtagHello(id, d.navn);
+  if (!S) { if (!varOnline) vis(); return; }
+  const i = indeks(id);
+  if (i < 0) return;
+  if (ev === "buzz") buzz(i, d.rid);
+  else if (ev === "stem") stem(i, d.rid, d.v);
+  else if (ev === "start") mimeStart(i, d.rid);
+  else if (ev === "bye") { sidstSet.delete(id); vis(); }
+  else if (!varOnline) vis(); // "ping" fra en, der var væk
+}
+
+function modtagHello(id, n) {
+  const liste = S ? S.spillere : lobby;
+  const p = liste.find(x => x.id === id);
+  if (!p) {
+    if (liste.length >= MAKS_SPILLERE) return udsend();
+    let navnet = rensNavn(n) || "Anonym", base = navnet, k = 2;
+    while (liste.some(x => x.navn.toLowerCase() === navnet.toLowerCase())) navnet = `${base} ${k++}`;
+    if (S) S.spillere.push({ id, navn: navnet, point: 0, st: {}, valgt: -9 });
+    else lobby.push({ id, navn: navnet });
+    Lyd.join(); toast(`${navnet} er med! 🎉`);
+    gemState();
+  }
+  Net.join(playerTopic(id));
+  vis();
+}
+
+function nyFest(liste) {
+  S = {
+    kode, spillere: liste.map(p => ({ id: p.id, navn: p.navn, point: 0, st: {}, valgt: -9 })),
+    runde: 0, totalMs: MINUTTER * 60000, tilbageMs: MINUTTER * 60000,
+    finale: false, tidUde: false, fase: "runde", r: null, brugt: {}, typer: [],
+    resultat: null, fortryd: null, afbrudt: false, dato: Date.now(),
+  };
+  pauset = false;
+  Lyd.fanfare();
+  nyRunde();
+}
+
+// Trækker et tilfældigt kort fra en bunke uden gentagelser (bunken blandes igen, når den er tom)
+function traek(bunke, liste) {
+  const brugt = S.brugt[bunke] || (S.brugt[bunke] = []);
+  if (brugt.length >= liste.length) brugt.length = 0;
+  let i;
+  do { i = Math.floor(Math.random() * liste.length); } while (brugt.includes(i));
+  brugt.push(i);
+  return i;
+}
+
+// Vælger en spiller. Underdog-hjælp: jo længere bagud og jo længe siden man var med, jo større chance.
+// Spillere uden forbindelse vælges næsten aldrig (de kan ikke se mime-ordet).
+function vaelgSpiller(udeluk) {
+  const maks = Math.max(...S.spillere.map(s => s.point));
+  const kand = S.spillere.map((s, i) => ({ i, w: (1 + (maks - s.point) * 0.5 + Math.min(6, S.runde - s.valgt) * 0.5) * (online(s.id) ? 1 : 0.03) }))
+    .filter(k => !udeluk.includes(k.i));
+  let x = Math.random() * kand.reduce((a, k) => a + k.w, 0);
+  for (const k of kand) { x -= k.w; if (x <= 0) { S.spillere[k.i].valgt = S.runde; return k.i; } }
+  const k = kand[kand.length - 1]; S.spillere[k.i].valgt = S.runde; return k.i;
+}
+
+function vaelgType() {
+  const t = S.typer, sidste = t[t.length - 1];
+  const kand = TYPER.filter(([k]) => {
+    if (t.length >= 2 && sidste === k && t[t.length - 2] === k) return false; // aldrig 3 ens i træk
+    if (k !== "quiz" && sidste === k) return false;                          // kun quiz må komme to gange i træk
+    return true;
+  });
+  let x = Math.random() * kand.reduce((a, [, w]) => a + w, 0);
+  for (const [k, w] of kand) { x -= w; if (x <= 0) return k; }
+  return kand[0][0];
+}
+
+function nyRunde() {
+  S.runde++;
+  const type = vaelgType();
+  S.typer.push(type); if (S.typer.length > 6) S.typer.shift();
+  const r = { type, id: S.runde + Math.random().toString(36).slice(2, 6), fase: "klar", timer: null, bb: null, stem: {} };
+  if (type === "quiz") {
+    r.i = traek("quiz", QUIZ); r.fase = "spm";
+    r.timer = { ms: 20000, tot: 20000, koer: true };
+    r.intro = tilf(INTRO.quiz);
+  } else if (type === "duel") {
+    r.i = traek("duel", DUEL); r.a = vaelgSpiller([]); r.b = vaelgSpiller([r.a]);
+    const sek = DUEL[r.i][1];
+    if (sek) r.timer = { ms: sek * 1000, tot: sek * 1000, koer: false };
+    r.intro = fyld(tilf(INTRO.duel), { a: navn(r.a), b: navn(r.b) });
+  } else if (type === "skuespil") {
+    r.metode = Math.random() < 0.5 ? "mime" : "tegn";
+    r.i = traek(r.metode, r.metode === "mime" ? MIME : TEGN);
+    r.p = vaelgSpiller([]);
+    r.timer = { ms: 60000, tot: 60000, koer: false };
+    r.intro = fyld(tilf(INTRO.skuespil), { p: navn(r.p) });
+  } else if (type === "sang") {
+    r.i = traek("sang", SANGE); r.stil = traek("stil", STILE); r.p = vaelgSpiller([]);
+    r.timer = { ms: 30000, tot: 30000, koer: false };
+    r.intro = fyld(tilf(INTRO.sang), { p: navn(r.p) });
+  } else {
+    r.i = traek("peg", PEG); r.fase = "stem";
+    r.intro = tilf(INTRO.peg);
+  }
+  S.r = r; S.fase = "runde"; S.resultat = null; S.fortryd = null;
+  if (type === "duel") Lyd.hvirvel(); else Lyd.bip(true);
+  gemState(); vis();
+}
+
+/* ---------- Buzzer ---------- */
+function buzzAaben() {
+  const r = S && S.fase === "runde" && S.r;
+  if (!r || r.bb != null || pauset) return false;
+  if (r.type === "quiz") return r.fase === "spm" && r.timer.ms > 0;
+  if (r.type === "skuespil") return r.fase === "gaet" && r.timer.ms > 0;
+  return false;
+}
+function buzz(i, rid) {
+  const r = S.r;
+  if (S.fase !== "runde" || !r || rid !== r.id || !buzzAaben()) return;
+  if (r.type === "skuespil" && i === r.p) return;
+  r.bb = i; r.timer.koer = false;
+  Lyd.ding(); gemState(); vis();
+}
+function mimeStart(i, rid) {
+  const r = S.r;
+  if (S.fase !== "runde" || !r || rid !== r.id || r.type !== "skuespil" || r.fase !== "klar" || i !== r.p) return;
+  A.mimeStart();
+}
+
+/* ---------- Hemmelige afstemninger ---------- */
+function stemmeBerettigede() {
+  const r = S.r;
+  return S.spillere.map((p, i) => ({ p, i })).filter(({ i }) => !(r.type === "sang" && i === r.p));
+}
+function stem(i, rid, v) {
+  const r = S.r;
+  if (S.fase !== "runde" || !r || rid !== r.id || r.fase === "afsloer") return;
+  const id = S.spillere[i].id;
+  if (r.type === "sang") {
+    if (i === r.p || (v !== "ja" && v !== "nej")) return;
+  } else if (r.type === "peg") {
+    if (v === id || indeks(v) < 0) return; // man kan ikke stemme på sig selv
+  } else return;
+  const ny = r.stem[id] == null;
+  r.stem[id] = v;
+  if (ny) Lyd.klik();
+  gemState(); vis();
+  tjekAutoAfsloer();
+}
+// Afslør automatisk, når alle forbundne har stemt (sang: først når sangen er slut)
+function tjekAutoAfsloer() {
+  const r = S && S.fase === "runde" && S.r;
+  if (!r || (r.type !== "sang" && r.type !== "peg") || r.fase === "afsloer" || pauset) return;
+  if (r.type === "sang" && r.timer.ms > 0) return;
+  const mangler = stemmeBerettigede().filter(({ p }) => online(p.id) && r.stem[p.id] == null);
+  const nogen = stemmeBerettigede().some(({ p }) => online(p.id));
+  if (nogen && !mangler.length && Object.keys(r.stem).length) setTimeout(() => { if (S && S.r === r && r.fase !== "afsloer") A.afsloer(); }, 700);
+}
+function afgoerStemmer() {
+  const r = S.r;
+  if (r.type === "sang") {
+    const v = Object.values(r.stem), ja = v.filter(x => x === "ja").length, nej = v.length - ja;
+    const note = `Stemmerne: 👍 <b>${ja}</b> – 👎 <b>${nej}</b>`;
+    if (ja > 0 && ja >= nej) tildel([{ i: r.p, p: POINT.sang, st: "sang" }], fyld(tilf(GODKENDT), { n: navn(r.p) }), note);
+    else tildel([{ i: r.p, p: 0, st: "buh" }], fyld(tilf(BUH), { n: navn(r.p) }), note);
+  } else {
+    const t = {};
+    for (const v of Object.values(r.stem)) { const i = indeks(v); if (i >= 0) t[i] = (t[i] || 0) + 1; }
+    const raekke = Object.entries(t).map(([i, n]) => ({ i: +i, n })).sort((a, b) => b.n - a.n);
+    if (!raekke.length) return tildel([], "Ingen stemte?! I er da for kedelige.");
+    const top = raekke[0].n, vindere = raekke.filter(x => x.n === top);
+    const note = raekke.map(x => `${esc(navn(x.i))} <b>${x.n}</b>`).join(" · ");
+    const kommentar = vindere.length > 1
+      ? `Stemmelighed! ${vindere.map(x => `<b>${esc(navn(x.i))}</b>`).join(" og ")} får et point hver.`
+      : fyld(tilf(PEGVIND), { n: navn(vindere[0].i) });
+    tildel(vindere.map(x => ({ i: x.i, p: POINT.peg, st: "peg" })), kommentar, note);
+  }
+}
+
+// Giver point. plus = [{ i: spiller, p: grundpoint, st: statistik-nøgle }]
+function tildel(plus, kommentar, note) {
+  S.fortryd = JSON.stringify({ spillere: S.spillere, r: S.r, typer: S.typer });
+  const m = gange(), linjer = [];
+  for (const x of plus) {
+    const s = S.spillere[x.i];
+    if (x.st) s.st[x.st] = (s.st[x.st] || 0) + 1;
+    if (x.p > 0) { s.point += x.p * m; linjer.push({ i: x.i, p: x.p * m }); }
+  }
+  if (S.r && S.r.timer) S.r.timer.koer = false;
+  S.resultat = { linjer, kommentar: kommentar + stillingsKommentar(), note: note || "" };
+  S.fase = "resultat";
+  if (linjer.length) Lyd.point(); else Lyd.buh();
+  gemState(); vis();
+}
+
+function sorteret(liste) {
+  return (liste || S.spillere).map((s, i) => ({ ...s, i })).sort((a, b) => b.point - a.point || a.navn.localeCompare(b.navn, "da"));
+}
+// Lidt ekstra drilleri om stillingen
+function stillingsKommentar() {
+  const s = sorteret();
+  if (s.length < 2 || s[0].point === s[s.length - 1].point) return "";
+  const x = Math.random();
+  if (x < 0.35 && s[0].point > s[1].point) return " " + fyld(tilf(LEDER), { n: s[0].navn });
+  if (x < 0.7) return " " + fyld(tilf(SIDST), { n: s[s.length - 1].navn });
+  return "";
+}
+
+/* ---------- Det, skærmen sender til telefonerne ---------- */
+function udsend() {
+  if (rolle !== "skaerm" || !netOk) return;
+  let v;
+  if (!S) {
+    v = { k: "lobby", sp: lobby.map(p => [p.id, p.navn, 0, online(p.id) ? 1 : 0]) };
+  } else {
+    const id = i => S.spillere[i].id, r = S.r;
+    v = { k: S.fase, d: S.dato, n: S.runde, tid: Math.round(Math.max(0, S.tilbageMs)), x2: S.finale ? 1 : 0, pa: pauset ? 1 : 0, tu: S.tidUde ? 1 : 0,
+      sp: S.spillere.map(p => [p.id, p.navn, p.point, online(p.id) ? 1 : 0]) };
+    if (S.fase === "runde" && r) {
+      v.rid = r.id; v.t = r.type; v.f = r.fase; v.bz = buzzAaben() ? 1 : 0; v.bb = r.bb != null ? id(r.bb) : null;
+      if (r.type === "duel") { v.a = id(r.a); v.b = id(r.b); v.q = DUEL[r.i][0]; }
+      if (r.type === "skuespil") { v.p = id(r.p); v.m = r.metode; }
+      if (r.type === "sang") { v.p = id(r.p); v.q = SANGE[r.i]; v.s = STILE[r.stil]; v.st = Object.keys(r.stem); }
+      if (r.type === "peg") { v.q = PEG[r.i]; v.st = Object.keys(r.stem); }
+      // Mime-ordet sendes KUN til mimerens egen kanal
+      if (r.type === "skuespil" && r.fase !== "slut") {
+        Net.send(playerTopic(id(r.p)), "ord", { rid: r.id, ord: r.metode === "mime" ? MIME[r.i] : TEGN[r.i], m: r.metode });
+      }
+    }
+    if (S.fase === "resultat") v.res = S.resultat.linjer.map(l => [id(l.i), l.p]);
+    if (S.fase === "slut") v.af = S.afbrudt ? 1 : 0;
+  }
+  sendMain("s", v);
+  sidstUdsendt = performance.now();
+}
+let sidstUdsendt = 0;
+
+/* =====================================================================
+   SKÆRME (fælles vis() for alle roller)
+   ===================================================================== */
+function vis() {
+  if (rolle === "telefon") { visTelefon(); opdaterHud(true); return; }
+  // Nøgle for "hvilken skærm er det": skifter den, nulstilles scroll, og dobbelttryk blokeres kort
+  const noegle = !rolle ? "start" : !S ? "lobby" : `${S.fase}|${S.runde}|${S.r ? S.r.fase + "|" + S.r.bb : ""}`;
+  const nyNoegle = noegle !== renderNoegle;
+  if (nyNoegle) { sidstRender = performance.now(); renderNoegle = noegle; }
+  let h;
+  if (!rolle) h = startHtml();
+  else if (!S) h = lobbyHtml();
+  else if (S.fase === "runde") h = rundeHtml();
+  else if (S.fase === "resultat") h = resultatHtml();
+  else h = slutHtml();
+  if (h !== sidstHtml) {
+    // Bevar et halvt udfyldt inputfelt på startskærmen
+    const felter = [...scene.querySelectorAll("input")].map(x => [x.id, x.value, document.activeElement === x]);
+    scene.innerHTML = h; sidstHtml = h;
+    for (const [id, val, fokus] of felter) { const el = id && $("#" + id); if (el) { el.value = val; if (fokus) el.focus(); } }
+    tegnNisser();
+    if (S && S.fase === "runde") opdaterRundeTimer();
+    if (S && S.fase === "slut" && rolle === "skaerm") efterSlut();
+  }
+  if (nyNoegle) scene.scrollTop = 0;
+  opdaterHud(true);
+  udsend();
+}
+
+/* ---------- Startskærm ---------- */
+function startHtml() {
+  const gemt = hent(GEM_KEY, null);
+  const kanFortsaette = gemt && gemt.fase !== "slut" && gemt.spillere && gemt.tilbageMs > 0 && gemt.kode;
+  const hashKode = (location.hash.replace("#", "").toUpperCase().match(/^[A-Z]{4}$/) || [""])[0];
+  const rum = hent(RUM_KEY, "");
+  const join = `<div class="kort">
+      <h3>📱 Spiller – deltag med din telefon</h3>
+      <form class="felt" id="joinForm" autocomplete="off">
+        <input id="kodeInput" class="kodefelt" maxlength="4" placeholder="KODE" value="${esc(hashKode || rum || "")}" autocomplete="off" autocapitalize="characters" aria-label="Rummets kode">
+        <input id="navnInput" maxlength="16" placeholder="Dit navn" value="${esc(hent(NAVN_KEY, ""))}" autocomplete="off" enterkeyhint="go" aria-label="Dit navn">
+        <button type="submit" class="${hashKode ? "primaer" : ""} stor">Deltag ▶</button>
+      </form>
+    </div>`;
+  const skaerm = `<div class="kort">
+      <h3>📺 Fælles skærm – gamemasteren</h3>
+      <p class="lille">Computer eller tablet midt på bordet. Den, der sidder nærmest, dømmer rigtigt/forkert.</p>
+      <button class="${hashKode ? "" : "primaer"} stor" data-act="opret" style="margin-top:10px">Opret rum</button>
+    </div>`;
+  return `
+    <div class="titel">SKÅL<br><span class="og">&amp;</span> KAMP</div>
+    <div class="undertitel blink">★ JULEFROKOST-EDITION ★</div>
+    ${gmHtml(`Én skærm er gamemaster – og alle buzzer og stemmer på deres egen telefon. <b>${MINUTTER} minutter</b>, alle mod alle.`)}
+    ${!ON_PAGES ? `<p class="advarselstekst">⚠️ ${forbindTekst()}</p>` : ""}
+    ${kanFortsaette ? `<button class="groen stor" data-act="fortsaetGemt">▶ Fortsæt festen (rum ${esc(gemt.kode)}, ${mmss(gemt.tilbageMs)} tilbage)</button>` : ""}
+    ${hashKode ? join + skaerm : skaerm + join}
+    <details class="kort regler">
+      <summary>Sådan foregår det</summary>
+      <ul>
+        <li>📺 Skærmen opretter et rum. 📱 Alle andre går ind på linket og skriver deres navn.</li>
+        <li>❓ <b>Quiz:</b> buzz på telefonen. Rigtigt svar giver 1 point. Forkert = de andre kan buzze igen.</li>
+        <li>⚔️ <b>Duel:</b> vinderen får 2 point.</li>
+        <li>🎭 <b>Mime / tegn og gæt:</b> ordet står kun på mimerens telefon. 1 point til mimeren og 1 til den, der buzzer og gætter rigtigt.</li>
+        <li>🎤 <b>Syng:</b> hemmelig afstemning – flertal for 👍 giver 2 point.</li>
+        <li>👉 <b>Pegeleg:</b> hemmelig afstemning – flest stemmer giver 1 point.</li>
+        <li>🔥 De sidste 5 minutter giver <b>dobbeltpoint</b>.</li>
+      </ul>
+    </details>`;
+}
+
+/* ---------- Lobby (skærmen) ---------- */
+function lobbyHtml() {
+  return `
+    <div class="titel lille-titel">SKÅL <span class="og">&amp;</span> KAMP</div>
+    ${gmHtml("Find telefonerne frem! Gå ind på linket – eller åbn spillet og skriv koden.")}
+    <div class="kort">
+      <div class="kat midt">Rummets kode</div>
+      <div class="kodevis">${esc(kode)}</div>
+      <div class="link">${esc(rumLink())}</div>
+      <div class="knaprad"><button class="lilleknap" data-act="kopierLink">📋 Kopiér link til gruppechatten</button></div>
+      ${!netOk ? `<p class="advarselstekst" style="margin-top:10px">${forbindTekst()}</p>` : ""}
+    </div>
+    <div class="kort">
+      <h3>Spillere (${lobby.length}/${MAKS_SPILLERE})</h3>
+      <div class="chips">${lobby.length ? lobby.map((p, i) => `<button class="chip ${online(p.id) ? "" : "offline"}" data-act="smidUd" data-arg="${i}"><span class="prik"></span>${esc(p.navn)}<i>✕</i></button>`).join("") : `<p class="lille">Ingen endnu…</p>`}</div>
+    </div>
+    <button class="primaer stor" data-act="start" ${lobby.length < 2 ? "disabled" : ""}>▶ Start festen${lobby.length >= 2 ? ` (${lobby.length} spillere)` : " – I skal være mindst 2"}</button>
+    <div class="knaprad"><button class="graa lilleknap" data-act="lukRum">✕ Luk rummet</button></div>`;
+}
+
+/* ---------- Rundeskærm ---------- */
+const TYPENAVN = { quiz: "❓ Quiz", duel: "⚔️ Duel", sang: "🎤 Syng!", peg: "👉 Pegeleg" };
+const typeNavn = (t, m) => t === "skuespil" ? (m === "mime" ? "🎭 Mimeleg" : "✏️ Tegn og gæt") : TYPENAVN[t];
+function pointTekst(r) {
+  const m = gange();
+  if (r.type === "quiz") return `${POINT.quiz * m} point til den hurtigste`;
+  if (r.type === "duel") return `${POINT.duel * m} point til vinderen`;
+  if (r.type === "skuespil") return `${m} point til ${r.metode === "mime" ? "mimeren" : "tegneren"} og ${m} til den, der gætter`;
+  if (r.type === "sang") return `${POINT.sang * m} point, hvis bordet godkender`;
+  return `${POINT.peg * m} point til den, flest stemmer på`;
+}
+// Tallet og bjælken udfyldes af opdaterRundeTimer(), så HTML'en ikke ændrer sig hvert sekund
+const timerHtml = () => `<div class="rtimer"><div class="rtal" id="rtal"></div><div class="rbar"><i id="rbar"></i></div></div>`;
+// Knapper med spillernavne. Tal-taster 1-9 og 0 på computer.
+function spillerKnapper(idx, act, klasse = "", fremhaev = null) {
+  return `<div class="spillergrid">${idx.map((i, n) =>
+    `<button class="${i === fremhaev ? "primaer" : klasse}" data-act="${act}" data-arg="${i}" ${n < 10 ? `data-key="${(n + 1) % 10}"` : ""}><span class="tast">${n < 10 ? (n + 1) % 10 : ""}</span>${esc(navn(i))}</button>`).join("")}</div>`;
+}
+const alle = () => S.spillere.map((_, i) => i);
+const buzzerHtml = (i, tekst) => `<div class="buzzer">🔔 ${esc(navn(i))}<small>${tekst}</small></div>`;
+const dommerHtml = () => `<div class="knaprad">
+    <button class="groen primaer" data-act="rigtigt" data-key="r"><span class="tast">R</span>✔ Rigtigt</button>
+    <button class="roed" data-act="forkert" data-key="f"><span class="tast">F</span>✘ Forkert – buzz igen</button></div>`;
+function stemmeHtml(r) {
+  const ber = stemmeBerettigede(), antal = ber.filter(({ p }) => r.stem[p.id] != null).length;
+  const mangler = ber.filter(({ p }) => r.stem[p.id] == null).map(({ p }) => esc(p.navn));
+  return `<div class="stemmer">🗳️ ${antal}/${ber.length} har stemt${mangler.length && mangler.length <= 6 ? `<small>Mangler: ${mangler.join(", ")}</small>` : ""}</div>`;
+}
+
+function rundeHtml() {
+  const r = S.r;
+  let h = `<div class="rundehoved"><span class="tag ${r.type}">${typeNavn(r.type, r.metode)}</span><span class="pointinfo">${pointTekst(r)}</span></div>`;
+  if (S.tidUde) h += `<div class="advarsel">⏰ Tiden er gået – gør runden færdig!</div>`;
+  h += gmHtml(r.intro);
+
+  if (r.type === "quiz") {
+    const [kat, spm, svar] = QUIZ[r.i];
+    h += `<div class="kort"><div class="kat">${kat}</div><div class="spm">${esc(spm)}</div>
+      ${r.fase === "svar" ? `<div class="svar">✔ ${esc(svar)}</div>` : timerHtml(r)}</div>`;
+    if (r.fase === "spm") {
+      h += r.bb != null ? buzzerHtml(r.bb, "Svar højt – nu!") + dommerHtml() : `<div class="ventbuzz">📱 Buzz på telefonen, når du kender svaret!</div>`;
+      h += `<button class="graa lilleknap" data-act="visSvar" data-key="v"><span class="tast">V</span>👁 Vis svaret</button>`;
+    } else {
+      h += `<div class="spoerg">${r.bb != null ? `Havde ${esc(navn(r.bb))} ret? Ellers: hvem råbte det rigtige svar?` : "Var der nogen, der havde det?"}</div>
+        ${spillerKnapper(alle(), "quizVinder", "", r.bb)}
+        <button class="graa" data-act="ingen" data-key="n"><span class="tast">N</span>Ingen fik den</button>`;
+    }
+  } else if (r.type === "duel") {
+    const [tekst] = DUEL[r.i];
+    h += `<div class="kort"><div class="vs"><span class="navn">${esc(navn(r.a))}</span><span class="mod">VS</span><span class="navn">${esc(navn(r.b))}</span></div>
+      <div class="opgave">${esc(tekst)}</div>${r.timer ? timerHtml(r) : ""}</div>`;
+    if (r.timer && !r.timer.koer && r.timer.ms === r.timer.tot) h += `<button class="primaer stor" data-act="timerStart">▶ Start nedtælling (${r.timer.tot / 1000} sek.)</button>`;
+    h += `<div class="spoerg">Hvem vandt?</div>
+      ${spillerKnapper([r.a, r.b], "duelVinder", "groen")}
+      <button class="graa" data-act="uafgjort" data-key="u"><span class="tast">U</span>Uafgjort (1 point hver)</button>`;
+  } else if (r.type === "skuespil") {
+    const ord = r.metode === "mime" ? MIME[r.i] : TEGN[r.i];
+    const gor = r.metode === "mime" ? "mimer" : "tegner";
+    if (r.fase === "klar") {
+      h += `<div class="kort midt"><div class="opgave">📱 <b style="color:var(--gul)">${esc(navn(r.p))}</b>, kig på din telefon – ordet står der.<br><span class="lille">${r.metode === "mime" ? "Ingen ord og ingen lyde – kun kropssprog!" : "Tegn på en serviet. Ingen bogstaver eller tal!"} Tryk Start på telefonen, når du er klar.</span></div></div>
+        <button class="primaer stor" data-act="mimeStart">▶ Start nu (60 sek.)</button>`;
+    } else if (r.fase === "gaet") {
+      h += `<div class="kort"><div class="opgave">${esc(navn(r.p))} ${gor} – gæt løs!</div>${timerHtml(r)}</div>`;
+      h += r.bb != null ? buzzerHtml(r.bb, "Gæt højt – nu!") + dommerHtml() : `<div class="ventbuzz">📱 Buzz på telefonen, når du vil gætte!</div>`;
+      h += `<button class="graa lilleknap" data-act="ikkeGaettet">⏹ Stop – ingen gættede det</button>`;
+    } else {
+      h += `<div class="kort"><div class="kat midt">Tiden er gået! Ordet var:</div><div class="hemmeligt">${esc(ord)}</div></div>
+        <div class="spoerg">Gættede nogen det i sidste sekund?</div>
+        ${spillerKnapper(alle().filter(i => i !== r.p), "gaettet")}
+        <button class="graa" data-act="ikkeGaettet" data-key="n"><span class="tast">N</span>Ingen gættede det</button>`;
+    }
+  } else if (r.type === "sang") {
+    h += `<div class="kort"><div class="kat midt">${esc(navn(r.p))} synger:</div><div class="hemmeligt" style="font-size:clamp(24px,7vw,40px)">♪ ${esc(SANGE[r.i])} ♪</div>
+      <div class="opgave">… ${esc(STILE[r.stil])}!</div>${timerHtml(r)}</div>`;
+    if (r.fase === "afsloer") h += `<div class="tromme">🥁</div>`;
+    else {
+      if (!r.timer.koer && r.timer.ms === r.timer.tot) h += `<button class="primaer stor" data-act="timerStart">▶ Start sangen (30 sek.)</button>`;
+      h += `${stemmeHtml(r)}<p class="lille midt">📱 Stem 👍 eller 👎 i hemmelighed på telefonen.</p>
+        <button class="${r.timer.koer || r.timer.ms === r.timer.tot ? "" : "primaer"}" data-act="afsloer" ${Object.keys(r.stem).length ? "" : "disabled"}>🥁 Afslør stemmerne</button>`;
+    }
+  } else {
+    h += `<div class="kort"><div class="spm midt">${esc(PEG[r.i])}</div></div>`;
+    if (r.fase === "afsloer") h += `<div class="tromme">🥁</div>`;
+    else h += `${stemmeHtml(r)}<p class="lille midt">📱 Stem i hemmelighed på telefonen. Man kan ikke stemme på sig selv.</p>
+      <button class="primaer" data-act="afsloer" ${Object.keys(r.stem).length ? "" : "disabled"}>🥁 Afslør stemmerne</button>`;
+  }
+  h += `<div class="fyld"></div><div class="knaprad"><button class="graa lilleknap" data-act="spring">⏭ Spring runden over</button></div>`;
+  return h;
+}
+
+/* ---------- Resultat efter hver runde ---------- */
+function stillingHtml(liste, nye = [], migId = null) {
+  const s = liste, maks = Math.max(1, s[0] ? s[0].point : 1);
+  let rang = 0, forrige = null;
+  return `<div class="stilling">${s.map((x, n) => {
+    if (x.point !== forrige) { rang = n + 1; forrige = x.point; }
+    return `<div class="srk ${nye.includes(x.id) ? "ny" : ""} ${x.id === migId ? "mig" : ""}"><span class="nr">${rang}.</span><span class="nv">${esc(x.navn)}</span>
+      <span class="bar"><i style="width:${(x.point / maks) * 100}%"></i></span><span class="pt">${x.point}</span></div>`;
+  }).join("")}</div>`;
+}
+function resultatHtml() {
+  const res = S.resultat;
+  const plus = res.linjer.length
+    ? res.linjer.map((l, n) => `<div class="plus" style="animation-delay:${n * 0.15}s">+${l.p} ${esc(navn(l.i))}</div>`).join("")
+    : `<div class="plus nul">Ingen point</div>`;
+  return `
+    ${plus}
+    ${res.note ? `<div class="note">${res.note}</div>` : ""}
+    ${gmHtml(res.kommentar)}
+    <div class="kort">${stillingHtml(sorteret(), res.linjer.map(l => S.spillere[l.i].id))}</div>
+    <div class="fyld"></div>
+    ${S.tidUde
+      ? `<button class="primaer stor" data-act="naeste">🏆 Se vinderen!</button>`
+      : `<button class="primaer stor" data-act="naeste">Næste runde ▶</button>`}
+    <div class="knaprad"><button class="graa lilleknap" data-act="fortryd">↶ Fortryd (forkert person?)</button></div>`;
+}
+
+/* ---------- Slutskærm (skærmen) ---------- */
+const STATS = [
+  ["quiz", "🧠 Quizgeni", "rigtige svar"], ["duelV", "💪 Duelkonge", "vundne dueller"], ["duelT", "🤕 Mest tæsk", "tabte dueller"],
+  ["peg", "👉 Folkets valg", "afstemninger vundet"], ["sang", "🎤 Stjernestemme", "godkendte sange"], ["buh", "🍅 Buh-magnet", "gange buhet ud"],
+  ["gaet", "🔮 Tankelæser", "gæt"], ["skuespil", "🎭 Skuespiller", "gættede forestillinger"],
+];
+function podieHtml(s) {
+  const rang = x => s.findIndex(y => y.point === x.point) + 1;
+  const blok = (x, k) => x ? `<div class="${k}">${rang(x) === 1 ? `<div class="krone">👑</div>` : ""}<div class="nv">${esc(x.navn)}</div>
+    <div class="blok">${rang(x)}<small>${x.point} p</small></div></div>` : `<div></div>`;
+  return `<div class="podie">${blok(s[1], "p2")}${blok(s[0], "p1")}${blok(s[2], "p3")}</div>`;
+}
+function slutHtml() {
+  const s = sorteret();
+  const vindere = s.filter(x => x.point === s[0].point);
+  const vinderTekst = vindere.length > 1
+    ? `Delt sejr mellem ${vindere.map(v => `<b>${esc(v.navn)}</b>`).join(" og ")}! I er lige dårlige. Eller gode.`
+    : `<b>${esc(s[0].navn)}</b> vinder Skål &amp; Kamp med ${s[0].point} point! Resten af jer kan rydde op.`;
+  const stats = STATS.map(([k, titel, enhed]) => {
+    const maks = Math.max(...S.spillere.map(p => p.st[k] || 0));
+    if (!maks) return "";
+    const hvem = S.spillere.filter(p => (p.st[k] || 0) === maks).map(p => esc(p.navn)).join(" & ");
+    return `<div class="stat">${titel}<br><b>${hvem}</b> – ${maks} ${enhed}</div>`;
+  }).join("");
+  return `
+    <div class="titel" style="font-size:clamp(30px,10vw,56px)">GAME OVER</div>
+    ${podieHtml(s)}
+    ${gmHtml(vinderTekst + ` Vi nåede ${S.runde} ${S.runde === 1 ? "runde" : "runder"}.`)}
+    ${S.afbrudt ? `<p class="lille midt">Festen blev afsluttet før tid, så scores bliver ikke gemt på ranglisten.</p>` : `<p class="lille midt">📱 Hver telefon gemmer sin egen score på den fælles rangliste.</p>`}
+    <div class="kort"><h3>Stilling</h3>${stillingHtml(s)}</div>
+    ${stats ? `<div class="kort"><h3>Aftenens priser</h3><div class="statgrid">${stats}</div></div>` : ""}
+    <div class="knaprad">
+      <button class="primaer" data-act="kopier">📋 Kopiér resultat</button>
+      <button class="groen" data-act="nyFestSamme">🔁 Ny fest – samme rum</button>
+    </div>
+    <div class="knaprad"><button class="graa" data-act="tilLobby">👥 Tilbage til lobbyen</button></div>
+    <div class="kort"><h3>Fælles rangliste</h3><table class="liste" id="faellesTop"></table></div>
+    <div class="kort"><h3>Top 10 på denne enhed</h3><table class="liste" id="lokalTop"></table></div>`;
+}
+// Kaldes, når slutskærmen er tegnet: gem lokal top 10 én gang og hent den fælles rangliste
+function efterSlut() {
+  if (!S.lokaltGemt && !S.afbrudt) {
+    S.lokaltGemt = true; gemState();
+    const top = hent(TOP_KEY, []), dato = new Date().toLocaleDateString("da-DK");
+    S.spillere.forEach(p => top.push({ navn: p.navn, score: p.point, dato }));
+    top.sort((a, b) => b.score - a.score);
+    gem(TOP_KEY, top.slice(0, 10));
+  }
+  visLokalTop(S.spillere.map(p => p.navn));
+  const vinder = sorteret()[0].navn;
+  // Vent lidt, så telefonerne har nået at gemme deres scores
+  setTimeout(() => { const t = $("#faellesTop"); if (t && window.visFaellesTop) visFaellesTop(t, SPIL, vinder); }, 2500);
+  const t = $("#faellesTop"); if (t) t.innerHTML = "<tr><td>Henter fælles rangliste…</td></tr>";
+}
+function visLokalTop(mine) {
+  const t = $("#lokalTop"); if (!t) return;
+  const top = hent(TOP_KEY, []);
+  t.innerHTML = top.length ? "" : "<tr><td>Ingen resultater endnu</td></tr>";
+  top.forEach((e, n) => {
+    const tr = t.insertRow();
+    [`${n + 1}.`, `${e.navn} (${e.dato})`, fmt(e.score)].forEach(c => (tr.insertCell().textContent = c));
+    if (mine.includes(e.navn)) tr.className = "me";
+  });
+}
+function resultatTekst() {
+  const s = sorteret(), top = hent(TOP_KEY, []);
+  const bedste = Math.max(s[0].point, ...top.filter(e => e.navn === s[0].navn).map(e => e.score));
+  const resten = s.slice(1).map((x, n) => `${n + 2}. ${x.navn} ${x.point}`).join(" · ");
+  return `🎮 Skål & Kamp – 🏆 ${s[0].navn}: ${fmt(s[0].point)} point (bedste: ${fmt(bedste)})` + (resten ? `\n${resten}` : "");
+}
+
+/* ---------- Pause, bannere ---------- */
+function pause() {
+  if (rolle !== "skaerm" || !S || S.fase === "slut" || pauset) return;
+  pauset = true; afslutSikker = false;
+  overlay.innerHTML = `<div class="kort"><h2>PAUSE</h2><p class="lille">Uret står stille, indtil I fortsætter. Telefonerne viser også pause.</p>
+    <button class="primaer stor" data-act="fortsaet">▶ Fortsæt</button>
+    <button class="roed" data-act="afslut" id="afslutKnap">⏹ Afslut festen nu</button></div>`;
+  overlay.hidden = false; gemState(); udsend();
+}
+function fortsaet() { pauset = false; overlay.hidden = true; udsend(); }
+
+function banner(html) {
+  const d = document.createElement("div");
+  d.className = "banner"; d.innerHTML = html;
+  document.body.appendChild(d); setTimeout(() => d.remove(), 3300);
+}
+function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("vis"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("vis"), 1800); }
+
+function startFinale() {
+  S.finale = true; Lyd.fanfare();
+  const s = sorteret();
+  banner(`🔥 ×2 🔥<br>DOBBELTPOINT-FINALE<small>Alle point tæller dobbelt resten af festen.${s.length > 1 ? ` ${esc(s[s.length - 1].navn)}, nu er chancen der!` : ""}</small>`);
+  gemState(); vis();
+}
+function tidErGaaet() {
+  S.tidUde = true; S.tilbageMs = 0; Lyd.horn();
+  banner(`⏰ TIDEN ER GÅET!<small>Gør runden færdig, så kårer vi en vinder.</small>`);
+  gemState(); vis();
+}
+function slutSpil(afbrudt) {
+  S.fase = "slut"; S.afbrudt = !!afbrudt; pauset = false; overlay.hidden = true;
+  Lyd.fanfare(); gemState(); vis();
+}
+
+/* =====================================================================
+   ============================  TELEFONEN  ============================
+   ===================================================================== */
+let V = null;              // seneste tilstand fra skærmen
+let vModtaget = 0;         // hvornår den kom
+let ordPriv = null;        // det hemmelige mime-ord { rid, ord, m }
+let mitBuzz = "";          // runde-id hvor jeg har buzzet (venter på svar)
+const mineStemmer = {};    // runde-id -> min stemme
+let joinTid = 0;
+let forrigeV = null;
+
+function deltag(k, n) {
+  rolle = "telefon"; kode = k; netOk = false; V = null; ordPriv = null; joinTid = performance.now();
+  gem(NAVN_KEY, n); gem(RUM_KEY, k);
+  Net.onMsg = telefonBesked;
+  Net.onStatus = st => { netOk = st === "ok"; if (netOk) sendHello(); vis(); };
+  Net.open(mainTopic());
+  Net.join(playerTopic(MIT_ID));
+  try { history.replaceState(null, "", location.pathname + location.search + "#" + k); } catch (e) {}
+  vis();
+}
+const mig = () => V && V.sp && V.sp.find(x => x[0] === MIT_ID);
+function sendHello() {
+  if (mig()) sendMine("ping", {});
+  else sendMain("hello", { id: MIT_ID, navn: hent(NAVN_KEY, "Anonym") });
+}
+function telefonBesked(kanal, ev, d) {
+  if (kanal === mainTopic() && ev === "s") {
+    const foer = V;
+    V = d; vModtaget = performance.now();
+    telefonOvergang(foer, V);
+    vis();
+  } else if (kanal === playerTopic(MIT_ID) && ev === "ord") {
+    if (!ordPriv || ordPriv.rid !== d.rid) { ordPriv = d; vis(); }
+  }
+}
+// Lyde og vibration, når noget skifter
+function telefonOvergang(a, b) {
+  if (!b) return;
+  if (b.k === "runde" && (!a || a.rid !== b.rid)) { Lyd.bip(true); vibrer(40); }
+  if (b.k === "runde" && b.bb && (!a || a.bb !== b.bb)) { if (b.bb === MIT_ID) { Lyd.ding(); vibrer([60, 40, 120]); } else Lyd.klik(); }
+  if (b.k === "resultat" && (!a || a.k !== "resultat")) {
+    const plus = (b.res || []).find(x => x[0] === MIT_ID);
+    if (plus) { Lyd.point(); vibrer(120); }
+  }
+  if (b.k === "slut" && (!a || a.k !== "slut")) Lyd.fanfare();
+  if (b.k === "lobby" && a && !a.sp.some(x => x[0] === MIT_ID) && b.sp.some(x => x[0] === MIT_ID)) Lyd.join();
+}
+
+function nvn(id) { const p = V.sp.find(x => x[0] === id); return p ? p[1] : "?"; }
+function minPlacering() {
+  const m = mig(); if (!m) return { rang: 0, antal: 0, point: 0 };
+  return { rang: V.sp.filter(x => x[2] > m[2]).length + 1, antal: V.sp.length, point: m[2] };
+}
+const telefonSorteret = () => V.sp.map(x => ({ id: x[0], navn: x[1], point: x[2] })).sort((a, b) => b.point - a.point || a.navn.localeCompare(b.navn, "da"));
+const buzzKnap = () => mitBuzz === V.rid
+  ? `<button class="buzz trykket" disabled>…</button><p class="lille midt">Buzzet! Venter på skærmen…</p>`
+  : `<button class="buzz" data-buzz="1">BUZZ</button>`;
+const kigSkaerm = (tekst = "Kig på skærmen 👀") => `<div class="stort gul-t">${tekst}</div>`;
+
+function visTelefon() {
+  let h;
+  const m = mig();
+  if (!V || !m) {
+    const venteTekst = !ON_PAGES ? forbindTekst()
+      : !netOk ? "Forbinder…"
+      : performance.now() - joinTid > 7000 ? "Kan ikke finde rummet. Er koden rigtig, og er skærmen åben?"
+      : "Melder dig ind…";
+    h = `<div class="titel lille-titel">SKÅL <span class="og">&amp;</span> KAMP</div>
+      ${gmHtml(esc(venteTekst))}
+      <div class="kort"><div class="kat midt">Rum</div><div class="kodevis">${esc(kode)}</div></div>
+      <div class="fyld"></div><button class="graa" data-act="forlad">✕ Forlad rummet</button>`;
+  } else if (V.k === "lobby") {
+    h = `<div class="titel lille-titel">SKÅL <span class="og">&amp;</span> KAMP</div>
+      ${gmHtml(`Du er med, <b>${esc(m[1])}</b>! Kig på den store skærm – festen starter, når alle er klar.`)}
+      <div class="kort"><h3>Spillere (${V.sp.length})</h3><div class="chips">${V.sp.map(x => `<span class="chip ${x[3] ? "" : "offline"}"><span class="prik"></span>${esc(x[1])}</span>`).join("")}</div></div>
+      <div class="fyld"></div><button class="graa" data-act="forlad">✕ Forlad rummet</button>`;
+  } else if (V.k === "runde") {
+    h = `<div class="rundehoved"><span class="tag ${V.t}">${typeNavn(V.t, V.m)}</span></div>` + telefonRunde();
+  } else if (V.k === "resultat") {
+    const plus = (V.res || []).find(x => x[0] === MIT_ID), pl = minPlacering();
+    const andre = (V.res || []).filter(x => x[0] !== MIT_ID).map(x => `+${x[1]} ${esc(nvn(x[0]))}`).join(" · ");
+    h = `${plus ? `<div class="plus">+${plus[1]} til dig! 🎉</div>` : `<div class="stort roed-t">Ingen point til dig<small>denne gang</small></div>`}
+      ${andre ? `<div class="note">${andre}</div>` : ""}
+      <div class="stort gul-t">Nr. ${pl.rang}<small>af ${pl.antal} · ${pl.point} point</small></div>
+      <div class="kort">${stillingHtml(telefonSorteret(), (V.res || []).map(x => x[0]), MIT_ID)}</div>`;
+  } else {
+    const pl = minPlacering(), s = telefonSorteret();
+    h = `<div class="titel" style="font-size:clamp(30px,10vw,56px)">GAME OVER</div>
+      <div class="stort ${pl.rang === 1 ? "groen-t" : "gul-t"}">${pl.rang === 1 ? "👑 DU VANDT!" : `Du blev nr. ${pl.rang}`}<small>af ${pl.antal} med ${pl.point} point</small></div>
+      ${podieHtml(s)}
+      ${V.af ? `<p class="lille midt">Festen blev afsluttet før tid, så din score bliver ikke gemt på ranglisten.</p>` : ""}
+      <div class="knaprad"><button class="primaer" data-act="kopierTelefon">📋 Kopiér resultat</button>
+      ${navigator.share && !document.body.classList.contains("mus") ? `<button data-act="delTelefon">📤 Del</button>` : ""}</div>
+      <div class="kort"><h3>Fælles rangliste</h3><table class="liste" id="faellesTop"></table></div>
+      <div class="kort"><h3>Top 10 på denne enhed</h3><table class="liste" id="lokalTop"></table></div>
+      <p class="lille midt">Skærmen kan starte en ny fest i samme rum – bliv bare her.</p>
+      <button class="graa" data-act="forlad">✕ Forlad rummet</button>`;
+  }
+  // Pause vises som overlay
+  const pauseVis = V && V.pa && V.k !== "slut";
+  if (pauseVis && overlay.hidden) { overlay.innerHTML = `<div class="kort"><h2>PAUSE</h2><p class="lille">Skærmen har sat festen på pause.</p></div>`; overlay.hidden = false; }
+  if (!pauseVis && !overlay.hidden) overlay.hidden = true;
+
+  if (h !== sidstHtml) {
+    scene.innerHTML = h; sidstHtml = h; tegnNisser();
+    if (V && V.k === "slut") telefonSlut();
+  }
+}
+
+function telefonRunde() {
+  const id = MIT_ID;
+  if (V.t === "quiz") {
+    if (V.f !== "spm") return kigSkaerm("Svaret afsløres på skærmen 👀");
+    if (V.bb === id) return `<div class="stort groen-t">🔔 DU VAR FØRST!<small>Svar højt – nu!</small></div>`;
+    if (V.bb) return `<div class="stort gul-t">🔔 ${esc(nvn(V.bb))}<small>var hurtigst – lyt efter…</small></div>`;
+    if (V.bz) return `<p class="midt lille">Kender du svaret? Buzz!</p>` + buzzKnap();
+    return kigSkaerm();
+  }
+  if (V.t === "skuespil") {
+    const gor = V.m === "mime" ? "mime" : "tegne";
+    if (V.p === id) {
+      const ord = ordPriv && ordPriv.rid === V.rid ? ordPriv.ord : "Henter ordet…";
+      let h = `<div class="kort"><div class="kat midt">🤫 Du skal ${gor} – kun du kan se det:</div><div class="hemmeligt">${esc(ord)}</div>
+        <div class="lille midt">${V.m === "mime" ? "Ingen ord og ingen lyde!" : "Tegn på en serviet. Ingen bogstaver eller tal!"}</div></div>`;
+      if (V.f === "klar") h += `<button class="primaer stor" data-act="tStart">▶ Jeg er klar – start (60 sek.)</button>`;
+      else if (V.f === "gaet") h += V.bb ? `<div class="stort gul-t">🔔 ${esc(nvn(V.bb))} gætter…</div>` : `<div class="stort groen-t">Kør på! 🎭</div>`;
+      return h;
+    }
+    if (V.f === "klar") return `<div class="stort gul-t">${esc(nvn(V.p))}<small>gør sig klar til at ${gor}…</small></div>`;
+    if (V.f === "gaet") {
+      if (V.bb === id) return `<div class="stort groen-t">🔔 DIT GÆT!<small>Sig det højt – nu!</small></div>`;
+      if (V.bb) return `<div class="stort gul-t">🔔 ${esc(nvn(V.bb))}<small>gætter – lyt efter…</small></div>`;
+      if (V.bz) return `<p class="midt lille">Ved du, hvad ${esc(nvn(V.p))} ${V.m === "mime" ? "mimer" : "tegner"}? Buzz!</p>` + buzzKnap();
+    }
+    return kigSkaerm();
+  }
+  if (V.t === "sang") {
+    if (V.p === id) return `<div class="stort gul-t">🎤 DU SKAL SYNGE!</div><div class="kort midt"><div class="hemmeligt" style="font-size:clamp(22px,7vw,36px)">♪ ${esc(V.q)} ♪</div><div class="opgave">… ${esc(V.s)}!</div></div>`;
+    if (V.f === "afsloer") return `<div class="tromme">🥁</div>` + kigSkaerm("Stemmerne tælles…");
+    const min = mineStemmer[V.rid];
+    return `<div class="opgave">${esc(nvn(V.p))} synger <b>${esc(V.q)}</b> ${esc(V.s)}.</div>
+      <div class="spoerg midt">Hvad synes du? 🤫</div>
+      <div class="knaprad"><button class="groen tommel ${min === "ja" ? "valgt" : ""}" data-act="tStem" data-arg="ja">👍</button>
+      <button class="roed tommel ${min === "nej" ? "valgt" : ""}" data-act="tStem" data-arg="nej">👎</button></div>
+      <p class="lille midt">${min ? "Stemt! Du kan nå at skifte mening." : "Din stemme er hemmelig."}</p>`;
+  }
+  if (V.t === "peg") {
+    if (V.f === "afsloer") return `<div class="tromme">🥁</div>` + kigSkaerm("Stemmerne tælles…");
+    const min = mineStemmer[V.rid];
+    return `<div class="kort"><div class="spm midt">${esc(V.q)}</div></div>
+      <div class="spillergrid">${V.sp.filter(x => x[0] !== id).map(x => `<button class="${min === x[0] ? "valgt" : ""}" data-act="tStem" data-arg="${esc(x[0])}">${esc(x[1])}</button>`).join("")}</div>
+      <p class="lille midt">${min ? "Stemt! Du kan nå at skifte mening. 🤫" : "Din stemme er hemmelig 🤫"}</p>`;
+  }
+  // Duel
+  if (V.a === id || V.b === id) return `<div class="stort roed-t">⚔️ DU ER I DUEL!<small>mod ${esc(nvn(V.a === id ? V.b : V.a))}</small></div><div class="kort opgave">${esc(V.q)}</div>`;
+  return `<div class="stort gul-t">${esc(nvn(V.a))} <span style="color:var(--roed)">VS</span> ${esc(nvn(V.b))}<small>Hep på din favorit! 📣</small></div><div class="kort opgave">${esc(V.q)}</div>`;
+}
+
+// Telefonen gemmer sin egen score én gang pr. spil (kun hvis festen blev spillet færdig)
+function telefonSlut() {
+  const m = mig(); if (!m) return;
+  const noegle = `${kode}-${V.d}`;
+  const gemtAllerede = hent(GEMT_KEY, "") === noegle;
+  const visFaelles = () => { const t = $("#faellesTop"); if (t && window.visFaellesTop) visFaellesTop(t, SPIL, m[1]); };
+  if (!gemtAllerede && !V.af) {
+    gem(GEMT_KEY, noegle);
+    const top = hent(TOP_KEY, []);
+    top.push({ navn: m[1], score: m[2], dato: new Date().toLocaleDateString("da-DK") });
+    top.sort((a, b) => b.score - a.score); gem(TOP_KEY, top.slice(0, 10));
+    const p = window.gemScore ? gemScore(SPIL, m[1], m[2]) : Promise.resolve();
+    Promise.resolve(p).catch(() => {}).then(visFaelles);
+  } else visFaelles();
+  visLokalTop([m[1]]);
+}
+function telefonResultatTekst() {
+  const m = mig(), pl = minPlacering(), top = hent(TOP_KEY, []);
+  const bedste = Math.max(m[2], ...top.filter(e => e.navn === m[1]).map(e => e.score));
+  return `🎮 Skål & Kamp – ${m[1]}: nr. ${pl.rang} af ${pl.antal} med ${fmt(m[2])} point (bedste: ${fmt(bedste)})`;
+}
+function telefonBuzz() {
+  if (rolle !== "telefon" || !V || !V.bz || V.bb || mitBuzz === V.rid) return;
+  mitBuzz = V.rid; Lyd.klik(); vibrer(30);
+  sendMine("buzz", { rid: V.rid });
+  vis();
+  // Kom svaret ikke igennem (fx tabt forbindelse), må man prøve igen
+  const rid = V.rid;
+  setTimeout(() => { if (mitBuzz === rid && V && V.rid === rid && !V.bb) { mitBuzz = ""; vis(); } }, 2500);
+}
+
+/* =====================================================================
+   TOPBJÆLKE
+   ===================================================================== */
+let hudCache = "";
+function opdaterHud(tving) {
+  let tidTekst = "", runde = "", net = "", x2 = false, travlt = false, visTid = false, visPause = false;
+  if (rolle === "skaerm" && S && S.fase !== "slut") {
+    visTid = true; visPause = true; tidTekst = mmss(S.tilbageMs); x2 = S.finale; travlt = S.tilbageMs < 60000;
+    runde = `RUNDE ${S.runde}`;
+  } else if (rolle === "telefon" && V && (V.k === "runde" || V.k === "resultat")) {
+    let tid = V.tid;
+    if (!V.pa && !V.tu) tid -= performance.now() - vModtaget;
+    visTid = true; tidTekst = mmss(tid); x2 = !!V.x2; travlt = tid < 60000;
+    const m = mig(); runde = m ? `${m[1]} · ${m[2]} P` : "";
+  } else if (rolle === "telefon") {
+    const m = mig(); runde = m ? m[1] : `RUM ${kode}`;
+  } else if (rolle === "skaerm") {
+    runde = `RUM ${kode}`;
+  } else runde = `${MINUTTER} MIN · ALLE MOD ALLE`;
+  if (rolle === "skaerm") {
+    const liste = S ? S.spillere : lobby;
+    net = netOk ? `📱 ${liste.filter(p => online(p.id)).length}/${liste.length}` : "📡 …";
+  }
+  const noegle = [tidTekst, runde, net, x2, travlt, visTid, visPause].join("|");
+  if (!tving && noegle === hudCache) return;
+  hudCache = noegle;
+  const tid = $("#hudTid");
+  tid.hidden = !visTid; tid.textContent = tidTekst; tid.classList.toggle("travlt", travlt);
+  $("#hudX2").hidden = !x2;
+  $("#hudRunde").textContent = runde;
+  $("#hudNet").hidden = !net; $("#hudNet").textContent = net;
+  $("#btnPause").hidden = !visPause;
+}
+// Opdaterer nedtællingen i en runde uden at tegne hele skærmen igen
+function opdaterRundeTimer() {
+  const r = S.r, tal = $("#rtal"), bar = $("#rbar");
+  if (!tal || !r || !r.timer) return;
+  const s = Math.ceil(r.timer.ms / 1000);
+  if (tal.textContent !== String(s)) tal.textContent = s;
+  tal.classList.toggle("lav", s <= 5 && r.timer.koer);
+  bar.style.width = (r.timer.ms / r.timer.tot) * 100 + "%";
+}
+
+/* =====================================================================
+   HANDLINGER (knapperne har data-act="navn")
+   ===================================================================== */
+const A = {
+  lyd() { Lyd.til = !Lyd.til; gem(LYD_KEY, Lyd.til); opdaterLydKnap(); Lyd.klik(); },
+  pause, fortsaet,
+  afslut() {
+    if (!afslutSikker) { afslutSikker = true; $("#afslutKnap").textContent = "Sikker? Tryk igen"; return; }
+    slutSpil(true);
+  },
+
+  // Start
+  opret() { Lyd.klik(); S = null; lobby = []; opretRum(); vis(); },
+  fortsaetGemt() {
+    const g = hent(GEM_KEY, null); if (!g) return vis();
+    S = g; pauset = false; lobby = [];
+    opretRum(S.kode);
+    if (S.fase === "runde" && S.r && S.r.fase === "afsloer") S.r.fase = S.r.type === "peg" ? "stem" : "klar";
+    Lyd.bip(true); vis();
+  },
+  deltag() {
+    const k = ($("#kodeInput").value || "").toUpperCase().replace(/[^A-Z]/g, "");
+    const n = rensNavn($("#navnInput").value);
+    if (k.length !== 4) return toast("Koden skal være 4 bogstaver");
+    if (!n) return toast("Skriv dit navn");
+    Lyd.klik(); deltag(k, n);
+  },
+  kopierLink() { kopierTekst(rumLink(), "Link kopieret! 📋"); },
+  smidUd(i) { const p = lobby[i]; if (!p) return; smidtUd.add(p.id); lobby.splice(i, 1); Net.leave(playerTopic(p.id)); Lyd.klik(); vis(); },
+  start() { if (lobby.length >= 2) nyFest(lobby.slice()); },
+  lukRum() { Net.close(); rolle = null; lobby = []; vis(); },
+
+  // Runder (skærmen)
+  spring() { S.runde--; Lyd.klik(); nyRunde(); },
+  timerStart() { S.r.timer.koer = true; Lyd.bip(true); gemState(); vis(); },
+  visSvar() { S.r.fase = "svar"; S.r.timer.koer = false; Lyd.klik(); gemState(); vis(); },
+  rigtigt() {
+    const r = S.r; if (r.bb == null) return;
+    if (r.type === "quiz") A.quizVinder(r.bb); else A.gaettet(r.bb);
+  },
+  forkert() {
+    const r = S.r; if (r.bb == null) return;
+    r.bb = null; r.timer.koer = r.timer.ms > 0; Lyd.forkert(); gemState(); vis();
+  },
+  quizVinder(i) {
+    tildel([{ i, p: POINT.quiz, st: "quiz" }], fyld(tilf(VIND), { n: navn(i) }), `Svaret var: <b>${esc(QUIZ[S.r.i][2])}</b>`);
+  },
+  ingen() { tildel([], tilf(INGEN), `Svaret var: <b>${esc(QUIZ[S.r.i][2])}</b>`); },
+  duelVinder(i) {
+    const r = S.r, t = i === r.a ? r.b : r.a;
+    tildel([{ i, p: POINT.duel, st: "duelV" }, { i: t, p: 0, st: "duelT" }], fyld(tilf(DUELVIND), { n: navn(i), t: navn(t) }));
+  },
+  uafgjort() { const r = S.r; tildel([{ i: r.a, p: POINT.uafgjort }, { i: r.b, p: POINT.uafgjort }], tilf(UAFGJORT)); },
+  mimeStart() { const r = S.r; if (r.fase !== "klar") return; r.fase = "gaet"; r.timer.koer = true; Lyd.bip(true); gemState(); vis(); },
+  gaettet(i) {
+    const r = S.r, ord = r.metode === "mime" ? MIME[r.i] : TEGN[r.i];
+    tildel([{ i: r.p, p: POINT.skuespil, st: "skuespil" }, { i, p: POINT.skuespil, st: "gaet" }],
+      fyld(tilf(GAETTET), { g: navn(i), p: navn(r.p) }), `Ordet var: <b>${esc(ord)}</b>`);
+  },
+  ikkeGaettet() {
+    const r = S.r, ord = r.metode === "mime" ? MIME[r.i] : TEGN[r.i];
+    tildel([], fyld(tilf(IKKEGAETTET), { p: navn(r.p) }), `Ordet var: <b>${esc(ord)}</b>`);
+  },
+  afsloer() {
+    const r = S.r;
+    if (!r || r.fase === "afsloer" || !Object.keys(r.stem).length) return;
+    r.fase = "afsloer"; r.timer && (r.timer.koer = false);
+    Lyd.hvirvel(); gemState(); vis();
+    setTimeout(() => { if (S && S.r === r && S.fase === "runde" && r.fase === "afsloer") afgoerStemmer(); }, 1100);
+  },
+
+  // Efter runden
+  naeste() { if (S.tidUde) slutSpil(false); else nyRunde(); },
+  fortryd() {
+    if (!S.fortryd) return;
+    const f = JSON.parse(S.fortryd);
+    S.spillere = f.spillere.concat(S.spillere.slice(f.spillere.length)); // nye spillere bevares
+    S.r = f.r; S.typer = f.typer; S.fortryd = null; S.resultat = null; S.fase = "runde";
+    if (S.r.timer) S.r.timer.koer = false;
+    if (S.r.fase === "afsloer") S.r.fase = S.r.type === "peg" ? "stem" : "klar";
+    toast("Pointene er taget tilbage"); Lyd.klik(); gemState(); vis();
+  },
+
+  // Slut (skærmen)
+  kopier() { kopierTekst(resultatTekst(), "Kopieret! 📋"); },
+  nyFestSamme() { nyFest(S.spillere.map(p => ({ id: p.id, navn: p.navn }))); },
+  tilLobby() { lobby = S.spillere.map(p => ({ id: p.id, navn: p.navn })); S = null; slet(GEM_KEY); vis(); },
+
+  // Telefonen
+  tStart() { if (V && V.p === MIT_ID) { sendMine("start", { rid: V.rid }); Lyd.klik(); } },
+  tStem(v) {
+    if (!V || (V.t !== "peg" && V.t !== "sang") || V.f === "afsloer") return;
+    mineStemmer[V.rid] = v; Lyd.klik(); vibrer(20);
+    sendMine("stem", { rid: V.rid, v });
+    vis();
+  },
+  kopierTelefon() { kopierTekst(telefonResultatTekst(), "Kopieret! 📋"); },
+  async delTelefon() { try { await navigator.share({ text: telefonResultatTekst() }); } catch (e) {} },
+  forlad() {
+    if (rolle === "telefon") sendMine("bye", {});
+    setTimeout(() => Net.close(), 100);
+    rolle = null; V = null; slet(RUM_KEY);
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    overlay.hidden = true; vis();
+  },
+};
+async function kopierTekst(t, besked) {
+  try { await navigator.clipboard.writeText(t); toast(besked); }
+  catch (e) {
+    const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast(besked); } catch (e2) { toast("Kunne ikke kopiere"); }
+    ta.remove();
+  }
+}
+
+/* ---------- Input ---------- */
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]");
+  if (!b || b.disabled) return;
+  // Skærmen: ignorér tryk lige efter et skærmskift (så et dobbelttryk ikke rammer den næste knap)
+  if (rolle === "skaerm" && b.closest("#scene") && performance.now() - sidstRender < 350) return;
+  Lyd.start();
+  const f = A[b.dataset.act];
+  const arg = b.dataset.arg;
+  if (f) f(arg != null && /^\d+$/.test(arg) ? Number(arg) : arg);
+});
+// BUZZ reagerer allerede, når fingeren rammer skærmen (hurtigere end click)
+document.addEventListener("pointerdown", e => {
+  Lyd.start();
+  if (e.target.closest("[data-buzz]")) { e.preventDefault(); telefonBuzz(); }
+});
+document.addEventListener("submit", e => { e.preventDefault(); Lyd.start(); if (e.target.id === "joinForm") A.deltag(); });
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  Lyd.start();
+  const k = e.key.toLowerCase();
+  if (k === "m") return A.lyd();
+  if (rolle === "telefon") {
+    if (k === " " || k === "enter") { e.preventDefault(); if (scene.querySelector("[data-buzz]")) telefonBuzz(); }
+    return;
+  }
+  if (rolle !== "skaerm" || !S) return;
+  if (k === "p" || k === "escape") { if (!overlay.hidden) fortsaet(); else pause(); return; }
+  if (k === " " || k === "enter") {
+    const b = !overlay.hidden ? overlay.querySelector(".primaer") : scene.querySelector(".primaer:not([disabled])");
+    if (b) { e.preventDefault(); b.click(); }
+    return;
+  }
+  if (!overlay.hidden) return;
+  const b = scene.querySelector(`[data-key="${CSS.escape(k)}"]`);
+  if (b) { e.preventDefault(); b.click(); }
+});
+// Skærmen pauser automatisk, når man skifter fane eller app
+document.addEventListener("visibilitychange", () => { if (document.hidden && rolle === "skaerm") { pause(); gemState(); } });
+addEventListener("pagehide", () => { gemState(); if (rolle === "telefon") sendMine("bye", {}); });
+addEventListener("hashchange", () => { if (!rolle) { sidstHtml = ""; vis(); } });
+
+/* =====================================================================
+   BAGGRUND (pixelsne og neon-gulv) OG HOVEDLØKKE
+   ===================================================================== */
+const bg = $("#bg"), bx = bg.getContext("2d");
+let fnug = [], gulvOffset = 0;
+function bgResize() {
+  const d = Math.min(2, devicePixelRatio || 1);
+  bg.width = innerWidth * d; bg.height = innerHeight * d; bx.setTransform(d, 0, 0, d, 0, 0);
+  fnug = Array.from({ length: Math.round((innerWidth * innerHeight) / 9000) }, () => ({
+    x: Math.random() * innerWidth, y: Math.random() * innerHeight, v: 12 + Math.random() * 30, s: Math.random() < 0.2 ? 4 : 2,
+  }));
+}
+function tegnBg(dt) {
+  const w = innerWidth, h = innerHeight, hor = h * 0.66;
+  bx.fillStyle = "#0b0620"; bx.fillRect(0, 0, w, h);
+  gulvOffset = (gulvOffset + dt * 0.02) % 1;
+  bx.strokeStyle = "rgba(255,43,214,.22)"; bx.lineWidth = 1; bx.beginPath();
+  for (let n = 0; n < 12; n++) { const z = (n + gulvOffset) / 12, y = hor + (h - hor) * z * z; bx.moveTo(0, y); bx.lineTo(w, y); }
+  for (let k = -10; k <= 10; k++) { bx.moveTo(w / 2 + k * 24, hor); bx.lineTo(w / 2 + k * w / 5, h); }
+  bx.stroke();
+  bx.fillStyle = "rgba(230,235,255,.55)";
+  for (const f of fnug) {
+    f.y += (f.v * dt) / 1000; if (f.y > h) { f.y = -4; f.x = Math.random() * w; }
+    bx.fillRect(Math.round(f.x), Math.round(f.y), f.s, f.s);
+  }
+}
+
+let sidst = performance.now(), gemTaeller = 0, helloTaeller = 0, sekTaeller = 0;
+function loop(nu) {
+  const dt = Math.min(100, nu - sidst); sidst = nu;
+  tegnBg(dt);
+  if (rolle === "skaerm" && S && S.fase !== "slut" && !pauset && !document.hidden) {
+    // Hoveduret (tæller også mens resultatskærmen vises – det er ægte festtid)
+    if (!S.tidUde) {
+      S.tilbageMs -= dt;
+      if (!S.finale && S.tilbageMs <= FINALE_MS && S.tilbageMs > 0) startFinale();
+      if (S.tilbageMs <= 0) tidErGaaet();
+    }
+    // Nedtælling i selve runden
+    const r = S.r;
+    if (S.fase === "runde" && r && r.timer && r.timer.koer) {
+      const foer = Math.ceil(r.timer.ms / 1000);
+      r.timer.ms = Math.max(0, r.timer.ms - dt);
+      const efter = Math.ceil(r.timer.ms / 1000);
+      if (efter !== foer && efter > 0 && efter <= 5) Lyd.tik();
+      if (r.timer.ms <= 0) {
+        r.timer.koer = false; Lyd.horn();
+        if (r.type === "quiz" && r.fase === "spm") r.fase = "svar";
+        if (r.type === "skuespil" && r.fase === "gaet") r.fase = "slut";
+        gemState(); vis(); tjekAutoAfsloer();
+      }
+      opdaterRundeTimer();
+    }
+    gemTaeller += dt;
+    if (gemTaeller > 2000) { gemTaeller = 0; gemState(); }
+  }
+  // Skærmen: send tilstanden jævnligt (nye/genforbundne telefoner) og opdatér "forbundet"-prikker
+  if (rolle === "skaerm") {
+    if (nu - sidstUdsendt > SEND_MS) udsend();
+    sekTaeller += dt;
+    if (sekTaeller > 1000) { sekTaeller = 0; if (!S) vis(); else tjekAutoAfsloer(); }
+  }
+  // Telefonen: sig "jeg er her" jævnligt, og opdatér ventetekster
+  if (rolle === "telefon") {
+    helloTaeller += dt;
+    if (helloTaeller > HELLO_MS) { helloTaeller = 0; if (netOk) sendHello(); if (!mig()) vis(); }
+  }
+  opdaterHud(false);
+  requestAnimationFrame(loop);
+}
+
+/* ---------- Opstart ---------- */
+addEventListener("resize", bgResize);
+bgResize();
+opdaterLydKnap();
+(function init() {
+  // Telefon der har været i dette rum før (fx genindlæst side) => kom automatisk tilbage
+  const h = (location.hash.replace("#", "").toUpperCase().match(/^[A-Z]{4}$/) || [""])[0];
+  const navnGemt = hent(NAVN_KEY, "");
+  if (h && navnGemt && hent(RUM_KEY, "") === h) deltag(h, navnGemt);
+  else vis();
+})();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
