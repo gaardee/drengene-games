@@ -42,21 +42,22 @@
   #stage { position: relative; flex: 1 1 auto; min-height: 0; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
-  /* ---------- "Syng LAST CHRISTMAS!!!" ---------- */
-  #sing {
-    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: rgba(200, 16, 46, .35); pointer-events: none; text-align: center; padding: 16px;
+  /* ---------- Konens taleboble (dækker en del af skærmen) ---------- */
+  #nag {
+    position: absolute; left: 50%; top: 18%; transform: translateX(-50%);
+    width: min(78%, 520px); padding: 18px 22px; pointer-events: none;
+    background: #fffdf8; color: #2a2220; border: 4px solid #2a2220; border-radius: 26px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); font-weight: 900; text-align: center;
+    font-size: clamp(20px, 5.2vw, 34px); line-height: 1.2;
+    animation: nagIn .18s ease-out;
   }
-  #sing[hidden] { display: none; }
-  #sing .singText {
-    font-size: clamp(34px, 9vw, 84px); font-weight: 900; color: #fff; line-height: 1.05;
-    text-shadow: 4px 4px 0 #123524, -2px -2px 0 #c8102e;
-    animation: blink .5s steps(2, start) infinite, wob 1s ease-in-out infinite;
+  #nag[hidden] { display: none; }
+  #nag::after {
+    content: ""; position: absolute; left: 30%; bottom: -26px;
+    border: 14px solid transparent; border-top: 16px solid #2a2220;
   }
-  #sing .singSub { margin-top: 10px; font-size: 22px; font-weight: 900; color: #fff; text-shadow: 2px 2px 0 #123524; }
-  #singCount { font-size: 64px; font-weight: 900; color: #f5c542; text-shadow: 4px 4px 0 #123524; margin-top: 6px; }
-  @keyframes blink { to { color: #f5c542; } }
-  @keyframes wob { 0%, 100% { transform: rotate(-4deg) scale(1); } 50% { transform: rotate(4deg) scale(1.08); } }
+  #nag small { display: block; font-size: .55em; opacity: .65; margin-bottom: 4px; }
+  @keyframes nagIn { from { transform: translateX(-50%) scale(.6); opacity: 0; } }
 
   /* ---------- Skærme ---------- */
   .screen {
@@ -139,12 +140,8 @@
   <div id="stage">
     <canvas id="c"></canvas>
 
-    <!-- "Syng LAST CHRISTMAS!!!" – spillet står stille i 10 sekunder -->
-    <div id="sing" hidden>
-      <div class="singText">🎤 Syng<br>LAST CHRISTMAS!!! 🎤</div>
-      <div class="singSub">Alle sammen – nu!</div>
-      <div id="singCount">10</div>
-    </div>
+    <!-- Konens taleboble: vises når ens kone står helt tæt på -->
+    <div id="nag" hidden><small id="nagWho">Konen siger:</small><span id="nagText"></span></div>
 
     <!-- Startskærm: navn + opret/deltag -->
     <div class="screen" id="startScreen">
@@ -262,6 +259,7 @@ const PLAYER_R = 16;
 const PLAYER_SPEED = 220;
 const ENEMY_R = 17;
 const ENEMY_GAP = 220;           // så tæt må to tegnere højst komme på hinanden
+const SAFE_KEEP_AWAY = 320;      // tegnerne patruljerer ikke tættere end dette på et fristed
 const LOST_TIME = 2.5;           // så længe går en tegner mod stedet, hvor han sidst så en dreng
 const STOP_R = 70;               // hvor tæt man skal stå på et stop
 const INV_TIME = 2.0;            // sekunder man er usårlig efter at have mistet tøj
@@ -273,8 +271,6 @@ const PICKUP_POINTS = 10;
 const TOJ_ON_MAP = 10;            // så mange stykker tøj ligger der altid på kortet
 // Alle stop er fristeder: tegnerne kan ikke komme ind, og man kan ikke tegnes derinde
 const inSafe = p => STOPS.some(st => Math.hypot(p.x - st.x, p.y - st.y) < STOP_R);
-const SING_AT = [35, 80];        // "Syng LAST CHRISTMAS!!!" efter så mange sekunders spil
-const SING_TIME = 10;
 const MAX_TIME = 150;            // nødstop, hvis nogen gemmer sig i fristederne
 const BOOSTS = { horn: { mul: 1.35, time: 3.5 }, pepsi: { mul: 1.7, time: 3.0 } };
 const PIGEON_SLOW = 0.55;
@@ -331,6 +327,7 @@ const PIGEON_R = 38;
 // Konerne: én pr. dreng. Hun jagter sin egen mand og skubber en barnevogn foran sig.
 // Alle koner og barnevogne spærrer vejen for alle drenge.
 const WIFE_R = 14, PRAM_R = 15, PRAM_D = 30;  // barnevognen kører PRAM_D foran konen
+const NAG_ON = 85, NAG_OFF = 120;   // konen snakker, når hun er tættere end NAG_ON (stopper ved NAG_OFF)
 const WIFE_DELAY = 3;                          // sekunder før konerne går i gang
 const wifeSpeed = t => 125 + 0.4 * t;
 const HAIR = ["#6b4423", "#f2c94c", "#2b1d14", "#b5562d", "#8a6e4b", "#d9b46a", "#3b2a20", "#c0392b", "#ece0c8", "#5a3a1a"];
@@ -511,11 +508,7 @@ const Sound = {
   out()   { this.tone(500, 0.6, "sawtooth", 0.1, 80); },
   skaal() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.16, "triangle", 0.14, null, i * 0.09)); this.bell(0.4); },
   bell(delay = 0) { this.tone(2637, 0.15, "sine", 0.06, null, delay); this.tone(3136, 0.12, "sine", 0.04, null, delay + 0.03); },
-  // "Jingle Bells" (gammel folkemelodi) når spillet fryser
-  jingle() {
-    const E = 659, G = 784, C = 523, D = 587, seq = [E, E, E, 0, E, E, E, 0, E, G, C, D, E];
-    seq.forEach((f, i) => { if (f) this.tone(f, 0.2, "triangle", 0.13, null, i * 0.2); });
-  },
+  nag() { [0, 0.09, 0.18].forEach((d, i) => this.tone(520 + (i % 2) * 140, 0.07, "square", 0.05, 380, d)); },
   whistle() { this.tone(2200, 0.12, "sine", 0.12); this.tone(2200, 0.35, "sine", 0.12, 2000, 0.16); },
   end()  { [523, 392, 330, 262].forEach((f, i) => this.tone(f, 0.18, "triangle", 0.15, null, i * 0.16)); },
   join() { this.tone(660, 0.08, "triangle", 0.1); this.tone(990, 0.12, "triangle", 0.1, null, 0.08); },
@@ -618,7 +611,7 @@ function newMe(slot, n) {
 function hostNewGame() {
   const n = lobby.players.length;
   G = {
-    t: 0, paused: false, sing: 0, singIdx: 0,
+    t: 0, paused: false,
     players: {}, enemies: [], items: [], nextSpot: 0, tojSpot: 150, itemRnd: mulberry32(SEED + 3),
     stop: 0, firstAt: null, atStop: 0, need: n, lap: 0,
     ff: {}, ffT: 0,
@@ -674,7 +667,6 @@ function applyEvent([x, y, text, color, sound, pid, fx]) {
   if (text && S) S.floaters.push({ x, y, text, color, life: 1.4 });
   if (sound && Sound[sound] && (!pid || pid === MY_ID)) Sound[sound]();
   if (fx && pid === MY_ID && ME && BOOSTS[fx]) { ME.boost = BOOSTS[fx].time; ME.bmul = BOOSTS[fx].mul; ME.bkind = fx === "pepsi" ? 2 : 1; }
-  if (fx === "sing") Sound.jingle();
 }
 
 /* =====================================================================
@@ -819,19 +811,8 @@ function hostUpdate(dt) {
   // Værtens egen dreng sendes ind i spillet
   const hp = G.players[MY_ID];
 
-  // ---- Syng LAST CHRISTMAS: alt står stille ----
-  if (G.sing > 0) {
-    G.sing = Math.max(0, G.sing - dt);
-    Object.assign(hp, { last: performance.now(), moving: false });
-    return;
-  }
   G.t += dt;
   const t = G.t;
-  if (G.singIdx < SING_AT.length && t >= SING_AT[G.singIdx]) {
-    G.singIdx++; G.sing = SING_TIME; clearInput(); ME.moving = false;
-    hostEvent(0, 0, "", "", null, null, "sing");
-    return;
-  }
 
   moveMe(dt, t);
   Object.assign(hp, { x: ME.x, y: ME.y, fx: ME.fx, moving: ME.moving, step: ME.step, stun: ME.stun, boost: ME.boost > 0 ? ME.bkind : 0, last: performance.now() });
@@ -925,10 +906,15 @@ function pointField(x, y) {
 const PATROL_CACHE = {};
 function patrolPoints(n) {
   if (PATROL_CACHE[n]) return PATROL_CACHE[n];
-  const k = Math.ceil(Math.sqrt(n)), cand = [];
-  for (let gy = 0; gy < k; gy++) for (let gx = 0; gx < k; gx++) {
-    const c = nearFree((gx + 0.5) * WORLD / k, (gy + 0.5) * WORLD / k);
-    cand.push({ x: (c % GN + 0.5) * CELL, y: (((c / GN) | 0) + 0.5) * CELL });
+  // jævnt net af mulige punkter – men ikke tæt på fristederne
+  let cand = [];
+  for (let k = Math.ceil(Math.sqrt(n)); cand.length < n && k < 12; k++) {
+    cand = [];
+    for (let gy = 0; gy < k; gy++) for (let gx = 0; gx < k; gx++) {
+      const c = nearFree((gx + 0.5) * WORLD / k, (gy + 0.5) * WORLD / k);
+      const p = { x: (c % GN + 0.5) * CELL, y: (((c / GN) | 0) + 0.5) * CELL };
+      if (STOPS.every(st => Math.hypot(st.x - p.x, st.y - p.y) > SAFE_KEEP_AWAY)) cand.push(p);
+    }
   }
   // vælg n af dem, så de ligger så spredt som muligt
   const pts = [cand.splice(0, 1)[0]];
@@ -1009,6 +995,8 @@ function hostUpdateEnemies(dt, act, n) {
     }
     if (P && P.id !== e.target) hostEvent(e.x, e.y - 45, "!", "#ffd36b", "hey", P.id); // har fået øje på en dreng
     if (P) { e.lost = { x: P.x, y: P.y, t: LOST_TIME }; chasers[P.id] = (chasers[P.id] || 0) + 1; }
+    // forsvandt drengen ind i et fristed? så giver tegneren op med det samme og går et andet sted hen
+    else if (e.lost && STOPS.some(st => Math.hypot(st.x - e.lost.x, st.y - e.lost.y) < STOP_R + 60)) e.lost.t = 0;
     e.target = P ? P.id : null; e.td = real; e.travel = false;
   }
   // Tegnere uden nogen at jagte fordeler sig jævnt over banen
@@ -1144,7 +1132,7 @@ function applyHit(p) {
 function hostSendState() {
   const pl = Object.values(G.players).map(p => [p.id, r1(p.x), r1(p.y), p.fx, p.moving ? 1 : 0, Math.floor(p.score), p.clothes, r1(p.inv * 10), p.hc, r1(p.kx * 100), r1(p.ky * 100), p.out ? 1 : 0, p.boost || 0]);
   sendMain("state", {
-    t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0, sg: r1(G.sing * 10),
+    t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0,
     so: G.stop, at: G.atStop, nd: G.need,
     it: G.items.map(i => [ITEM_KINDS.indexOf(i.k), r1(i.x), r1(i.y)]),
     en: G.enemies.map(e => [r1(e.x), r1(e.y), EMODES.indexOf(e.mode), e.fx]),
@@ -1172,14 +1160,12 @@ function hostEnd(reason) {
    SPILLERNE (ikke-vært): modtag værtens tilstand
    ===================================================================== */
 function clientNewView() {
-  S = { t: 0, paused: false, sing: 0, stop: 0, atStop: 0, need: 1, items: [], enemies: [], wives: [], players: {}, floaters: [], recvAt: performance.now() };
+  S = { t: 0, paused: false, stop: 0, atStop: 0, need: 1, items: [], enemies: [], wives: [], players: {}, floaters: [], recvAt: performance.now() };
 }
 function clientState(m) {
   if (!S) return;
   S.t = m.t; S.recvAt = performance.now(); S.paused = !!m.p;
-  const wasSing = S.sing > 0;
-  S.sing = m.sg / 10; S.stop = m.so; S.atStop = m.at; S.need = m.nd;
-  if (S.sing > 0 && !wasSing) { clearInput(); ME.moving = false; }
+  S.stop = m.so; S.atStop = m.at; S.need = m.nd;
   S.items = m.it.map(([k, x, y]) => ({ k: ITEM_KINDS[k], x, y }));
   // tegnere: behold de gamle (til blød glidning), tilføj nye
   m.en.forEach(([x, y, mode, fx], i) => {
@@ -1218,7 +1204,7 @@ function smoothList(list, dt, skipMe) {
     if (Math.hypot(p.dx - ox, p.dy - oy) > 0.3) p.step = (p.step || 0) + dt * 12;
   }
 }
-const clientTime = () => S.t + (S.paused || S.sing > 0 ? 0 : Math.min(0.4, (performance.now() - S.recvAt) / 1000));
+const clientTime = () => S.t + (S.paused ? 0 : Math.min(0.4, (performance.now() - S.recvAt) / 1000));
 const gameTime = () => role === "client" ? clientTime() : (S ? S.t : 0);
 
 /* =====================================================================
@@ -1233,7 +1219,6 @@ function onNetMsg(topic, ev, m) {
       const p = G.players[m.id];
       if (!p) return;
       p.last = performance.now();
-      if (G.sing > 0) return; // står stille mens der synges
       p.x = clamp(+m.x || 0, 0, WORLD); p.y = clamp(+m.y || 0, 0, WORLD); p.fx = m.fx < 0 ? -1 : 1; p.moving = !!m.m; p.boost = m.b | 0;
     }
     return;
@@ -1836,6 +1821,8 @@ function drawWife(w, wx, wy, now) {
   if (!pramBehind) drawPram();
   const info = lobby.players.find(q => q.id === w.owner);
   if (info) { let n = info.name; if (n.length > 9) n = n.slice(0, 8) + "…"; label("♥ " + n, x, hy - R * 1.2, Math.max(9, 10.5 * s), "#ffc2d2"); }
+  const hb = kidsToDraw().find(k => k.id === w.owner); // snakker hun med sin mand?
+  if (hb && Math.hypot(hb.x - wx, hb.y - wy) < NAG_OFF) { ctx.font = `${Math.max(14, 20 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(Math.floor(now / 300) % 2 ? "💬" : "🗯️", x + R * 1.1, hy - R * 1.9); }
 }
 
 function drawTegner(e, wx, wy, now) {
@@ -2136,16 +2123,37 @@ function updateHud() {
   $("score").textContent = `⭐ ${fmtNum(score)}`;
   $("clothes").innerHTML = me.out ? "🙈 Nøgen – find 👕" : CLOTHES.map((c, i) => `<span class="${wears(cl, i) ? "" : "gone"}">${c.emoji}</span>`).join("");
 }
-function updateSing() {
-  const sing = S && (state === "play" || state === "pause" || state === "wait") ? S.sing : 0;
-  $("sing").hidden = !(sing > 0);
-  if (sing > 0) $("singCount").textContent = Math.ceil(sing);
+// Konens taleboble: står ens egen kone helt tæt på, begynder hun at snakke
+const NAG_LINES = [
+  "Hvornår kommer du hjem?!", "Du lovede at skifte bleer i aften!", "Har du husket mælk og rugbrød?",
+  "Skal du VIRKELIG have en snaps mere?", "Min mor kommer på søndag!", "Er det et pølsehorn du har i hånden?",
+  "Hvem er de andre drenge?", "Babyen har ikke sovet i to timer!", "Du har ikke svaret på mine sms'er!",
+  "Vi skulle have været til julefrokost hos MINE forældre!", "Hvor er din jakke henne?!", "Tag dig sammen, skat!",
+];
+const nag = { on: false, line: 0, nextT: 0 };
+function updateNag(now) {
+  let show = false;
+  if (S && S.wives && ME && state === "play") {
+    const w = S.wives.find(w => w.owner === MY_ID);
+    if (w) {
+      const wx = role === "client" ? w.dx : w.x, wy = role === "client" ? w.dy : w.y;
+      const d = Math.hypot(ME.x - wx, ME.y - wy);
+      show = nag.on ? d < NAG_OFF : d < NAG_ON; // lidt "klæbrig", så boblen ikke blinker
+    }
+  }
+  if (show && (!nag.on || now > nag.nextT)) {
+    if (!nag.on) nag.line = Math.floor(Math.random() * NAG_LINES.length); else nag.line = (nag.line + 1 + Math.floor(Math.random() * 3)) % NAG_LINES.length;
+    $("nagText").textContent = NAG_LINES[nag.line];
+    nag.nextT = now + 2600;
+    Sound.nag();
+  }
+  if (show !== nag.on) { nag.on = show; $("nag").hidden = !show; }
 }
 
 /* =====================================================================
    Game loop
    ===================================================================== */
-let lastNow = performance.now(), lastSend = 0, lastLobbyPing = 0, lastBell = 0;
+let lastNow = performance.now(), lastSend = 0, lastLobbyPing = 0;
 function frame(now) {
   let dt = (now - lastNow) / 1000; lastNow = now;
   if (dt > 0.25) dt = 0;
@@ -2166,11 +2174,9 @@ function frame(now) {
     }
   } else if (role === "client") {
     if (state === "play" && dt > 0 && S) {
-      if (S.sing <= 0) {
-        let rest = Math.min(dt, 0.1);
-        const t0 = clientTime();
-        while (rest > 0) { const step = Math.min(rest, 1 / 60); moveMe(step, t0); rest -= step; }
-      } else ME.moving = false;
+      let rest = Math.min(dt, 0.1);
+      const t0 = clientTime();
+      while (rest > 0) { const step = Math.min(rest, 1 / 60); moveMe(step, t0); rest -= step; }
       smoothList(S.enemies, dt, false); smoothList(S.wives, dt, false); smoothList(Object.values(S.players), dt, true);
       if (now - lastSend >= CLIENT_SEND_MS) {
         lastSend = now;
@@ -2193,7 +2199,6 @@ function frame(now) {
     if (state === "lobby" && lobbySeen && now - lastHostMsg > 7000) $("lobbyMsg").textContent = "Værten er væk… venter";
   }
   // bjælder mens der synges
-  if (S && S.sing > 0 && state === "play" && now - lastBell > 480) { lastBell = now; Sound.bell(); }
   if (S) {
     for (const f of S.floaters) { f.life -= dt; f.y -= 35 * dt; }
     S.floaters = S.floaters.filter(f => f.life > 0);
@@ -2201,7 +2206,7 @@ function frame(now) {
   updateCamera(dt);
   draw(now, dt);
   updateHud();
-  updateSing();
+  updateNag(now);
   requestAnimationFrame(frame);
 }
 
