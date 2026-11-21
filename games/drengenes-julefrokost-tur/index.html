@@ -154,6 +154,7 @@
         <ul class="rules">
           <li>📍 Ruten: <b>Bodega → Tivoli → Smørrebrød → Snapsbaren → Natklubben → Pølsevognen</b></li>
           <li>👬 Et stop klares, når <b>alle</b> drenge med tøj på står der: <b>+100</b> til alle (+25 til den første)</li>
+          <li>🛡️ Det næste stop er et <b>fristed</b>: tegnerne kan ikke komme ind, så I kan vente sikkert på hinanden</li>
           <li>🎨 Croquis-tegnere stjæler jeres tøj: 🎅🧣🧶👖. Mister du bukserne, er du <b>ude</b></li>
           <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage · <b>+10</b></li>
           <li>🌉 Kanalerne kan kun krydses på broerne · turister og duer står i vejen</li>
@@ -870,7 +871,10 @@ function hostUpdateEnemies(dt, act, n) {
     hostEvent(best.x, best.y - 40, "Croquis-tegner! 🎨", "#ff9f9f", "hey");
   }
   const speed = enemySpeed(t);
-  const targets = act.filter(p => p.inv <= 0);
+  // det næste stop er et fristed: drenge derinde kan ikke tegnes, og tegnerne kan ikke gå ind
+  const safe = STOPS[G.stop % STOPS.length];
+  const inSafe = p => Math.hypot(p.x - safe.x, p.y - safe.y) < STOP_R;
+  const targets = act.filter(p => p.inv <= 0 && !inSafe(p));
   for (const e of G.enemies) {
     if (e.mode === "spawn" || e.mode === "draw") {
       e.timer -= dt;
@@ -906,9 +910,13 @@ function hostUpdateEnemies(dt, act, n) {
       if (Math.abs(dx) > 2) e.fx = Math.sign(dx);
     }
     collideWorld(e);
+    { // skub tegneren ud af fristedet
+      const fx = e.x - safe.x, fy = e.y - safe.y, fd = Math.hypot(fx, fy) || 1;
+      if (fd < STOP_R) { e.x = safe.x + fx / fd * STOP_R; e.y = safe.y + fy / fd * STOP_R; collideWorld(e); }
+    }
     // fanget!
     for (const p of act) {
-      if (p.inv > 0 || Math.hypot(p.x - e.x, p.y - e.y) > p.r + e.r - 2) continue;
+      if (p.inv > 0 || inSafe(p) || Math.hypot(p.x - e.x, p.y - e.y) > p.r + e.r - 2) continue;
       hitPlayer(e, p);
       break;
     }
@@ -1360,6 +1368,7 @@ function drawStop(st, current, now) {
   ctx.font = `${Math.max(18, 38 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(st.emoji, x, y - 4 * s);
   label(st.name, x, y + R * 0.62, Math.max(10, 14 * s), current ? "#fff" : "#eee");
+  if (current) label("🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), "#7dffb0");
   ctx.globalAlpha = 1;
 }
 
