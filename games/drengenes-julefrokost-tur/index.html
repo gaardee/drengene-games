@@ -621,7 +621,7 @@ function hostNewGame() {
   const n = lobby.players.length;
   G = {
     t: 0, paused: false, sing: 0, singIdx: 0,
-    players: {}, enemies: [], items: [], nextSpot: 0, itemRnd: mulberry32(SEED + 3),
+    players: {}, enemies: [], items: [], nextSpot: 0, tojSpot: 150, itemRnd: mulberry32(SEED + 3),
     stop: 0, firstAt: null, atStop: 0, need: n, lap: 0,
     ff: {}, ffT: 0,
     floaters: [], evq: [], over: false,
@@ -639,11 +639,26 @@ function hostNewGame() {
   S = G;
 }
 function spawnItem(kind) {
+  if (kind === "toj") return spawnToj();
   // næste ledige plads (ikke oven i en anden ting)
   let s, guard = 0;
   do { s = ITEM_SPOTS[G.nextSpot++ % ITEM_SPOTS.length]; } while (guard++ < 20 && G.items.some(i => Math.hypot(i.x - s.x, i.y - s.y) < 80));
   if (!kind) kind = G.itemRnd() < 0.35 ? "pepsi" : "horn";
   G.items.push({ k: kind, x: s.x, y: s.y });
+}
+// Tøj fordeles jævnt: blandt 60 mulige pladser vælges den, der er længst fra
+// det andet tøj og fra drengene (seedet, så det er ens for alle)
+function spawnToj() {
+  const avoid = [...G.items.filter(i => i.k === "toj"), ...Object.values(G.players).filter(p => !p.out)];
+  let best = null, bd = -1;
+  for (let k = 0; k < 60; k++) {
+    const s = ITEM_SPOTS[(G.tojSpot + k) % ITEM_SPOTS.length];
+    if (G.items.some(i => Math.hypot(i.x - s.x, i.y - s.y) < 60)) continue;
+    const d = avoid.length ? Math.min(...avoid.map(a => Math.hypot(a.x - s.x, a.y - s.y))) : 0;
+    if (d > bd) { bd = d; best = s; }
+  }
+  G.tojSpot += 7;
+  if (best) G.items.push({ k: "toj", x: best.x, y: best.y });
 }
 // Event = svævende tekst (+ evt. lyd og effekt). Værten viser det selv og sender det til alle.
 function hostEvent(x, y, text, color = "#fff", sound = null, pid = null, fx = null) {
@@ -1415,8 +1430,16 @@ function drawPigeons(p, now, people) {
 
 function drawItem(it, now) {
   const s = view.s, [x, y0] = toS(it.x, it.y), y = y0 + Math.sin(now / 250 + it.x) * 2.5 * s;
-  ctx.fillStyle = it.k === "toj" ? "rgba(125,255,176,.4)" : "rgba(245,197,66,.4)";
-  ctx.beginPath(); ctx.arc(x, y, 20 * s, 0, Math.PI * 2); ctx.fill();
+  if (it.k === "toj") {
+    // kraftig grøn ring der pulserer, så tøjet er let at få øje på
+    const pulse = 1 + Math.sin(now / 160) * 0.12;
+    ctx.beginPath(); ctx.arc(x, y, 30 * s * pulse, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,230,90,.35)"; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 21 * s, 0, Math.PI * 2); fillStroke("#00c853", 3);
+    ctx.lineWidth = Math.max(2, 3 * s); ctx.strokeStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, 17 * s, 0, Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.fillStyle = "rgba(245,197,66,.4)";
+    ctx.beginPath(); ctx.arc(x, y, 20 * s, 0, Math.PI * 2); ctx.fill();
+  }
   if (it.k === "horn") {
     // pølsehorn: brødhorn med pølse der stikker ud
     rr(x - 6 * s, y - 4 * s, 22 * s, 8 * s, 4 * s); fillStroke("#c0392b", 2);
@@ -1431,8 +1454,16 @@ function drawItem(it, now) {
     ctx.font = `900 ${Math.max(6, 7 * s)}px sans-serif`; ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("MAX", x, y - 6 * s);
   } else {
-    ctx.font = `${Math.max(14, 26 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("👕", x, y);
+    // rød julesweater med hvidt mønster
+    const w = 13 * s, h = 13 * s;
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.45, y - h); ctx.lineTo(x - w * 1.25, y - h * 0.55); ctx.lineTo(x - w * 0.95, y - h * 0.05);
+    ctx.lineTo(x - w * 0.6, y - h * 0.25); ctx.lineTo(x - w * 0.6, y + h); ctx.lineTo(x + w * 0.6, y + h); ctx.lineTo(x + w * 0.6, y - h * 0.25);
+    ctx.lineTo(x + w * 0.95, y - h * 0.05); ctx.lineTo(x + w * 1.25, y - h * 0.55); ctx.lineTo(x + w * 0.45, y - h);
+    ctx.quadraticCurveTo(x, y - h * 0.55, x - w * 0.45, y - h); ctx.closePath(); fillStroke("#e8102e", 2.5);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1.5, 2 * s); ctx.beginPath();
+    for (let i = 0; i <= 4; i++) ctx.lineTo(x - w * 0.55 + i * w * 0.275, y + h * 0.15 + (i % 2 ? -h * 0.2 : 0));
+    ctx.stroke();
   }
 }
 
@@ -1681,6 +1712,9 @@ function drawMinimap() {
   ctx.beginPath(); rr(x0, y0, M, M, 6); ctx.clip();
   ctx.fillStyle = "#2f6fa3"; for (const w of WATER) ctx.fillRect(x0 + w.x * k, y0 + w.y * k, w.w * k, w.h * k);
   ctx.fillStyle = "#b9a58a"; for (const h of HOUSES) ctx.fillRect(x0 + h.x * k, y0 + h.y * k, h.w * k, h.h * k);
+  for (const it of S.items) if (it.k === "toj") { // tøj = grønne prikker
+    ctx.beginPath(); ctx.arc(x0 + it.x * k, y0 + it.y * k, 3, 0, Math.PI * 2); ctx.fillStyle = "#00c853"; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = "#fff"; ctx.stroke();
+  }
   const st = STOPS[S.stop % STOPS.length];
   ctx.beginPath(); ctx.arc(x0 + st.x * k, y0 + st.y * k, 6 + Math.sin(performance.now() / 150) * 1.5, 0, Math.PI * 2);
   ctx.fillStyle = "#f5c542"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#c8102e"; ctx.stroke();
