@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b1433">
+<title>Tandjagten</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #0b1433;
+    font-family: "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+    color: #2a1a12;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* ---------- Topbjælke (HUD) ---------- */
+  #hud {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; padding-top: max(6px, env(safe-area-inset-top));
+    background: #b3202a; color: #fff; font-weight: 900;
+    border-bottom: 4px solid #f5c542;
+  }
+  .pill {
+    background: #fff; color: #2a1a12; border-radius: 999px; padding: 4px 10px;
+    font-size: 20px; border: 3px solid #1f7a45; white-space: nowrap;
+  }
+  #time.hurry { background: #ff5a4e; color: #fff; }
+  #teams { font-size: 17px; }
+  #teams b.mine { color: #b3202a; }
+  #room { font-size: 13px; opacity: .85; white-space: nowrap; }
+  @media (max-width: 560px) { #room { display: none; } .pill { font-size: 16px; padding: 3px 7px; } #teams { font-size: 14px; } }
+  @media (max-width: 360px) { .pill { font-size: 14px; padding: 2px 5px; } #teams { font-size: 12px; } }
+  .spacer { flex: 1; }
+  .iconBtn {
+    width: 44px; height: 44px; border-radius: 12px; border: 3px solid #f5c542;
+    background: #fff; font-size: 22px; cursor: pointer; padding: 0; flex: 0 0 auto;
+  }
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* ---------- Skærme ---------- */
+  .screen {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(8, 14, 40, .55); padding: 12px; overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .screen * { touch-action: pan-y; }
+  .screen[hidden] { display: none; }
+  .card {
+    background: #fffaf0; border: 5px solid #2a1a12; border-radius: 24px;
+    box-shadow: 0 8px 0 #2a1a12; padding: 16px 18px; width: min(460px, 100%);
+    text-align: center; margin: auto; position: relative;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 14px; right: 14px; top: -5px; height: 10px;
+    background: repeating-linear-gradient(90deg, #d62f2f 0 18px, #fff 18px 36px, #1f8a4c 36px 54px, #fff 54px 72px);
+    border-radius: 6px; border: 2px solid #2a1a12;
+  }
+  h1 { margin: 6px 0 0; font-size: 38px; color: #d62f2f; text-shadow: 3px 3px 0 #2a1a12; letter-spacing: 1px; }
+  h2 { margin: 4px 0 4px; font-size: 28px; color: #d62f2f; }
+  h3 { margin: 12px 0 4px; font-size: 17px; }
+  .tagline { margin: 6px 0 10px; font-size: 16px; }
+  .rules { list-style: none; padding: 0; margin: 0 0 8px; text-align: left; font-size: 15px; line-height: 1.45; }
+  .rules b { color: #d62f2f; }
+  .controls { background: #ffe9a8; border-radius: 12px; padding: 6px 10px; margin: 8px 0; font-size: 15px; }
+  input {
+    width: 100%; font: inherit; font-size: 20px; padding: 10px 12px; margin: 4px 0 10px;
+    border: 4px solid #2a1a12; border-radius: 14px; text-align: center; background: #fff;
+    user-select: text; -webkit-user-select: text;
+  }
+  #codeInput { text-transform: uppercase; letter-spacing: 6px; margin: 0; }
+  .big {
+    font: inherit; font-weight: 900; font-size: 21px; color: #fff; background: #d62f2f;
+    border: 4px solid #2a1a12; border-radius: 16px; box-shadow: 0 5px 0 #2a1a12;
+    padding: 12px 16px; min-height: 54px; width: 100%; cursor: pointer;
+  }
+  .big:active { transform: translateY(3px); box-shadow: 0 2px 0 #2a1a12; }
+  .big:disabled { opacity: .5; }
+  .btnrow { display: flex; gap: 8px; margin-top: 10px; align-items: stretch; }
+  .btnrow .big { font-size: 17px; padding: 10px 8px; }
+  .big.alt { background: #3d7fd6; }
+  .big.alt2 { background: #1f8a4c; }
+  .big.grey { background: #8a7b6a; }
+  .big.pink { background: #b04bc6; }
+  .or { margin: 10px 0 4px; font-weight: 900; opacity: .7; }
+  .small { font-size: 14px; margin: 6px 0 0; opacity: .85; }
+  .err { color: #c0392b; font-weight: 900; min-height: 1.2em; margin: 6px 0 0; font-size: 15px; }
+  .code { font-size: 54px; font-weight: 900; letter-spacing: 10px; color: #d62f2f; text-shadow: 3px 3px 0 #2a1a12; margin: 2px 0; }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; text-align: left; }
+  .teamcol { border-radius: 14px; padding: 6px; border: 3px solid #2a1a12; min-width: 0; }
+  .teamcol.t0 { background: #ffd9d2; }
+  .teamcol.t1 { background: #f5dcff; }
+  .teamcol h4 { margin: 0 0 4px; font-size: 16px; text-align: center; }
+  .teamcol ul { list-style: none; padding: 0; margin: 0; font-size: 15px; }
+  .teamcol li { background: rgba(255,255,255,.7); border-radius: 8px; padding: 4px 6px; margin-bottom: 3px; display: flex; align-items: center; gap: 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; border: 3px solid #2a1a12; flex: 0 0 auto; display: inline-block; vertical-align: middle; }
+  .bigscore { font-size: 54px; font-weight: 900; line-height: 1; margin: 4px 0; }
+  .bigscore small { font-size: 22px; }
+  #winBanner { font-size: 22px; font-weight: 900; margin: 4px 0; padding: 6px; border-radius: 12px; border: 3px solid #2a1a12; }
+  #newBest { color: #d62f2f; font-weight: 900; min-height: 1em; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 14px; text-align: left; margin-top: 6px; }
+  .stats div { background: #ffe9a8; border-radius: 8px; padding: 4px 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 3px 4px; border-bottom: 1px dashed #c9b78f; }
+  td:nth-child(1) { width: 2em; text-align: right; }
+  td:nth-child(2) { text-align: left; }
+  td:nth-child(3) { text-align: right; font-weight: 900; }
+  td:nth-child(4) { text-align: right; opacity: .7; width: 5.5em; }
+  tr.me td { background: #ffd34d; }
+  #roundTable td:nth-child(4) { opacity: 1; width: auto; font-size: 13px; }
+  #toast {
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+    background: #2a1a12; color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 900;
+    pointer-events: none; opacity: 0; transition: opacity .2s; text-align: center;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span class="pill" id="score">🦷 0</span>
+    <span class="pill" id="teams">🎅 0 – 0 🧚</span>
+    <span class="pill" id="time">⏱ 1:30</span>
+    <span class="spacer"></span>
+    <span id="room"></span>
+    <button class="iconBtn" id="pauseBtn" aria-label="Pause" hidden>⏸️</button>
+    <button class="iconBtn" id="muteBtn" aria-label="Lyd til/fra">🔊</button>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+
+    <!-- Startskærm -->
+    <div class="screen" id="startScreen">
+      <div class="card">
+        <h1>🦷 Tandjagten</h1>
+        <p class="tagline">🎄 Julemanden har fundet <b>Simons tænder</b> i skorstenen! Hjælp Simon med at få sit smil tilbage før juleaften.</p>
+        <ul class="rules">
+          <li>🧦 <b>Fang</b> tænder i sokken og <b>skyd</b> dem i <b>din Simon</b>: <b>10</b> (✨ guld: <b>25</b>)</li>
+          <li>🍪 Skyd <b>brunkager</b> i den <b>anden Simon</b>, så ryger en tand: <b>15</b></li>
+          <li>🌲 Undgå grankogler · 🪄 tryllestav = kæmpe sok</li>
+          <li>🎅 Team Nisse mod 🧚 Team Tandfe · vinderne får <b>+30</b> · ⏱ <b>90 sek.</b></li>
+        </ul>
+        <div class="controls" id="ctrlHelp"></div>
+        <input id="nameInput" maxlength="16" placeholder="Skriv dit navn" autocomplete="off">
+        <button class="big alt2" id="soloBtn">Spil alene (mod Rudolf 🤖)</button>
+        <p class="or">– eller spil med vennerne –</p>
+        <button class="big" id="createBtn">Opret nyt rum</button>
+        <div class="btnrow">
+          <input id="codeInput" maxlength="4" placeholder="KODE" autocomplete="off" inputmode="text" style="flex:1">
+          <button class="big alt" id="joinBtn" style="flex:1">Deltag</button>
+        </div>
+        <p class="err" id="startErr"></p>
+      </div>
+    </div>
+
+    <!-- Lobby -->
+    <div class="screen" id="lobbyScreen" hidden>
+      <div class="card">
+        <h2>Rum-kode</h2>
+        <div class="code" id="lobbyCode">----</div>
+        <p class="small">Vennerne åbner spillet og skriver koden – eller du sender dem linket.</p>
+        <div class="teams">
+          <div class="teamcol t0"><h4>🎅 Team Nisse</h4><ul id="team0"></ul></div>
+          <div class="teamcol t1"><h4>🧚 Team Tandfe</h4><ul id="team1"></ul></div>
+        </div>
+        <button class="big pink" id="swapBtn">🔁 Skift hold</button>
+        <p class="small" id="botInfo"></p>
+        <p class="err" id="lobbyMsg"></p>
+        <button class="big alt2" id="hostStartBtn" hidden>Start spillet!</button>
+        <div class="btnrow">
+          <button class="big alt" id="linkBtn">Kopiér link</button>
+          <button class="big grey" id="leaveBtn">Forlad rum</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause / venter -->
+    <div class="screen" id="pauseScreen" hidden>
+      <div class="card">
+        <h2 id="pauseTitle">Pause</h2>
+        <p id="pauseText">Tiden står stille.</p>
+        <button class="big" id="resumeBtn">Fortsæt</button>
+      </div>
+    </div>
+
+    <!-- Slutskærm -->
+    <div class="screen" id="endScreen" hidden>
+      <div class="card">
+        <h2 id="endTitle">Tiden er gået!</h2>
+        <div id="winBanner"></div>
+        <div class="bigscore"><span id="endScore">0</span> <small>point</small></div>
+        <div id="newBest"></div>
+        <h3>🏁 Denne runde</h3>
+        <table id="roundTable"></table>
+        <div class="stats" id="stats"></div>
+        <div class="btnrow">
+          <button class="big alt2" id="againBtn">Ny runde</button>
+          <button class="big alt" id="copyBtn">Kopiér resultat</button>
+          <button class="big" id="shareBtn" hidden>Del</button>
+        </div>
+        <p class="small" id="endWait"></p>
+        <button class="big grey" id="endLeaveBtn" style="margin-top:8px">Til startskærmen</button>
+        <h3>🌍 Fælles rangliste</h3>
+        <table id="faellesTop"></table>
+        <h3>🏆 Top 10 på denne enhed</h3>
+        <table id="topTable"></table>
+      </div>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+
+<script src="../../scores.js"></script>
+<script>
+"use strict";
+
+/* =====================================================================
+   TANDJAGTEN – lavet af Marcus & Nicolas (med Claude)
+
+   Spillet:
+   - Tænder, brunkager, grankogler og tryllestave falder ned fra himlen.
+   - Man fanger dem i sin julesok nederst og skyder dem op igen (først-ind-først-ud).
+   - Tænder skal i ens EGET holds Simon. Brunkager skal i det ANDET holds Simon
+     (de slår en tand ud). Simons læsper, så længe han mangler tænder.
+
+   Multiplayer (samme opbygning som Pizza Party Multi):
+   - Vores egen WebSocket-server (Laravel Reverb på ws.realtime.gaarde.it).
+     Den virker kun, når spillet ligger på gaardee.github.io.
+   - Værten kører hele det fælles spil (ting der falder, skud, munde, point)
+     og sender det ud 8 gange i sekundet.
+   - Hver spiller styrer sin egen sok lokalt og sender sin position til værten.
+     Når man fanger noget, siger man det til værten ("catch"), og værten
+     afgør, hvem der kom først. Skud sendes som "shoot".
+   - Tingene falder efter en fast plan (SEED), så positionerne kan regnes ud
+     ens på alle skærme – værten sender kun, hvilke ting der stadig findes.
+   - "Spil alene" bruger præcis samme kode som værten, bare uden netværk.
+   ===================================================================== */
+const GAME_NAME = "tandjagten"; // = mappenavnet (bruges til ranglisten og kanalnavne)
+const RT = { host: "ws.realtime.gaarde.it", port: 443, key: "833bf8063cc73883e1bb79b99e48e33f" };
+const MAX_PLAYERS = 10;
+const HOST_SEND_MS = 125;   // værten sender 8 gange/sek
+const CLIENT_SEND_MS = 140; // spillerne sender deres position ~7 gange/sek
+const LOBBY_PING_MS = 1500;
+
+/* =====================================================================
+   INDSTILLINGER – pil gerne ved disse tal
+   ===================================================================== */
+const GAME_TIME = 90;
+const SEED = 20261224;
+const W = 640, H = 800;          // banen (bliver strakt lidt, så den passer til skærmen)
+const SOCK_Y = 728;              // højden hvor sokken fanger
+const SOCK_HALF = 38;            // halv bredde af sokkens åbning
+const WAND_HALF = 105;           // ... med tryllestav
+const WAND_TIME = 6;
+const SOCK_SPEED = 560;          // med tastatur
+const BOT_SPEED = 290;           // computer-nissernes fart (lavere = nemmere)
+const BOT_AIM_ERR = 70;          // hvor meget de sigter forkert (højere = nemmere)
+const QUEUE_MAX = 4, QUEUE_MAX_WAND = 6;
+const SHOT_V = 1150;             // skuddenes fart opad
+const SHOT_Y0 = SOCK_Y - 40;
+const SHOOT_COOLDOWN = 0.22;
+const STUN_TIME = 1.2;
+const HEAD_Y = 185, HEAD_R = 80;
+const MOUTH_DY = 40, MOUTH_Y = HEAD_Y + MOUTH_DY;
+const MOUTH_HALF = 52;           // halv bredde af Simons gab (her skal skuddet ramme)
+const SWING = 62;                // hvor langt Simon svinger fra side til side
+const P_TOOTH = 10, P_GOLD = 25, P_COOKIE = 15, P_COOKIE_GOLD = 20, P_FULL = 50, P_LAST = 20, P_WIN = 30, P_OWN = -10;
+const WAND_TIMES = [22, 50, 74];
+
+// Ting der falder: 0 tand, 1 guldtand, 2 brunkage, 3 grankogle, 4 tryllestav
+const K_TOOTH = 0, K_GOLD = 1, K_COOKIE = 2, K_CONE = 3, K_WAND = 4;
+
+const TEAMS = [
+  { name: "Team Nisse", short: "Nisse", emoji: "🎅", color: "#e23b3b", light: "#ffd9d2", cx: 160 },
+  { name: "Team Tandfe", short: "Tandfe", emoji: "🧚", color: "#b04bc6", light: "#f5dcff", cx: 480 },
+];
+// Sokkernes farver (op til 10 spillere + computer-nisser)
+const COLORS = ["#e23b3b", "#3d7fd6", "#2e9e44", "#9c5ad6", "#f28c28", "#2b2b2b", "#e84393", "#13a89e", "#8b5a2b", "#f5c400", "#7f8c8d", "#00a3e0", "#c0392b"];
+const BOT_NAMES = ["Rudolf 🤖", "Nissebot 🤖", "Robo-Nisse 🤖"];
+
+/* ---------- Simons replikker ---------- */
+const LINES = {
+  idle: ["Hvor er mine tænder?!", "Julemanden har stjålet mit smil!", "Jeg vil bare spise risalamande…", "Skyd dem ind, drenge!",
+         "Pas på brunkagerne!", "Glædelig jul… med huller", "Det var IKKE min skyld, at de faldt ud!", "Sig det ikke til mor!",
+         "Jeg kan ikke engang fløjte!", "Hvem har set mine fortænder?"],
+  tooth: ["Tak!", "Ahh, en til!", "Smager af jul!", "Nu ligner jeg mig selv igen", "Snart kan jeg sige S igen!",
+          "Uhh, den sad godt!", "Den var lidt kold…", "Mere! Mere!"],
+  gold: ["GULDTAND! Jeg er rig!", "Bling bling! ✨", "Nu er jeg en julepirat!", "Se mig! Jeg skinner!"],
+  ouch: ["AV! Ikke igen!", "MIN TAND! Igen!", "Hvem kaster med brunkager?!", "Det her sker ALTID for mig!",
+         "Jeg sagde NEJ TAK til småkager!", "Ikke tænderne! IKKE IGEN!", "Det gør jeg aldrig igen…"],
+  eat: ["Mums… men jeg kan ikke tygge!", "Tak for kagen. Hvor er mine tænder?", "Gummi-gumle-gumle…"],
+  own: ["Hey! Jeg er på JERES hold!", "Forræder!", "Hvorfor mig?!"],
+  wrong: ["Hehe, tak for tanden!", "Forkert Simon, men tak!", "Den beholder jeg!"],
+  full: ["SE MIT SMIL! 😁", "Seks søde sukkersnasker!", "Nu er jeg klar til juleaften!", "Sydsjællandske sølvsmede siger skål!", "Simon er tilbage, baby!"],
+  bonk: ["Av, min pande!", "Mund! Ikke pande!", "Min næse!"],
+  reset: ["Ups… jeg smilede for bredt", "Øv, de faldt ud igen!", "Nej nej nej… IGEN?!"],
+};
+// Simon læsper, når han mangler tænder: "s" bliver til "th"
+const lisp = (txt, teeth) => teeth >= 5 ? txt : txt.replace(/s/g, "th").replace(/S/g, "Th");
+
+/* =====================================================================
+   Hjælpefunktioner
+   ===================================================================== */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmtNum = n => n.toLocaleString("da-DK");
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const r1 = v => Math.round(v);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+/* ---------- Den faste plan for hvad der falder ----------
+   Samme SEED og samme antal spillere => præcis samme ting på samme tid for alle. */
+let SCHED = [];
+function makeSchedule(n) {
+  const rnd = mulberry32(SEED + n), out = [];
+  let t = 1.0, wi = 0;
+  while (t < GAME_TIME - 1.5) {
+    const prog = t / GAME_TIME;
+    let kind;
+    if (wi < WAND_TIMES.length && t >= WAND_TIMES[wi]) { kind = K_WAND; wi++; rnd(); }
+    else { const r = rnd(); kind = r < 0.52 ? K_TOOTH : r < 0.60 ? K_GOLD : r < 0.80 ? K_COOKIE : K_CONE; }
+    out.push({ id: out.length, t0: t, x: 40 + rnd() * (W - 80), vy: 150 + prog * 90 + rnd() * 40, sw: rnd() * 6.28, kind });
+    t += (0.62 - prog * 0.18) / (1 + 0.12 * (n - 1)) * (0.7 + rnd() * 0.6);
+  }
+  return out;
+}
+function itemPos(it, t) {
+  const a = t - it.t0;
+  return [clamp(it.x + Math.sin(a * 2 + it.sw) * 14, 16, W - 16), -20 + a * it.vy];
+}
+// Simons mund svinger fra side til side – hurtigere og hurtigere
+function mouthX(m, t) {
+  return TEAMS[m].cx + SWING * Math.sin(m * Math.PI + 1.0 * t + 0.5 * t * t / GAME_TIME);
+}
+const headY = (m, t) => HEAD_Y + Math.sin(t * 3 + m * 2) * 4;
+const shotY = (s, t) => SHOT_Y0 - (t - s.t0) * SHOT_V;
+// Tandpladser i munden: 0-3 øverst, 4-7 nederst (x i forhold til Simons midte)
+const slotX = i => -33 + (i % 4) * 22;
+const teethCount = M => M.slots.filter(v => v > 0).length;
+function newMouth(m = 0) { return { slots: [0, 0, 0, 0, 0, 0, 0, 0], cel: 0, hurt: 0, bub: null, talkT: 2.5 + m * 3.5 + Math.random() * 2 }; }
+
+/* =====================================================================
+   Lyd (Web Audio)
+   ===================================================================== */
+const Sound = {
+  ctx: null,
+  muted: (() => { try { return localStorage.getItem("tandjagten_mute") === "1"; } catch (e) { return false; } })(),
+  unlock() {
+    if (this.ctx) { if (this.ctx.state === "suspended") this.ctx.resume(); return; }
+    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  },
+  tone(freq, dur, type = "square", vol = 0.12, slideTo = null, delay = 0) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+  },
+  catch()  { this.tone(880, 0.06, "triangle", 0.1); this.tone(1320, 0.05, "triangle", 0.06, null, 0.04); },
+  whoosh() { this.tone(400, 0.12, "sawtooth", 0.04, 1300); },
+  plop()   { this.tone(300, 0.08, "sine", 0.22, 900); this.tone(1200, 0.06, "triangle", 0.08, null, 0.07); },
+  dunk()   { this.tone(150, 0.2, "square", 0.12, 60); this.tone(90, 0.25, "triangle", 0.2, 50, 0.03); },
+  bonk()   { this.tone(220, 0.15, "triangle", 0.2, 90); },
+  magic()  { [1200, 1500, 1800, 2400].forEach((f, i) => this.tone(f, 0.12, "sine", 0.08, null, i * 0.06)); },
+  bells()  { [0, 0.14, 0.28, 0.56].forEach(d => { this.tone(1568, 0.25, "sine", 0.07, null, d); this.tone(2093, 0.2, "sine", 0.05, null, d + 0.02); }); },
+  fanfare(){ [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.2, "triangle", 0.14, null, i * 0.1)); },
+  nope()   { this.tone(180, 0.1, "square", 0.05); },
+  tick()   { this.tone(1000, 0.04, "square", 0.05); },
+  join()   { this.tone(660, 0.08, "triangle", 0.1); this.tone(990, 0.12, "triangle", 0.1, null, 0.08); },
+  // "Jingle bells" til sidst
+  end()    { [659, 659, 659, 0, 659, 659, 659, 0, 659, 784, 523, 587, 659].forEach((f, i) => f && this.tone(f, 0.16, "triangle", 0.12, null, i * 0.14)); },
+};
+
+/* =====================================================================
+   Netværk: lille Reverb-klient (kopieret fra Pizza Party Multi)
+   ===================================================================== */
+const Net = {
+  ws: null, want: false, main: "", idle: 0,
+  topics: new Set(), joined: new Set(),
+  onMsg: null, onStatus: null,
+  open(main) {
+    this.close();
+    this.want = true; this.main = main; this.topics = new Set([main]);
+    this._connect();
+  },
+  join(topic) { if (this.topics.has(topic)) return; this.topics.add(topic); this._raw("pusher:subscribe", { channel: topic }); },
+  leave(topic) { if (!this.topics.delete(topic)) return; this.joined.delete(topic); this._raw("pusher:unsubscribe", { channel: topic }); },
+  _raw(event, data) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ event, data })); },
+  _connect() {
+    const ws = new WebSocket(`wss://${RT.host}:${RT.port}/app/${RT.key}?protocol=7&client=js&version=8.4.0&flash=false`);
+    this.ws = ws; this.joined = new Set();
+    const resetIdle = () => { clearTimeout(this.idle); this.idle = setTimeout(() => this._raw("pusher:ping", {}), 20000); };
+    ws.onmessage = e => {
+      if (ws !== this.ws) return;
+      resetIdle();
+      let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+      let d = m.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch (err) {} }
+      if (m.event === "pusher:connection_established") {
+        for (const t of this.topics) this._raw("pusher:subscribe", { channel: t });
+      } else if (m.event === "pusher_internal:subscription_succeeded") {
+        if (this.topics.has(m.channel)) this.joined.add(m.channel);
+        if (m.channel === this.main && this.onStatus) this.onStatus("ok");
+      } else if (m.event === "pusher:ping") {
+        this._raw("pusher:pong", {});
+      } else if (m.event === "pusher:error") {
+        console.warn("Reverb-fejl:", d);
+      } else if (m.channel && m.event && m.event.startsWith("client-") && this.joined.has(m.channel) && this.onMsg) {
+        this.onMsg(m.channel, m.event.slice(7), d || {});
+      }
+    };
+    ws.onclose = () => {
+      clearTimeout(this.idle);
+      if (ws !== this.ws) return;
+      this.joined = new Set();
+      if (this.onStatus) this.onStatus("lukket");
+      if (this.want) setTimeout(() => { if (this.want && this.ws === ws) this._connect(); }, 1500);
+    };
+  },
+  send(topic, event, payload) {
+    if (!this.joined.has(topic) || !this.ws || this.ws.readyState !== 1) return false;
+    this.ws.send(JSON.stringify({ event: "client-" + event, channel: topic, data: payload || {} }));
+    return true;
+  },
+  close() {
+    this.want = false; this.joined = new Set(); this.topics = new Set(); clearTimeout(this.idle);
+    const w = this.ws; this.ws = null;
+    if (w) try { w.close(); } catch (e) {}
+  },
+};
+const mainTopic = () => GAME_NAME + "-" + roomCode;
+const playerTopic = id => mainTopic() + "-" + id;
+const sendMain = (ev, payload) => role === "host" && Net.send(mainTopic(), ev, payload);
+const sendMine = (ev, payload) => Net.send(playerTopic(MY_ID), ev, payload);
+
+/* =====================================================================
+   Tilstand
+   ===================================================================== */
+// state: "start" | "lobby" | "play" | "pause" | "wait" (venter på vært) | "end"
+let state = "start";
+let role = null;            // "solo" | "host" | "client"
+const isHost = () => role === "host" || role === "solo";
+let roomCode = "";
+const MY_ID = Math.random().toString(36).slice(2, 8);
+let lobby = { players: [], started: false };
+let lastHostMsg = 0, lobbySeen = false;
+
+let G = null;   // værtens fulde spil
+let S = null;   // det der tegnes (hos værten = G)
+let ME = null;  // min egen sok (styres lokalt)
+let roundResult = null;
+// Kun hos spillere (ikke vært): skud og fangster der venter på svar fra værten
+let pendingShots = [], pendingCatches = [], shotSeq = 0, catchSeq = 0;
+const claimed = new Map(); // ting jeg har fanget, men værten ikke har bekræftet endnu (skjules)
+
+function newView(pl) {
+  const v = {
+    t: 0, paused: false, items: [], shots: [], ghosts: [], mouths: [newMouth(0), newMouth(1)], ts: [0, 0],
+    players: {}, floaters: [], parts: [], recvAt: performance.now(),
+  };
+  for (const p of pl) v.players[p.id] = {
+    id: p.id, name: p.name, c: p.c, team: p.team, bot: !!p.bot,
+    x: TEAMS[p.team].cx, dx: TEAMS[p.team].cx, score: 0, stun: 0, q: [], lastQ: 0, lastC: 0, wand: 0, cd: 0, last: performance.now(),
+    st: { teeth: 0, gold: 0, cookies: 0, own: 0, cones: 0, wrong: 0, last: 0, eaten: 0 },
+  };
+  return v;
+}
+
+/* ---------- Værten: nyt spil ---------- */
+function hostNewGame(pl) {
+  SCHED = makeSchedule(pl.length);
+  G = newView(pl);
+  Object.assign(G, { next: 0, shotId: 1, evq: [], bq: [], lastTickSec: -1, over: false, botRnd: mulberry32(SEED + 7) });
+  for (const p of Object.values(G.players)) if (p.bot) Object.assign(p, { err: 0, think: 0, tx: p.x });
+  S = G;
+}
+// Event = svævende tekst (+ evt. lyd). pid: lyden spilles kun for den spiller. skip: vis ikke for denne spiller.
+function hostEvent(x, y, text, color = "#fff", sound = null, pid = null, skip = null) {
+  const ev = [r1(x), r1(y), text, color, sound, pid, skip];
+  G.evq.push(ev);
+  applyEvent(ev);
+}
+function applyEvent([x, y, text, color, sound, pid, skip]) {
+  if (skip && skip === MY_ID) return;
+  if (text && S) S.floaters.push({ x, y, text, color, life: 1.3 });
+  if (sound && Sound[sound] && (!pid || pid === MY_ID)) Sound[sound]();
+  if (sound === "dunk" && S) crumbs(x, y);
+}
+// Simon siger noget (taleboble)
+function hostSay(m, list, noLisp = false) {
+  const M = G.mouths[m];
+  const txt = noLisp ? pick(list) : lisp(pick(list), teethCount(M));
+  M.talkT = 6 + Math.random() * 4;
+  const b = [m, txt];
+  G.bq.push(b);
+  applyBubble(b);
+}
+function applyBubble([m, txt]) { if (S) S.mouths[m].bub = { text: txt, life: 2.8 }; }
+function crumbs(x, y) {
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 160;
+    S.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, life: 0.8 + Math.random() * 0.4, c: Math.random() < 0.7 ? "#8b4a1e" : "#fff" });
+  }
+}
+
+/* =====================================================================
+   Input
+   ===================================================================== */
+const keys = {};
+const drag = { id: null, lastX: 0, startX: 0, t0: 0, moved: 0 };
+const taps = new Map();
+let mouseX = null;
+
+addEventListener("keydown", e => {
+  Sound.unlock();
+  const ae = document.activeElement;
+  if (ae === $("nameInput") || ae === $("codeInput")) {
+    if (e.key === "Enter") { if (ae === $("codeInput") || $("codeInput").value.trim()) joinRoom(); else startSolo(); }
+    return;
+  }
+  const k = e.key.toLowerCase();
+  if (!keys[k] && (k === " " || k === "arrowup" || k === "w")) tryShoot();
+  keys[k] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") e.preventDefault();
+  if ((k === "p" || k === "escape") && isHost()) { if (state === "play") pause(); else if (state === "pause") resume(); }
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("pointerdown", () => Sound.unlock(), { capture: true });
+
+const canvas = $("c");
+const worldX = clientX => (clientX - canvas.getBoundingClientRect().left - view.ox) / view.kx;
+canvas.addEventListener("pointerdown", e => {
+  if (state !== "play") return;
+  if (e.pointerType === "mouse") { mouseX = worldX(e.clientX); tryShoot(); return; }
+  // Touch: første finger styrer (træk), et hurtigt tryk (med en hvilken som helst finger) skyder
+  taps.set(e.pointerId, { t0: performance.now(), x: e.clientX, y: e.clientY, moved: 0 });
+  if (drag.id === null) { drag.id = e.pointerId; drag.lastX = e.clientX; }
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+});
+canvas.addEventListener("pointermove", e => {
+  if (e.pointerType === "mouse") { if (state === "play") mouseX = worldX(e.clientX); return; }
+  const tp = taps.get(e.pointerId);
+  if (tp) tp.moved = Math.max(tp.moved, Math.hypot(e.clientX - tp.x, e.clientY - tp.y));
+  if (e.pointerId !== drag.id || !ME || state !== "play") return;
+  const dx = (e.clientX - drag.lastX) / view.kx * 1.15;
+  drag.lastX = e.clientX;
+  if (ME.stun <= 0) ME.x = clamp(ME.x + dx, 30, W - 30);
+});
+const endPointer = e => {
+  const tp = taps.get(e.pointerId);
+  taps.delete(e.pointerId);
+  if (e.pointerId === drag.id) drag.id = null;
+  if (tp && e.type === "pointerup" && performance.now() - tp.t0 < 280 && tp.moved < 14) tryShoot();
+};
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+function clearInput() { for (const k in keys) keys[k] = false; drag.id = null; taps.clear(); mouseX = null; }
+
+/* =====================================================================
+   Visning: banen strækkes lidt, så den fylder skærmen (max ~1,45×)
+   ===================================================================== */
+const view = { kx: 1, ky: 1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 1, s: 1 };
+function resize() {
+  const r = $("stage").getBoundingClientRect();
+  view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  view.cw = r.width; view.ch = r.height;
+  canvas.width = Math.round(r.width * view.dpr); canvas.height = Math.round(r.height * view.dpr);
+  let kx = r.width / W, ky = r.height / H;
+  if (ky > kx * 1.45) ky = kx * 1.45;
+  if (kx > ky * 1.45) kx = ky * 1.45;
+  view.kx = kx; view.ky = ky; view.s = Math.min(kx, ky);
+  view.ox = (r.width - W * kx) / 2; view.oy = (r.height - H * ky) / 2;
+}
+addEventListener("resize", resize);
+const toS = (x, y) => [view.ox + x * view.kx, view.oy + y * view.ky];
+const worldT = () => ctx.setTransform(view.dpr * view.kx, 0, 0, view.dpr * view.ky, view.dpr * view.ox, view.dpr * view.oy);
+const screenT = () => ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+
+/* =====================================================================
+   Min egen sok – bevæges lokalt hos alle
+   ===================================================================== */
+function newMe(team) { return { x: TEAMS[team].cx, stun: 0, cd: 0, team, noAmmoT: 0 }; }
+function moveMe(dt) {
+  ME.cd = Math.max(0, ME.cd - dt);
+  ME.noAmmoT = Math.max(0, ME.noAmmoT - dt);
+  if (ME.stun > 0) { ME.stun -= dt; return; }
+  let dir = 0;
+  if (keys["arrowleft"] || keys["a"]) dir -= 1;
+  if (keys["arrowright"] || keys["d"]) dir += 1;
+  if (dir) { ME.x += dir * SOCK_SPEED * dt; mouseX = null; }
+  else if (mouseX !== null) ME.x += clamp(mouseX - ME.x, -900 * dt, 900 * dt);
+  ME.x = clamp(ME.x, 30, W - 30);
+  if (keys[" "] || keys["arrowup"] || keys["w"]) tryShoot(); // hold for at skyde igen og igen
+}
+function myQueue() {
+  if (!S || !S.players[MY_ID]) return [];
+  if (isHost()) return G.players[MY_ID].q;
+  const me = S.players[MY_ID], now = performance.now();
+  pendingShots = pendingShots.filter(s => s.q > me.lastQ && now - s.at < 2000);
+  pendingCatches = pendingCatches.filter(c => c.c > me.lastC && now - c.at < 2000);
+  const q = me.q.slice(pendingShots.length);
+  for (const c of pendingCatches) if (c.k <= K_COOKIE) q.push(c.k);
+  return q;
+}
+const myMax = () => { const me = S && S.players[MY_ID]; return me && me.wand > 0 ? QUEUE_MAX_WAND : QUEUE_MAX; };
+
+function tryShoot() {
+  if (state !== "play" || !ME || ME.stun > 0 || ME.cd > 0) return;
+  const q = myQueue();
+  if (!q.length) {
+    if (ME.noAmmoT <= 0) { ME.noAmmoT = 1.2; S.floaters.push({ x: ME.x, y: SOCK_Y - 70, text: "Fang en tand først!", color: "#ffe9a8", life: 1 }); Sound.nope(); }
+    return;
+  }
+  ME.cd = SHOOT_COOLDOWN;
+  if (isHost()) { hostShoot(G.players[MY_ID], ME.x, 0); return; }
+  const qn = ++shotSeq;
+  pendingShots.push({ q: qn, at: performance.now() });
+  S.ghosts.push({ kind: q[0], x: ME.x, t0: clientTime(), q: qn });
+  sendMine("shoot", { x: r1(ME.x), q: qn });
+  Sound.whoosh();
+}
+
+/* =====================================================================
+   VÆRTEN: hele det fælles spil
+   ===================================================================== */
+function hostUpdate(dt) {
+  G.t += dt;
+  const t = G.t;
+
+  // nye ting fra himlen
+  while (G.next < SCHED.length && SCHED[G.next].t0 <= t) G.items.push(G.next++);
+
+  // min egen sok
+  moveMe(dt);
+  const hp = G.players[MY_ID];
+  hp.x = ME.x; hp.last = performance.now();
+
+  for (const p of Object.values(G.players)) {
+    p.cd = Math.max(0, p.cd - dt); p.wand = Math.max(0, p.wand - dt);
+    if (p.id !== MY_ID) p.stun = Math.max(0, p.stun - dt);
+    if (p.bot) botUpdate(p, dt, t);
+  }
+  hp.stun = Math.max(0, ME.stun);
+  // fangster for værten selv og computer-nisserne (de andre spillere melder selv)
+  for (const p of Object.values(G.players)) if (p.id === MY_ID || p.bot) catchCheck(p, t);
+
+  // ting der er faldet forbi
+  G.items = G.items.filter(id => itemPos(SCHED[id], t)[1] < H + 30);
+
+  // skud
+  for (let i = G.shots.length - 1; i >= 0; i--) {
+    const s = G.shots[i], y = shotY(s, t);
+    if (!s.passed && y <= MOUTH_Y) { if (resolveShot(s, t)) { G.shots.splice(i, 1); continue; } s.passed = true; }
+    if (y < -40) G.shots.splice(i, 1);
+  }
+
+  // Simon: fejring, au, og lidt snak
+  G.mouths.forEach((M, m) => {
+    M.hurt = Math.max(0, M.hurt - dt);
+    if (M.cel > 0) {
+      M.cel -= dt;
+      if (M.cel <= 0) { M.cel = 0; M.slots = [0, 1, 0, 0, 0, 0, 1, 0]; hostSay(m, LINES.reset); }
+    }
+    M.talkT -= dt;
+    if (M.talkT <= 0) hostSay(m, LINES.idle);
+  });
+
+  // tid
+  const left = GAME_TIME - t, sec = Math.ceil(left);
+  if (sec <= 10 && sec !== G.lastTickSec && sec > 0) { G.lastTickSec = sec; hostEvent(0, 0, "", "", "tick"); }
+  if (left <= 0) hostEnd();
+}
+
+function catchCheck(p, t) {
+  if (p.stun > 0) return;
+  const half = p.wand > 0 ? WAND_HALF : SOCK_HALF;
+  for (const id of G.items.slice()) {
+    const [x, y] = itemPos(SCHED[id], t);
+    if (y > SOCK_Y - 28 && y < SOCK_Y + 14 && Math.abs(x - p.x) < half + 14) doCatch(p, id, false);
+  }
+}
+// remote = en spiller (ikke vært) har selv opdaget fangsten og vist lyd/tekst lokalt
+function doCatch(p, id, remote) {
+  const it = SCHED[id], idx = G.items.indexOf(id);
+  if (idx < 0) return false;
+  const max = p.wand > 0 ? QUEUE_MAX_WAND : QUEUE_MAX;
+  if (it.kind <= K_COOKIE && p.q.length >= max) return false; // sokken er fuld
+  G.items.splice(idx, 1);
+  const skip = remote ? p.id : null;
+  if (it.kind === K_CONE) {
+    p.stun = STUN_TIME; p.q = []; p.st.cones++;
+    if (p.id === MY_ID) ME.stun = STUN_TIME;
+    hostEvent(p.x, SOCK_Y - 60, "AV! Grankogle! 🌲", "#ff8a7a", "bonk", p.id, skip);
+  } else if (it.kind === K_WAND) {
+    p.wand = WAND_TIME;
+    hostEvent(p.x, SOCK_Y - 60, "TRYLLESTAV! 🪄", "#f5c542", "magic", p.id, skip);
+  } else {
+    p.q.push(it.kind);
+    if (!remote) applyEvent([0, 0, "", "", "catch", p.id, null]);
+  }
+  return true;
+}
+function hostShoot(p, x, q) {
+  if (q) p.lastQ = q;
+  if (!p.q.length || p.cd > 0.1 || p.stun > 0) return;
+  const kind = p.q.shift();
+  p.cd = SHOOT_COOLDOWN;
+  const lag = p.id === MY_ID || p.bot ? 0 : 0.08;
+  G.shots.push({ id: G.shotId++, kind, x: clamp(x, 0, W), t0: G.t - lag, o: p.id, q: q || 0 });
+  if (p.id === MY_ID) Sound.whoosh();
+}
+
+// Skuddet når op til Simon-højde: rammer det en mund? (returnerer true hvis skuddet forsvinder)
+function resolveShot(s, t) {
+  const p = G.players[s.o];
+  let m = 0, best = 1e9;
+  for (let k = 0; k < 2; k++) { const d = Math.abs(s.x - mouthX(k, t)); if (d < best) { best = d; m = k; } }
+  const M = G.mouths[m], mx = mouthX(m, t), hy = headY(m, t) + MOUTH_DY;
+  if (best > MOUTH_HALF) {
+    if (best < HEAD_R) { // ramte hovedet i stedet
+      hostEvent(s.x, hy - 70, "BONK!", "#ffe9a8", "bonk");
+      if (Math.random() < 0.6) hostSay(m, LINES.bonk);
+      return true;
+    }
+    return false; // flyver forbi
+  }
+  if (!p) return true;
+  if (M.cel > 0) { hostEvent(mx, hy - 30, "Vent, han smiler!", "#ffe9a8", "nope", p.id); return true; }
+  const rel = s.x - mx;
+  const col = clamp(Math.floor((rel + MOUTH_HALF) / (MOUTH_HALF * 2) * 4), 0, 3);
+  const byCol = list => list.sort((a, b) => Math.abs(a % 4 - col) - Math.abs(b % 4 - col) || a - b);
+  const mine = p.team === m;
+
+  if (s.kind === K_TOOTH || s.kind === K_GOLD) {
+    const free = byCol([0, 1, 2, 3, 4, 5, 6, 7].filter(i => !M.slots[i]));
+    if (!free.length) return true;
+    const gold = s.kind === K_GOLD, pts = gold ? P_GOLD : P_TOOTH;
+    M.slots[free[0]] = gold ? 2 : 1;
+    G.ts[m] += pts;
+    if (mine) {
+      p.score += pts; p.st.teeth++; if (gold) p.st.gold++;
+      hostEvent(mx, hy - 40, `+${pts} ${p.name}`, gold ? "#f5c542" : "#fff", "plop");
+    } else {
+      p.st.wrong++;
+      hostEvent(mx, hy - 40, `Forkert Simon! 🙈`, "#ffb4a8", "plop");
+    }
+    if (teethCount(M) === 8) {
+      G.ts[m] += P_FULL; M.cel = 1.8;
+      if (mine) { p.score += P_LAST; p.st.last++; }
+      hostEvent(mx, hy - 75, `FULD MUND! +${P_FULL} ${TEAMS[m].emoji}`, "#f5c542", "fanfare");
+      hostSay(m, LINES.full, true);
+    } else hostSay(m, !mine ? LINES.wrong : gold ? LINES.gold : LINES.tooth);
+    return true;
+  }
+  if (s.kind === K_COOKIE) {
+    const filled = byCol([0, 1, 2, 3, 4, 5, 6, 7].filter(i => M.slots[i]));
+    if (!filled.length) {
+      p.st.eaten++;
+      hostEvent(mx, hy - 40, "Mums! 🍪", "#ffe9a8", "dunk");
+      hostSay(m, LINES.eat);
+      return true;
+    }
+    const wasGold = M.slots[filled[0]] === 2, v = wasGold ? P_GOLD : P_TOOTH;
+    M.slots[filled[0]] = 0; M.hurt = 1;
+    G.ts[m] = Math.max(0, G.ts[m] - v);
+    if (mine) {
+      p.score += P_OWN; p.st.own++;
+      hostEvent(mx, hy - 40, `SELVMÅL! ${P_OWN} ${p.name}`, "#ff8a7a", "dunk");
+      hostSay(m, LINES.own);
+    } else {
+      const pts = wasGold ? P_COOKIE_GOLD : P_COOKIE;
+      p.score += pts; p.st.cookies++;
+      hostEvent(mx, hy - 40, `🍪 TRÆFFER! +${pts} ${p.name}`, "#ffe9a8", "dunk");
+      hostSay(m, LINES.ouch);
+    }
+    return true;
+  }
+  return true;
+}
+
+/* ---------- Computer-nisser ---------- */
+function botUpdate(p, dt, t) {
+  if (p.stun > 0) return;
+  const rnd = G.botRnd;
+  p.think -= dt;
+  if (p.think <= 0) {
+    p.think = 0.25 + rnd() * 0.2;
+    // 1) undgå grankogler, der er lige ved at lande
+    let dodge = null;
+    for (const id of G.items) {
+      const it = SCHED[id]; if (it.kind !== K_CONE) continue;
+      const [x, y] = itemPos(it, t), tt = (SOCK_Y - y) / it.vy;
+      if (tt > 0 && tt < 0.5 && Math.abs(x - p.x) < 55) dodge = x + (x > p.x ? -100 : 100);
+    }
+    // 2) find den bedste ting at fange
+    let catchX = null, bestT = 1e9;
+    const max = p.wand > 0 ? QUEUE_MAX_WAND : QUEUE_MAX;
+    if (p.q.length < max) for (const id of G.items) {
+      const it = SCHED[id]; if (it.kind === K_CONE) continue;
+      const [x, y] = itemPos(it, t), tt = (SOCK_Y - y) / it.vy;
+      if (tt < 0.05 || tt > 2.6) continue;
+      if (Math.abs(x - p.x) / BOT_SPEED > tt + 0.05) continue;
+      const score = tt - (it.kind === K_GOLD || it.kind === K_WAND ? 0.6 : 0);
+      if (score < bestT) { bestT = score; catchX = itemPos(it, t + tt * 0.9)[0]; }
+    }
+    // 3) sigt efter en mund
+    let aimX = null;
+    if (p.q.length) {
+      const target = p.q[0] === K_COOKIE ? 1 - p.team : p.team;
+      const travel = (SHOT_Y0 - MOUTH_Y) / SHOT_V;
+      aimX = mouthX(target, t + travel + 0.15) + p.err;
+    }
+    if (dodge !== null) p.tx = dodge;
+    else if (aimX !== null && (p.q.length >= 2 || catchX === null)) p.tx = aimX;
+    else if (catchX !== null) p.tx = catchX;
+    else p.tx = TEAMS[p.team].cx;
+    p.aiming = dodge === null && p.tx === aimX;
+  }
+  p.tx = clamp(p.tx, 30, W - 30);
+  const d = p.tx - p.x;
+  p.x += clamp(d, -BOT_SPEED * dt, BOT_SPEED * dt);
+  if (p.aiming && Math.abs(d) < 12 && p.cd <= 0 && p.q.length) {
+    const travel = (SHOT_Y0 - MOUTH_Y) / SHOT_V;
+    const target = p.q[0] === K_COOKIE ? 1 - p.team : p.team;
+    if (Math.abs(mouthX(target, t + travel) - p.x) < MOUTH_HALF * 0.9 || rnd() < 0.02) {
+      hostShoot(p, p.x, 0);
+      p.err = (rnd() - 0.5) * BOT_AIM_ERR * 2;
+      p.think = 0;
+    }
+  }
+}
+
+// Værten sender hele den fælles tilstand
+function hostSendState() {
+  if (role !== "host") return;
+  sendMain("state", {
+    t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0,
+    it: G.items,
+    sh: G.shots.map(s => [s.id, s.kind, r1(s.x), Math.round(s.t0 * 100), s.o, s.q]),
+    mo: G.mouths.map(M => [M.slots.join(""), r1(M.cel * 10), r1(M.hurt * 10)]),
+    ts: G.ts,
+    pl: Object.values(G.players).map(p => [p.id, r1(p.x), p.score, p.stun > 0 ? 1 : 0, p.q.join(""), p.lastQ, p.lastC, r1(p.wand * 10)]),
+    ev: G.evq, bq: G.bq,
+  });
+  G.evq = []; G.bq = [];
+}
+
+function hostEnd() {
+  if (G.over) return;
+  G.over = true;
+  const win = G.ts[0] > G.ts[1] ? 0 : G.ts[1] > G.ts[0] ? 1 : -1;
+  const res = Object.values(G.players)
+    .map(p => ({ id: p.id, n: p.name, c: p.c, team: p.team, bot: p.bot ? 1 : 0,
+      s: Math.max(0, p.score) + (p.team === win ? P_WIN : 0), st: p.st }))
+    .sort((a, b) => b.s - a.s);
+  hostSendState();
+  const msg = { reason: "Tiden er gået!", ts: G.ts, win, res };
+  if (role === "host") { sendMain("end", msg); setTimeout(() => sendMain("end", msg), 800); }
+  lobby.started = false;
+  showEnd(msg);
+}
+
+/* =====================================================================
+   SPILLERNE (ikke-vært): modtag værtens tilstand
+   ===================================================================== */
+function clientState(m) {
+  if (!S) return;
+  S.t = m.t; S.recvAt = performance.now(); S.paused = !!m.p;
+  S.items = m.it;
+  S.shots = m.sh.map(([id, kind, x, t0, o, q]) => ({ id, kind, x, t0: t0 / 100, o, q }));
+  // mine "spøgelses-skud" erstattes af værtens rigtige skud
+  S.ghosts = S.ghosts.filter(g => !S.shots.some(s => s.o === MY_ID && s.q === g.q) && clientTime() - g.t0 < 0.9);
+  m.mo.forEach(([sl, cel, hurt], i) => { const M = S.mouths[i]; M.slots = sl.split("").map(Number); M.cel = cel / 10; M.hurt = hurt / 10; });
+  S.ts = m.ts;
+  for (const [id, x, score, stun, q, lastQ, lastC, wand] of m.pl) {
+    const p = S.players[id]; if (!p) continue;
+    Object.assign(p, { x, score, stun, q: q.split("").map(Number), lastQ, lastC, wand: wand / 10 });
+  }
+  for (const ev of m.ev || []) applyEvent(ev);
+  for (const b of m.bq || []) applyBubble(b);
+  if (m.p && state === "play") { state = "pause"; clearInput(); showPause("Pause", "Værten har sat spillet på pause."); }
+  if (!m.p && (state === "pause" || state === "wait")) { state = "play"; showScreen(null); }
+}
+const clientTime = () => S.t + (S.paused ? 0 : Math.min(0.4, (performance.now() - S.recvAt) / 1000));
+// Spilleren opdager selv, når noget lander i sokken, og melder det til værten
+function clientCatch(t) {
+  if (ME.stun > 0) return;
+  const me = S.players[MY_ID]; if (!me) return;
+  const half = me.wand > 0 ? WAND_HALF : SOCK_HALF;
+  const full = myQueue().length >= myMax();
+  for (const id of S.items) {
+    if (claimed.has(id)) continue;
+    const it = SCHED[id]; if (!it) continue;
+    const [x, y] = itemPos(it, t);
+    if (!(y > SOCK_Y - 28 && y < SOCK_Y + 14 && Math.abs(x - ME.x) < half + 14)) continue;
+    if (it.kind <= K_COOKIE && full) continue;
+    claimed.set(id, performance.now());
+    const c = ++catchSeq;
+    pendingCatches.push({ c, k: it.kind, at: performance.now() });
+    sendMine("catch", { i: id, c });
+    if (it.kind === K_CONE) { ME.stun = STUN_TIME; pendingCatches = []; S.floaters.push({ x: ME.x, y: SOCK_Y - 60, text: "AV! Grankogle! 🌲", color: "#ff8a7a", life: 1.3 }); Sound.bonk(); }
+    else if (it.kind === K_WAND) { S.floaters.push({ x: ME.x, y: SOCK_Y - 60, text: "TRYLLESTAV! 🪄", color: "#f5c542", life: 1.3 }); Sound.magic(); }
+    else Sound.catch();
+  }
+}
+
+/* =====================================================================
+   Beskeder fra netværket
+   ===================================================================== */
+function onNetMsg(topic, ev, m) {
+  if (role === "host") {
+    if (topic !== mainTopic()) m.id = topic.slice(mainTopic().length + 1);
+    if (ev === "hello") hostHello(m);
+    else if (ev === "bye") { hostRemove(m.id); renderLobby(); hostBroadcastLobby(); }
+    else if (ev === "team") { const p = lobby.players.find(q => q.id === m.id); if (p && !lobby.started) { p.team = 1 - p.team; renderLobby(); hostBroadcastLobby(); } }
+    else if (G && state !== "end") {
+      const p = G.players[m.id]; if (!p) return;
+      p.last = performance.now();
+      if (ev === "pos") p.x = clamp(Number(m.x) || 0, 0, W);
+      else if (ev === "shoot") hostShoot(p, clamp(Number(m.x) || 0, 0, W), m.q | 0);
+      else if (ev === "catch") {
+        p.lastC = Math.max(p.lastC, m.c | 0);
+        const it = SCHED[m.i];
+        if (!it || G.items.indexOf(m.i) < 0 || p.stun > 0) return;
+        const [x, y] = itemPos(it, G.t);
+        if (Math.abs(x - p.x) < (p.wand > 0 ? WAND_HALF : SOCK_HALF) + 170 && y > SOCK_Y - 100 && y < SOCK_Y + 90) doCatch(p, m.i, true);
+      }
+    }
+    return;
+  }
+  if (topic !== mainTopic()) return;
+  if (ev === "lobby" || ev === "state" || ev === "start" || ev === "end") lastHostMsg = performance.now();
+  if (ev === "lobby") {
+    lobbySeen = true;
+    lobby.players = m.pl; lobby.started = !!m.st;
+    const inIt = m.pl.some(p => p.id === MY_ID);
+    if (!m.st && (state === "lobby" || state === "end" || state === "wait")) {
+      if (state !== "lobby") { state = "lobby"; showScreen("lobbyScreen"); showPreview(); }
+      renderLobby();
+      $("lobbyMsg").textContent = inIt ? "" : (m.pl.length >= MAX_PLAYERS ? `Rummet er fyldt (max ${MAX_PLAYERS}).` : "Melder mig ind…");
+    } else if (m.st && state === "lobby") {
+      renderLobby();
+      $("lobbyMsg").textContent = inIt ? "" : "Spillet er i gang – du kommer med i næste runde.";
+    }
+  } else if (ev === "start") {
+    if (m.pl.some(p => p.id === MY_ID) && (state === "lobby" || state === "end")) clientStart(m.pl);
+  } else if (ev === "state") {
+    if ((state === "play" || state === "pause" || state === "wait") && S) clientState(m);
+  } else if (ev === "end") {
+    if ((state === "play" || state === "pause" || state === "wait") && m.res.some(r => r.id === MY_ID)) showEnd(m);
+  }
+}
+function hostHello(m) {
+  let p = lobby.players.find(q => q.id === m.id);
+  if (!p && !lobby.started && lobby.players.length < MAX_PLAYERS) {
+    const used = lobby.players.map(q => q.c);
+    const c = COLORS.findIndex((_, i) => !used.includes(i));
+    let name = String(m.name || "Anonym").slice(0, 16), base = name, k = 2;
+    while (lobby.players.some(q => q.name === name)) name = `${base} ${k++}`;
+    const n0 = lobby.players.filter(q => q.team === 0).length, n1 = lobby.players.length - n0;
+    p = { id: m.id, name, c, team: n0 <= n1 ? 0 : 1, last: 0 };
+    lobby.players.push(p);
+    Net.join(playerTopic(p.id));
+    Sound.join();
+    renderLobby();
+    hostBroadcastLobby();
+  }
+  if (p) p.last = performance.now();
+  else hostBroadcastLobby();
+}
+function hostRemove(id) {
+  if (id === MY_ID) return;
+  lobby.players = lobby.players.filter(p => p.id !== id);
+  Net.leave(playerTopic(id));
+}
+function hostBroadcastLobby() {
+  sendMain("lobby", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c, team: p.team })), st: lobby.started ? 1 : 0 });
+}
+
+/* =====================================================================
+   Rum: opret / deltag / forlad / spil alene
+   ===================================================================== */
+function getName() { return ($("nameInput").value.trim() || "Anonym").slice(0, 16); }
+function saveName() { try { localStorage.setItem(NAME_KEY, getName()); } catch (e) {} }
+function makeCode() {
+  const A = "ABCDEFGHJKLMNPRSTUVWXYZ";
+  let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
+  return s;
+}
+function startSolo() {
+  Sound.unlock(); saveName();
+  Net.close();
+  role = "solo"; roomCode = "";
+  lobby = { players: [{ id: MY_ID, name: getName(), c: 0, team: 0, last: Infinity }], started: true };
+  $("room").textContent = "";
+  hostBegin();
+}
+function createRoom() {
+  Sound.unlock(); saveName();
+  role = "host"; roomCode = makeCode();
+  lobby = { players: [{ id: MY_ID, name: getName(), c: 0, team: 0, last: Infinity }], started: false };
+  Net.onMsg = onNetMsg;
+  Net.onStatus = st => { if (state === "lobby") $("lobbyMsg").textContent = st === "ok" ? "" : connectHint(); if (st === "ok") hostBroadcastLobby(); };
+  Net.open(mainTopic());
+  enterLobby();
+}
+function joinRoom() {
+  Sound.unlock(); saveName();
+  const code = $("codeInput").value.trim().toUpperCase().replace(/[^A-Z]/g, "");
+  if (code.length !== 4) { $("startErr").textContent = "Koden skal være 4 bogstaver."; return; }
+  role = "client"; roomCode = code;
+  lobby = { players: [], started: false }; lobbySeen = false;
+  Net.onMsg = onNetMsg;
+  Net.onStatus = st => { if (st === "ok") Net.send(mainTopic(), "hello", { id: MY_ID, name: getName() }); else if (state === "lobby") $("lobbyMsg").textContent = connectHint(); };
+  Net.open(mainTopic());
+  Net.join(playerTopic(MY_ID));
+  enterLobby();
+  setTimeout(() => { if (state === "lobby" && role === "client" && !lobbySeen) $("lobbyMsg").textContent = ON_PAGES ? "Kan ikke finde rummet – er koden rigtig, og har værten spillet åbent?" : connectHint(); }, 5000);
+}
+const ON_PAGES = location.hostname === "gaardee.github.io";
+function connectHint() {
+  return ON_PAGES ? "Forbinder…" : "Multiplayer virker kun på gaardee.github.io – ikke når spillet er åbnet lokalt. Prøv \"Spil alene\".";
+}
+function enterLobby() {
+  state = "lobby";
+  $("startErr").textContent = "";
+  $("lobbyCode").textContent = roomCode;
+  $("room").textContent = "Rum " + roomCode;
+  $("lobbyMsg").textContent = !ON_PAGES ? connectHint() : role === "host" ? "Forbinder…" : "Leder efter rummet…";
+  try { history.replaceState(null, "", "#" + roomCode); } catch (e) {}
+  renderLobby();
+  showScreen("lobbyScreen");
+}
+function leaveRoom() {
+  if (role === "client") sendMine("bye", { id: MY_ID });
+  Net.close();
+  role = null; roomCode = ""; G = null; lobby = { players: [], started: false };
+  $("room").textContent = ""; $("pauseBtn").hidden = true;
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+  state = "start";
+  showScreen("startScreen");
+  showPreview();
+}
+// Computer-nisser fylder op, så holdene er lige store (og man aldrig er alene)
+function withBots(pl) {
+  const out = pl.slice();
+  const n0 = out.filter(p => p.team === 0).length, n1 = out.length - n0;
+  const small = n0 <= n1 ? 0 : 1;
+  const bots = Math.min(3, Math.abs(n0 - n1));
+  const used = out.map(p => p.c);
+  for (let i = 0; i < bots; i++) {
+    const c = COLORS.findIndex((_, k) => !used.includes(k)); used.push(c);
+    out.push({ id: "bot" + i, name: BOT_NAMES[i], c, team: small, bot: true });
+  }
+  return out;
+}
+function renderLobby() {
+  const list = lobby.players;
+  for (const tm of [0, 1]) {
+    const rows = list.filter(p => p.team === tm);
+    $("team" + tm).innerHTML = rows.length
+      ? rows.map(p => `<li><span class="dot" style="background:${COLORS[p.c]}"></span>${esc(p.name)}${p.id === list[0].id ? " 👑" : ""}${p.id === MY_ID ? " <small>(dig)</small>" : ""}</li>`).join("")
+      : "<li style='opacity:.5'>tomt</li>";
+  }
+  const bots = withBots(list).length - list.length;
+  $("botInfo").textContent = bots ? `🤖 ${bots === 1 ? "En computer-nisse" : bots + " computer-nisser"} hjælper det mindste hold, så holdene er lige store.` : "";
+  $("swapBtn").hidden = !list.some(p => p.id === MY_ID);
+  $("hostStartBtn").hidden = role !== "host";
+  $("hostStartBtn").textContent = list.length > 1 ? `Start spillet! (${list.length} spillere)` : "Start alene (eller vent på venner)";
+}
+function swapTeam() {
+  if (role === "host") { const p = lobby.players.find(q => q.id === MY_ID); if (p && !lobby.started) { p.team = 1 - p.team; renderLobby(); hostBroadcastLobby(); } }
+  else if (role === "client") { sendMine("team", { id: MY_ID }); }
+}
+function roomLink() { return location.origin + location.pathname + "#" + roomCode; }
+
+/* ---------- Start af runde ---------- */
+function hostStart() {
+  if (role !== "host" || state !== "lobby") return;
+  lobby.started = true;
+  hostBegin();
+}
+function hostBegin() {
+  const pl = withBots(lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c, team: p.team })));
+  if (role === "host") sendMain("start", { pl });
+  hostNewGame(pl);
+  beginRound(G.players[MY_ID].team);
+}
+function clientStart(pl) {
+  SCHED = makeSchedule(pl.length);
+  S = newView(pl);
+  pendingShots = []; pendingCatches = []; claimed.clear();
+  beginRound(S.players[MY_ID].team);
+}
+function beginRound(team) {
+  ME = newMe(team);
+  roundResult = null;
+  clearInput();
+  lastHud = ""; lastHostMsg = performance.now();
+  state = "play";
+  $("pauseBtn").hidden = !isHost();
+  showScreen(null);
+  Sound.bells();
+  S.floaters.push({ x: W / 2, y: 420, text: "TANDJAGT! 🦷", color: "#f5c542", life: 2, big: true });
+  S.floaters.push({ x: ME.x, y: SOCK_Y - 90, text: `Du er ${TEAMS[team].name} ${TEAMS[team].emoji}`, color: TEAMS[team].light, life: 2.5 });
+}
+
+/* =====================================================================
+   Tegning
+   ===================================================================== */
+const ctx = canvas.getContext("2d");
+const INK = "#2a1a12", SKIN = "#ffd9b3";
+function rr(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function fs(fill, lw = 3) { ctx.fillStyle = fill; ctx.fill(); if (lw) { ctx.lineWidth = lw; ctx.strokeStyle = INK; ctx.stroke(); } }
+function ell(x, y, rx, ry, fill, lw = 3) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); fs(fill, lw); }
+
+// Baggrund: sne, stjerner, lyskæde og julemandens slæde
+const STARS = Array.from({ length: 60 }, (_, i) => { const r = mulberry32(i * 99 + 5); return [r(), r() * 0.75, 0.5 + r() * 1.5, r() * 6]; });
+const FLAKES = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), r: 1 + Math.random() * 2.5, v: 0.03 + Math.random() * 0.06, w: Math.random() * 6 }));
+const HOUSES = [[20, 60, 50], [100, 50, 70], [230, 45, 40], [330, 70, 55], [470, 55, 45], [560, 65, 60]];
+function drawBackground(now, t, dt) {
+  screenT();
+  const g = ctx.createLinearGradient(0, 0, 0, view.ch);
+  g.addColorStop(0, "#071030"); g.addColorStop(0.7, "#1c2d63"); g.addColorStop(1, "#33477f");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, view.cw, view.ch);
+  for (const [x, y, r, ph] of STARS) {
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(now / 700 + ph);
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x * view.cw, y * view.ch, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // månen
+  ctx.fillStyle = "#fff6d0"; ctx.beginPath(); ctx.arc(view.cw - 50, 60, 26, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#071030"; ctx.beginPath(); ctx.arc(view.cw - 40, 54, 24, 0, Math.PI * 2); ctx.fill();
+
+  // slæden flyver over himlen
+  {
+    const sx = ((t * 70) % (W + 400)) - 200;
+    const [x, y] = toS(sx, 70 + Math.sin(t * 1.5) * 10);
+    ctx.font = `${Math.max(16, 26 * view.s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.save(); ctx.translate(x, y); ctx.scale(-1, 1); ctx.fillText("🛷🦌🦌", 0, 0); ctx.restore();
+  }
+
+  worldT();
+  // holdenes halvdele
+  ctx.fillStyle = "rgba(226,59,59,.10)"; ctx.fillRect(0, 0, W / 2, SOCK_Y + 40);
+  ctx.fillStyle = "rgba(176,75,198,.12)"; ctx.fillRect(W / 2, 0, W / 2, SOCK_Y + 40);
+  ctx.setLineDash([10, 12]); ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(W / 2, 300); ctx.lineTo(W / 2, SOCK_Y - 50); ctx.stroke(); ctx.setLineDash([]);
+  // huse og juletræ
+  for (const [hx, hw, hh] of HOUSES) {
+    ctx.fillStyle = "#16224a"; ctx.fillRect(hx, SOCK_Y + 40 - hh, hw, hh);
+    ctx.beginPath(); ctx.moveTo(hx - 6, SOCK_Y + 40 - hh); ctx.lineTo(hx + hw / 2, SOCK_Y + 40 - hh - 26); ctx.lineTo(hx + hw + 6, SOCK_Y + 40 - hh); ctx.fill();
+    ctx.fillStyle = "#ffd76a";
+    for (let wx = hx + 8; wx < hx + hw - 10; wx += 18) ctx.fillRect(wx, SOCK_Y + 52 - hh, 9, 10);
+  }
+  // sne på jorden (fortsætter ned under banen)
+  ctx.fillStyle = "#f2f6ff";
+  ctx.beginPath(); ctx.moveTo(-400, SOCK_Y + 38);
+  for (let x = -400; x <= W + 400; x += 40) ctx.quadraticCurveTo(x + 20, SOCK_Y + 30 + Math.sin(x) * 4, x + 40, SOCK_Y + 38);
+  ctx.lineTo(W + 400, H + 600); ctx.lineTo(-400, H + 600); ctx.closePath(); ctx.fill();
+  // lyskæde øverst
+  ctx.strokeStyle = "#1f3a1f"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-10, 6);
+  for (let i = 0; i < 8; i++) ctx.quadraticCurveTo(i * 80 + 40, 36, i * 80 + 80, 6);
+  ctx.stroke();
+  const bulbCols = ["#ff4d4d", "#ffd34d", "#4dd2ff", "#5aff8a", "#ff7af2"];
+  for (let i = 0; i < 32; i++) {
+    const x = i * 20 + 10, k = (x % 80) / 80, y = 6 + 30 * 4 * k * (1 - k) * 0.75 + 4;
+    const on = Math.floor(now / 400 + i) % 3 !== 0;
+    ctx.globalAlpha = on ? 1 : 0.35;
+    ctx.fillStyle = bulbCols[i % 5]; ctx.beginPath(); ctx.ellipse(x, y + 5, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+function drawSnow(dt) {
+  screenT();
+  ctx.fillStyle = "rgba(255,255,255,.8)";
+  for (const f of FLAKES) {
+    f.y += f.v * dt; if (f.y > 1.02) { f.y = -0.02; f.x = Math.random(); }
+    const x = (f.x + Math.sin(f.y * 8 + f.w) * 0.01) * view.cw;
+    ctx.beginPath(); ctx.arc(x, f.y * view.ch, f.r, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ---------- Simon ----------
+function drawSimon(m, now, t) {
+  const M = S.mouths[m];
+  const mx = mouthX(m, t), hy = headY(m, t);
+  const shake = M.hurt > 0 ? Math.sin(now / 25) * 7 * M.hurt : 0;
+  const cel = M.cel > 0;
+  ctx.save(); ctx.translate(mx + shake, hy);
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  if (m === 1) { // tandfe-vinger
+    for (const sd of [-1, 1]) {
+      ctx.save(); ctx.translate(sd * 70, -25); ctx.rotate(sd * (0.35 + Math.sin(now / 110) * 0.18));
+      ctx.beginPath(); ctx.ellipse(sd * 40, -18, 48, 26, 0, 0, Math.PI * 2); fs("rgba(205,240,255,.9)", 3);
+      ctx.beginPath(); ctx.ellipse(sd * 30, 18, 30, 16, 0.4 * sd, 0, Math.PI * 2); fs("rgba(240,205,255,.9)", 3);
+      ctx.restore();
+    }
+  }
+  ell(-80, 8, 15, 20, SKIN); ell(80, 8, 15, 20, SKIN);
+  ell(0, 0, 80, 88, SKIN);
+  if (m === 0) {
+    // nissehue
+    ctx.beginPath(); ctx.moveTo(-80, -52);
+    ctx.quadraticCurveTo(-60, -150, 30, -158); ctx.quadraticCurveTo(105, -158, 118, -96);
+    ctx.lineTo(96, -92); ctx.quadraticCurveTo(80, -125, 40, -110); ctx.lineTo(80, -52); ctx.closePath();
+    fs("#d62f2f");
+    ell(118, -92, 16, 16, "#fff");
+    rr(-88, -66, 176, 28, 14); fs("#fff");
+  } else {
+    // hår + tiara
+    ctx.beginPath(); ctx.moveTo(-78, -20);
+    ctx.quadraticCurveTo(-84, -96, 0, -94); ctx.quadraticCurveTo(84, -96, 78, -20);
+    ctx.lineTo(58, -46); ctx.lineTo(36, -32); ctx.lineTo(14, -54); ctx.lineTo(-10, -36); ctx.lineTo(-34, -54); ctx.lineTo(-56, -36); ctx.closePath();
+    fs("#7a4a22");
+    ctx.beginPath(); ctx.moveTo(-40, -82); ctx.lineTo(-28, -110); ctx.lineTo(-14, -88); ctx.lineTo(0, -122); ctx.lineTo(14, -88); ctx.lineTo(28, -110); ctx.lineTo(40, -82); ctx.closePath();
+    fs("#f5c542");
+    ell(0, -96, 7, 7, "#ff5ad0", 2);
+  }
+  // øjne – Simon kigger på din sok
+  const look = ME ? clamp((ME.x - mx) / 220, -1, 1) : 0;
+  for (const ex of [-30, 30]) {
+    if (M.hurt > 0) {
+      ctx.strokeStyle = INK; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(ex - 10, -28); ctx.lineTo(ex + 10, -8); ctx.moveTo(ex + 10, -28); ctx.lineTo(ex - 10, -8); ctx.stroke();
+    } else if (cel) {
+      ctx.strokeStyle = INK; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(ex, -12, 12, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    } else {
+      ell(ex, -18, 16, 18, "#fff");
+      ell(ex + look * 6, -13, 6.5, 7.5, INK, 0);
+      ell(ex + look * 6 + 2, -16, 2, 2, "#fff", 0);
+    }
+  }
+  // øjenbryn (sure når han er ramt)
+  ctx.strokeStyle = "#5a3416"; ctx.lineWidth = 5;
+  for (const sd of [-1, 1]) {
+    ctx.beginPath();
+    if (M.hurt > 0) { ctx.moveTo(sd * 44, -46); ctx.lineTo(sd * 16, -36); }
+    else { ctx.moveTo(sd * 44, -42); ctx.quadraticCurveTo(sd * 30, -50, sd * 16, -42); }
+    ctx.stroke();
+  }
+  ell(-54, 20, 13, 8, "rgba(255,120,120,.45)", 0); ell(54, 20, 13, 8, "rgba(255,120,120,.45)", 0);
+  ell(0, 8, 11, 9, m === 0 ? "#e74c3c" : "#f0a080", 2.5); // rød rudolf-næse til Team Nisse
+  // munden
+  const ry = cel ? 38 : 32;
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(0, MOUTH_DY, 55, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#5c0d1c"; ctx.fill();
+  ctx.clip();
+  ell(0, MOUTH_DY + ry - 8, 32, 15, "#e0607a", 0);
+  ctx.fillStyle = "#f08a9a";
+  ctx.fillRect(-60, MOUTH_DY - ry - 2, 120, 12);
+  ctx.fillRect(-60, MOUTH_DY + ry - 10, 120, 12);
+  for (let i = 0; i < 8; i++) {
+    const v = M.slots[i]; if (!v) continue;
+    const x = slotX(i), top = i < 4;
+    rr(x - 9.5, top ? MOUTH_DY - ry + 6 : MOUTH_DY + ry - 26, 19, 20, 5);
+    fs(v === 2 ? "#f5c542" : "#fffef6", 2);
+    if (v === 2) { ctx.fillStyle = "#fff"; ctx.fillRect(x - 5, top ? MOUTH_DY - ry + 9 : MOUTH_DY + ry - 23, 3, 8); }
+  }
+  ctx.restore();
+  ctx.beginPath(); ctx.ellipse(0, MOUTH_DY, 55, ry, 0, 0, Math.PI * 2);
+  ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.restore();
+}
+function drawSimonLabels(m, t) {
+  screenT();
+  const mx = mouthX(m, t), T = TEAMS[m];
+  const [x, y] = toS(mx, headY(m, t) + 104);
+  const fz = Math.max(12, 17 * view.s);
+  ctx.font = `900 ${fz}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const txt = `${T.emoji} SIMON · ${fmtNum(S.ts[m])}`;
+  const w = ctx.measureText(txt).width + 16;
+  rr(x - w / 2, y - fz * 0.75, w, fz * 1.5, 9); ctx.fillStyle = T.color; ctx.fill();
+  ctx.lineWidth = 2.5; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.fillStyle = "#fff"; ctx.fillText(txt, x, y);
+  if (ME && ME.team === m) { ctx.font = `900 ${Math.max(10, 12 * view.s)}px sans-serif`; ctx.fillStyle = "#ffe9a8"; ctx.fillText("DIT HOLD", x, y + fz * 1.25); }
+}
+function drawBubble(m, t) {
+  const M = S.mouths[m];
+  if (!M.bub) return;
+  screenT();
+  const mx = mouthX(m, t);
+  let [x, y] = toS(mx, headY(m, t) - 112);
+  const fz = Math.max(12, 16 * view.s);
+  ctx.font = `900 ${fz}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const maxW = Math.max(110, 230 * view.s);
+  const words = M.bub.text.split(" "), lines = [];
+  let cur = "";
+  for (const wd of words) { const tryL = cur ? cur + " " + wd : wd; if (ctx.measureText(tryL).width > maxW && cur) { lines.push(cur); cur = wd; } else cur = tryL; }
+  if (cur) lines.push(cur);
+  const bw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 20, bh = lines.length * fz * 1.2 + 12;
+  x = clamp(x, bw / 2 + 4, view.cw - bw / 2 - 4); y = Math.max(bh / 2 + 4, y);
+  ctx.globalAlpha = clamp(M.bub.life * 2, 0, 1);
+  rr(x - bw / 2, y - bh / 2, bw, bh, 12); ctx.fillStyle = "#fff"; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 8, y + bh / 2 - 1); ctx.lineTo(x + 2, y + bh / 2 + 14); ctx.lineTo(x + 10, y + bh / 2 - 1); ctx.closePath();
+  ctx.fillStyle = "#fff"; ctx.fill(); ctx.stroke();
+  ctx.fillRect(x - 7, y + bh / 2 - 4, 16, 4);
+  ctx.fillStyle = INK;
+  lines.forEach((l, i) => ctx.fillText(l, x, y - bh / 2 + 6 + fz * 0.6 + i * fz * 1.2));
+  ctx.globalAlpha = 1;
+}
+
+// ---------- Ting der falder ----------
+function toothPath(x, y, k) {
+  ctx.beginPath();
+  ctx.moveTo(x - 12 * k, y - 8 * k);
+  ctx.bezierCurveTo(x - 14 * k, y - 18 * k, x - 4 * k, y - 18 * k, x, y - 13 * k);
+  ctx.bezierCurveTo(x + 4 * k, y - 18 * k, x + 14 * k, y - 18 * k, x + 12 * k, y - 8 * k);
+  ctx.bezierCurveTo(x + 12 * k, y + 2 * k, x + 9 * k, y + 4 * k, x + 8 * k, y + 14 * k);
+  ctx.quadraticCurveTo(x + 5 * k, y + 17 * k, x + 3 * k, y + 12 * k);
+  ctx.lineTo(x + 1 * k, y + 4 * k); ctx.lineTo(x - 1 * k, y + 4 * k); ctx.lineTo(x - 3 * k, y + 12 * k);
+  ctx.quadraticCurveTo(x - 5 * k, y + 17 * k, x - 8 * k, y + 14 * k);
+  ctx.bezierCurveTo(x - 9 * k, y + 4 * k, x - 12 * k, y + 2 * k, x - 12 * k, y - 8 * k);
+  ctx.closePath();
+}
+function drawItem(kind, x, y, now, k = 1, rot = 0) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  if (kind === K_TOOTH || kind === K_GOLD) {
+    if (kind === K_GOLD) { ctx.fillStyle = "rgba(245,197,66,.35)"; ctx.beginPath(); ctx.arc(0, 0, 24 * k, 0, Math.PI * 2); ctx.fill(); }
+    toothPath(0, 0, k); fs(kind === K_GOLD ? "#f5c542" : "#fffef6", 2.5);
+    ctx.fillStyle = "rgba(255,255,255,.8)"; ctx.beginPath(); ctx.ellipse(-5 * k, -9 * k, 3 * k, 2 * k, -0.5, 0, Math.PI * 2); ctx.fill();
+  } else if (kind === K_COOKIE) {
+    ctx.beginPath();
+    for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2, r = (i % 2 ? 15 : 17) * k; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    ctx.closePath(); fs("#9a5424", 2.5);
+    ctx.beginPath(); ctx.arc(0, 0, 10 * k, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,210,150,.25)"; ctx.fill();
+    ell(0, 0, 4.5 * k, 7 * k, "#f2d8a7", 1.5);
+  } else if (kind === K_CONE) {
+    ell(0, 0, 12 * k, 18 * k, "#6b3e1f", 2.5);
+    ctx.strokeStyle = "#3d2210"; ctx.lineWidth = 1.5;
+    for (let r = -12; r <= 12; r += 6) { ctx.beginPath(); ctx.moveTo(-11 * k, r * k); ctx.quadraticCurveTo(0, (r + 6) * k, 11 * k, r * k); ctx.stroke(); }
+    ell(0, -18 * k, 3 * k, 4 * k, "#2e6b2e", 1.5);
+  } else if (kind === K_WAND) {
+    ctx.fillStyle = "rgba(255,230,120,.4)"; ctx.beginPath(); ctx.arc(0, -8 * k, 26 * k, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 6 * k; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 22 * k); ctx.stroke();
+    ctx.strokeStyle = "#ff7af2"; ctx.lineWidth = 3 * k; ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = (i % 2 ? 7 : 16) * k; ctx.lineTo(Math.cos(a) * r, -8 * k + Math.sin(a) * r); }
+    ctx.closePath(); fs("#f5c542", 2.5);
+  }
+  ctx.restore();
+}
+
+// ---------- Sokker ----------
+function socksToDraw() {
+  const out = [];
+  for (const p of Object.values(S.players)) {
+    const isMe = p.id === MY_ID;
+    out.push({ ...p, x: isMe ? ME.x : p.dx, stun: isMe ? ME.stun : p.stun, isMe, q: isMe ? myQueue() : p.q });
+  }
+  return out.sort((a, b) => a.isMe - b.isMe); // min egen øverst
+}
+function drawSock(P, now, t) {
+  worldT();
+  const x = P.x, y = SOCK_Y;
+  const col = COLORS[P.c] || "#e23b3b";
+  if (!P.isMe) ctx.globalAlpha = 0.85;
+  if (P.wand > 0) {
+    ctx.fillStyle = `rgba(255,230,120,${0.25 + 0.1 * Math.sin(now / 80)})`;
+    rr(x - WAND_HALF, y - 30, WAND_HALF * 2, 30, 14); ctx.fill();
+  }
+  if (P.isMe) { ctx.beginPath(); ctx.ellipse(x, y + 48, 44, 9, 0, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke(); }
+  const wob = P.stun > 0 ? Math.sin(now / 40) * 0.15 : 0;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(wob);
+  // selve sokken (med tå mod højre for Team Nisse, venstre for Team Tandfe)
+  ctx.save(); ctx.scale(P.team === 0 ? 1 : -1, 1);
+  ctx.beginPath();
+  ctx.moveTo(-25, -6); ctx.lineTo(-25, 30);
+  ctx.quadraticCurveTo(-25, 52, -4, 52);
+  ctx.lineTo(30, 52);
+  ctx.quadraticCurveTo(46, 50, 42, 36);
+  ctx.quadraticCurveTo(38, 26, 25, 24);
+  ctx.lineTo(25, -6);
+  ctx.closePath();
+  fs(col, 3);
+  ctx.fillStyle = "rgba(255,255,255,.35)";
+  for (let sy = 4; sy < 24; sy += 10) ctx.fillRect(-23, sy, 46, 4);
+  ell(36, 42, 8, 7, "rgba(255,255,255,.5)", 0);
+  ctx.restore();
+  rr(-32, -22, 64, 20, 9); fs("#fff", 3);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  // køen af ting i sokken (den der skydes først er størst)
+  const q = P.q || [];
+  q.forEach((k, i) => drawItem(k, x + (i - (q.length - 1) / 2) * 20, y - 36 - (i === 0 ? 4 : 0), now, i === 0 ? 0.75 : 0.55));
+  // navn
+  screenT();
+  const [sx, sy] = toS(x, y + 62);
+  ctx.font = `900 ${Math.max(10, 13 * view.s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const label = (P.isMe ? "▲ " : "") + P.name;
+  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.strokeText(label, sx, sy);
+  ctx.fillStyle = P.isMe ? "#fff" : TEAMS[P.team].light; ctx.fillText(label, sx, sy);
+  if (P.stun > 0) { const [zx, zy] = toS(x, y - 60); ctx.font = `${Math.max(14, 20 * view.s)}px sans-serif`; ctx.fillText("💫", zx + Math.sin(now / 80) * 10, zy); }
+}
+// Hjælpelinje: hvor ryger mit næste skud hen?
+function drawAim(now, t) {
+  if (!ME || state !== "play" || ME.stun > 0) return;
+  const q = myQueue(); if (!q.length) return;
+  const target = q[0] === K_COOKIE ? 1 - ME.team : ME.team;
+  worldT();
+  ctx.setLineDash([6, 10]); ctx.lineDashOffset = -now / 30;
+  ctx.strokeStyle = q[0] === K_COOKIE ? "rgba(255,180,120,.55)" : "rgba(255,255,255,.4)"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(ME.x, SOCK_Y - 50); ctx.lineTo(ME.x, MOUTH_Y + 40); ctx.stroke(); ctx.setLineDash([]);
+  screenT();
+  const [x, y] = toS(ME.x, SOCK_Y - 66);
+  ctx.font = `900 ${Math.max(11, 13 * view.s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const txt = q[0] === K_COOKIE ? `🍪 → ${TEAMS[target].emoji} modstanderen!` : `🦷 → ${TEAMS[target].emoji} din Simon`;
+  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.strokeText(txt, x, y);
+  ctx.fillStyle = q[0] === K_COOKIE ? "#ffcf9a" : "#fff"; ctx.fillText(txt, x, y);
+}
+
+function draw(now, dt) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return;
+  const t = role === "client" ? clientTime() : S.t;
+  drawBackground(now, t, dt);
+  worldT();
+  for (let m = 0; m < 2; m++) drawSimon(m, now, t);
+  // ting der falder
+  worldT();
+  for (const id of S.items) {
+    if (claimed.has(id)) continue;
+    const it = SCHED[id]; if (!it) continue;
+    const [x, y] = itemPos(it, t);
+    drawItem(it.kind, x, y, now, 1, it.kind === K_CONE || it.kind === K_WAND ? Math.sin(t * 2 + it.sw) * 0.4 : (t - it.t0) * 1.5 + it.sw);
+  }
+  // skud på vej op
+  const shots = S.shots.concat(S.ghosts || []);
+  for (const s of shots) {
+    const y = shotY(s, t);
+    if (y < -40 || y > SOCK_Y) continue;
+    ctx.fillStyle = "rgba(255,255,255,.25)"; ctx.fillRect(s.x - 3, y + 14, 6, 34);
+    drawItem(s.kind, s.x, y, now, 0.9, 0);
+  }
+  // krummer
+  for (const p of S.parts) { ctx.fillStyle = p.c; ctx.globalAlpha = clamp(p.life * 2, 0, 1); ctx.fillRect(p.x - 3, p.y - 3, 6, 6); }
+  ctx.globalAlpha = 1;
+  if (ME) { drawAim(now, t); for (const P of socksToDraw()) drawSock(P, now, t); }
+  for (let m = 0; m < 2; m++) drawSimonLabels(m, t);
+  for (let m = 0; m < 2; m++) drawBubble(m, t);
+  drawSnow(dt);
+  // svævende tekst
+  screenT();
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const f of S.floaters) {
+    if (!f.text) continue;
+    const [x, y] = toS(f.x, f.y);
+    ctx.globalAlpha = clamp(f.life * 1.5, 0, 1);
+    ctx.font = `900 ${Math.max(14, (f.big ? 46 : 20) * view.s)}px sans-serif`;
+    ctx.lineWidth = f.big ? 7 : 4; ctx.strokeStyle = INK; ctx.strokeText(f.text, x, y);
+    ctx.fillStyle = f.color; ctx.fillText(f.text, x, y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* =====================================================================
+   HUD
+   ===================================================================== */
+let lastHud = "";
+function updateHud() {
+  if (!S || !ME || !S.players[MY_ID]) return;
+  const me = S.players[MY_ID];
+  const t = role === "client" ? clientTime() : G.t;
+  const left = Math.max(0, Math.ceil(GAME_TIME - t));
+  const txt = `${me.score}|${left}|${S.ts[0]}|${S.ts[1]}`;
+  if (txt === lastHud) return; lastHud = txt;
+  $("score").textContent = `🦷 ${fmtNum(me.score)}`;
+  const a = `<b class="${ME.team === 0 ? "mine" : ""}">🎅 ${fmtNum(S.ts[0])}</b>`, b = `<b class="${ME.team === 1 ? "mine" : ""}">${fmtNum(S.ts[1])} 🧚</b>`;
+  $("teams").innerHTML = `${a} – ${b}`;
+  $("time").textContent = `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  $("time").classList.toggle("hurry", left <= 10);
+}
+
+/* =====================================================================
+   Game loop
+   ===================================================================== */
+let lastNow = performance.now(), lastSend = 0, lastLobbyPing = 0;
+function frame(now) {
+  let dt = (now - lastNow) / 1000; lastNow = now;
+  if (dt > 0.25) dt = 0;
+
+  if (isHost()) {
+    if (state === "play" && dt > 0) {
+      let rest = Math.min(dt, 0.1);
+      while (rest > 0 && state === "play") { const step = Math.min(rest, 1 / 60); hostUpdate(step); rest -= step; }
+    }
+    if (role === "host" && (state === "play" || state === "pause") && G && now - lastSend >= HOST_SEND_MS) { lastSend = now; hostSendState(); }
+    if (role === "host" && state === "lobby" && now - lastLobbyPing >= LOBBY_PING_MS) {
+      lastLobbyPing = now;
+      const gone = lobby.players.filter(p => p.id !== MY_ID && now - p.last >= 6000);
+      for (const p of gone) hostRemove(p.id);
+      if (gone.length) renderLobby();
+      hostBroadcastLobby();
+    }
+  } else if (role === "client") {
+    if (state === "play" && dt > 0 && S) {
+      let rest = Math.min(dt, 0.1);
+      while (rest > 0) { const step = Math.min(rest, 1 / 60); moveMe(step); rest -= step; }
+      clientCatch(clientTime());
+      for (const [id, at] of claimed) if (now - at > 1500) claimed.delete(id);
+      if (now - lastSend >= CLIENT_SEND_MS) { lastSend = now; sendMine("pos", { x: r1(ME.x) }); }
+    } else if (state === "pause" && S && now - lastSend >= 1000) { lastSend = now; sendMine("pos", { x: r1(ME.x) }); }
+    if ((state === "lobby" || state === "end") && now - lastLobbyPing >= LOBBY_PING_MS) {
+      lastLobbyPing = now;
+      const known = lobby.players.some(p => p.id === MY_ID);
+      if (known) sendMine("hello", { id: MY_ID, name: getName() }); else Net.send(mainTopic(), "hello", { id: MY_ID, name: getName() });
+    }
+    if (state === "play" || state === "pause" || state === "wait") {
+      const silent = now - lastHostMsg;
+      if (silent > 2500 && state === "play") { state = "wait"; clearInput(); showPause("Venter på værten…", "Værten svarer ikke lige nu (måske har værten skiftet app)."); }
+      if (silent > 45000) showEnd({ reason: "Forbindelsen til værten blev afbrudt", res: null });
+    }
+    if (state === "lobby" && lobbySeen && now - lastHostMsg > 7000) $("lobbyMsg").textContent = "Værten er væk… venter";
+  }
+  if (S) {
+    // andre spilleres sokke glider blødt
+    const k = 1 - Math.exp(-dt * 14);
+    for (const p of Object.values(S.players)) p.dx += (p.x - p.dx) * k;
+    const anim = state === "play" ? dt : 0;
+    for (const f of S.floaters) { f.life -= dt; f.y -= 40 * dt; }
+    S.floaters = S.floaters.filter(f => f.life > 0);
+    for (const p of S.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 500 * dt; }
+    S.parts = S.parts.filter(p => p.life > 0);
+    for (const M of S.mouths) if (M.bub) { M.bub.life -= anim || (state === "start" || state === "lobby" ? dt : 0); if (M.bub.life <= 0) M.bub = null; }
+    if (!isHost() && state === "play") for (const M of S.mouths) M.hurt = Math.max(0, M.hurt - dt);
+  }
+  draw(now, dt);
+  updateHud();
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   Skærme, pause, rangliste og deling
+   ===================================================================== */
+const NAME_KEY = "drengene_navn", TOP_KEY = "tandjagten_top10", BEST_KEY = "tandjagten_bedste";
+let endedAt = 0, lastEntry = null;
+function loadJSON(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch (e) { return def; } }
+function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function showScreen(id) {
+  for (const s of ["startScreen", "lobbyScreen", "pauseScreen", "endScreen"]) $(s).hidden = s !== id;
+}
+function showPause(title, text) {
+  $("pauseTitle").textContent = title; $("pauseText").textContent = text;
+  $("resumeBtn").hidden = !isHost();
+  showScreen("pauseScreen");
+}
+function pause() {
+  if (!isHost() || state !== "play") return;
+  state = "pause"; G.paused = true; clearInput();
+  showPause("Pause", role === "host" ? "Alle venter på dig – tiden står stille." : "Tiden står stille.");
+  hostSendState();
+}
+function resume() {
+  if (!isHost() || state !== "pause") return;
+  state = "play"; G.paused = false; lastNow = performance.now();
+  showScreen(null);
+  hostSendState();
+}
+
+function showEnd(msg) {
+  state = "end"; endedAt = performance.now(); clearInput();
+  Sound.end();
+  $("pauseBtn").hidden = true;
+  roundResult = msg;
+  const name = getName();
+  const mine = msg.res && msg.res.find(r => r.id === MY_ID);
+  const score = mine ? mine.s : 0;
+  $("endTitle").textContent = msg.reason;
+  $("endScore").textContent = fmtNum(score);
+  const wb = $("winBanner");
+  if (msg.res) {
+    const score2 = `🎅 ${fmtNum(msg.ts[0])} – ${fmtNum(msg.ts[1])} 🧚`;
+    if (msg.win < 0) { wb.innerHTML = `Uafgjort!<br>${score2}`; wb.style.background = "#ffe9a8"; }
+    else {
+      const T = TEAMS[msg.win];
+      wb.innerHTML = `${T.emoji} ${T.name} vinder!` + (mine && mine.team === msg.win ? ` <small>(+${P_WIN} til dig)</small>` : "") + `<br>${score2}`;
+      wb.style.background = T.light;
+    }
+    wb.hidden = false;
+  } else wb.hidden = true;
+
+  if (mine) {
+    const humans = msg.res.filter(r => !r.bot);
+    const place = humans.indexOf(mine) + 1;
+    const bests = loadJSON(BEST_KEY, {});
+    const oldBest = bests[name] ?? null;
+    const isBest = oldBest === null || score > oldBest;
+    if (isBest) { bests[name] = score; saveJSON(BEST_KEY, bests); }
+    const d = new Date();
+    lastEntry = { n: name, s: score, d: `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(2)}`, id: Date.now() };
+    const top = loadJSON(TOP_KEY, []);
+    top.push(lastEntry); top.sort((a, b) => b.s - a.s || a.id - b.id);
+    saveJSON(TOP_KEY, top.slice(0, 10));
+    const best = msg.res[0];
+    $("newBest").textContent = `🏆 Dagens Tandlæge: ${best.n}` +
+      (humans.length > 1 ? ` · Du blev nr. ${place}` : "") +
+      (isBest && score > 0 ? " · 🎉 Ny rekord!" : oldBest !== null ? ` · Din bedste: ${fmtNum(oldBest)}` : "");
+    $("roundTable").innerHTML = msg.res.map((r, i) =>
+      `<tr class="${r.id === MY_ID ? "me" : ""}"><td>${i + 1}.</td><td><span class="dot" style="width:12px;height:12px;border-width:2px;background:${COLORS[r.c] || "#ccc"}"></span> ${TEAMS[r.team].emoji} ${esc(r.n)}</td><td>${fmtNum(r.s)}</td><td>${r.st.teeth}🦷 ${r.st.cookies}🍪</td></tr>`).join("");
+    const st = mine.st;
+    $("stats").innerHTML = [
+      `🦷 Tænder sat i: <b>${st.teeth}</b>`,
+      `✨ Guldtænder: <b>${st.gold}</b>`,
+      `🍪 Brunkage-træffere: <b>${st.cookies}</b>`,
+      `😁 Fulde smil: <b>${st.last}</b>`,
+      `🙈 Forkert Simon: <b>${st.wrong}</b>`,
+      `🤦 Selvmål: <b>${st.own}</b>`,
+      `🌲 Grankogler: <b>${st.cones}</b>`,
+      `😋 Kager Simon spiste: <b>${st.eaten}</b>`,
+    ].map(x => `<div>${x}</div>`).join("");
+    if (window.gemScore) {
+      $("faellesTop").innerHTML = "<tr><td>Henter fælles rangliste…</td></tr>";
+      gemScore(GAME_NAME, name, score).then(() => visFaellesTop($("faellesTop"), GAME_NAME, name));
+    } else $("faellesTop").innerHTML = "<tr><td>Den fælles rangliste kunne ikke indlæses</td></tr>";
+  } else {
+    $("newBest").textContent = "Runden blev ikke færdig, så scoren er ikke gemt.";
+    $("roundTable").innerHTML = ""; $("stats").innerHTML = "";
+    if (window.visFaellesTop) visFaellesTop($("faellesTop"), GAME_NAME, name);
+  }
+  renderTop();
+  const lost = !msg.res;
+  $("againBtn").hidden = !isHost();
+  $("copyBtn").hidden = lost;
+  $("shareBtn").hidden = lost || !navigator.share;
+  $("endWait").textContent = role === "host" ? "Ny runde = samme rum, samme venner." : role === "solo" ? "" : lost ? "" : "Venter på at værten starter en ny runde…";
+  $("endLeaveBtn").textContent = role === "solo" ? "Til startskærmen" : "Forlad rum";
+  showScreen("endScreen");
+}
+function renderTop() {
+  const top = loadJSON(TOP_KEY, []);
+  $("topTable").innerHTML = top.length
+    ? top.map((e, i) => `<tr class="${lastEntry && e.id === lastEntry.id ? "me" : ""}"><td>${i + 1}.</td><td>${esc(e.n)}</td><td>${fmtNum(e.s)}</td><td>${esc(e.d)}</td></tr>`).join("")
+    : "<tr><td colspan=4>Ingen resultater endnu</td></tr>";
+}
+function resultText() {
+  const name = getName();
+  const r = roundResult;
+  const mine = r && r.res && r.res.find(x => x.id === MY_ID);
+  const score = mine ? mine.s : 0;
+  const best = loadJSON(BEST_KEY, {})[name] ?? score;
+  let txt = `🎮 Tandjagten – ${name}: ${fmtNum(score)} point`;
+  if (mine) txt += r.win < 0 ? `, uafgjort ${r.ts[0]}–${r.ts[1]}` : mine.team === r.win ? `, ${TEAMS[r.win].name} vandt ${r.ts[r.win]}–${r.ts[1 - r.win]} 🦷` : `, ${TEAMS[mine.team].name} tabte ${r.ts[mine.team]}–${r.ts[1 - mine.team]}`;
+  return txt + ` (bedste: ${fmtNum(best)})`;
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 1800);
+}
+async function copyText(txt) {
+  try { await navigator.clipboard.writeText(txt); toast("Kopieret! 📋"); return; } catch (e) {}
+  const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); toast("Kopieret! 📋"); } catch (e) { toast("Kunne ikke kopiere"); }
+  ta.remove();
+}
+async function shareResult() { try { await navigator.share({ text: resultText() }); } catch (e) {} }
+async function shareLink() {
+  const url = roomLink();
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try { await navigator.share({ text: `Kom og spil Tandjagten med mig! Rum ${roomCode}`, url }); return; } catch (e) {}
+  }
+  copyText(url);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) return;
+  clearInput();
+  if (isHost()) pause();
+});
+addEventListener("blur", clearInput);
+addEventListener("pagehide", () => { if (role === "client") sendMine("bye", { id: MY_ID }); });
+
+$("soloBtn").onclick = startSolo;
+$("createBtn").onclick = createRoom;
+$("joinBtn").onclick = joinRoom;
+$("hostStartBtn").onclick = hostStart;
+$("swapBtn").onclick = swapTeam;
+$("leaveBtn").onclick = leaveRoom;
+$("endLeaveBtn").onclick = leaveRoom;
+$("linkBtn").onclick = shareLink;
+$("againBtn").onclick = () => {
+  if (!isHost() || performance.now() - endedAt < 600) return;
+  if (role === "solo") { startSolo(); return; }
+  G = null; ME = null; state = "lobby";
+  lobby.started = false;
+  for (const p of lobby.players) if (p.id !== MY_ID) p.last = performance.now();
+  renderLobby(); showScreen("lobbyScreen"); $("lobbyMsg").textContent = "";
+  hostBroadcastLobby();
+  showPreview();
+};
+$("resumeBtn").onclick = resume;
+$("pauseBtn").onclick = () => { state === "play" ? pause() : resume(); };
+$("copyBtn").onclick = () => copyText(resultText());
+$("shareBtn").onclick = shareResult;
+function updateMuteBtn() { $("muteBtn").textContent = Sound.muted ? "🔇" : "🔊"; }
+$("muteBtn").onclick = () => {
+  Sound.muted = !Sound.muted;
+  try { localStorage.setItem("tandjagten_mute", Sound.muted ? "1" : "0"); } catch (e) {}
+  updateMuteBtn();
+};
+for (const b of document.querySelectorAll(".iconBtn")) b.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") e.preventDefault(); });
+
+// Baggrund bag start-/lobbyskærmen: to tandløse Simon'er
+function showPreview() {
+  ME = null;
+  S = newView([]);
+  S.mouths[0].slots = [0, 1, 0, 0, 0, 0, 0, 1];
+  S.mouths[1].slots = [0, 0, 2, 0, 1, 0, 0, 0];
+  S.mouths[0].bub = { text: lisp("Hvor er mine tænder?!", 2), life: 1e9 };
+  previewT0 = performance.now();
+}
+let previewT0 = performance.now();
+// startskærmen: lad Simon svinge lidt
+setInterval(() => { if (S && !ME && (state === "start" || state === "lobby")) S.t = (performance.now() - previewT0) / 1000 % 60; }, 30);
+
+function readHash() {
+  const h = location.hash.replace("#", "").toUpperCase();
+  if (/^[A-Z]{4}$/.test(h)) { $("codeInput").value = h; $("joinBtn").textContent = "Deltag i " + h; }
+}
+
+/* ---------- Opstart ---------- */
+(function init() {
+  try { $("nameInput").value = localStorage.getItem(NAME_KEY) || ""; } catch (e) {}
+  const touch = matchMedia("(pointer: coarse)").matches;
+  $("ctrlHelp").innerHTML = touch
+    ? "👆 <b>Træk med fingeren</b> for at flytte sokken · <b>tryk kort</b> for at skyde"
+    : "⌨️ <b>← →</b> (eller musen) flytter sokken · <b>Mellemrum / klik</b> skyder";
+  readHash();
+  addEventListener("hashchange", () => { if (state === "start") readHash(); });
+  updateMuteBtn();
+  resize();
+  showPreview();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
