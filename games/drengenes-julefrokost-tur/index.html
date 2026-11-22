@@ -149,14 +149,16 @@
         <h1>🎅 Drengenes<br>Julefrokost-tur</h1>
         <p class="tagline">Kom igennem København sammen – op til <b>10 drenge</b> på hver sin telefon.</p>
         <ul class="rules">
-          <li>📍 Ruten: <b>Bodega → Tivoli → Smørrebrød → Snapsbaren → Natklubben → Pølsevognen</b></li>
-          <li>👬 Et stop klares, når <b>alle</b> drenge med tøj på står der: <b>+100</b> til alle (+25 til den første)</li>
-          <li>🛡️ Alle stop er <b>fristeder</b>: tegnerne kan ikke komme ind, så I kan vente sikkert på hinanden</li>
+          <li>📍 I starter spredt ud over hele byen</li>
+          <li>✉️ Et <b>brev</b> er gemt et sted i byen – ingen pile, og det er ikke på minikortet. Find det: <b>+20</b></li>
+          <li>🛡️ Brevet åbner et <b>tilfældigt fristed</b> for alle (med pil og på minikortet). Først derhen: <b>+20</b>. Mens man venter i det åbne fristed: <b>+1 point pr. sekund</b></li>
+          <li>👬 Når <b>alle</b> drenge med tøj på står i fristedet, lukker det, og et nyt brev dukker op</li>
+          <li>🔒 Kun det <b>åbne</b> fristed er sikkert – tegnerne kan ikke komme ind i det</li>
+          <li>🤫 Én af jer er <b>Den ukendte arrangør</b>. Kun han ved det, og han har hemmelige pile mod brevet og mod det fristed, der åbner næste gang</li>
           <li>🎨 Croquis-tegnere stjæler jeres tøj: 🎅🧣👖🧶. Tallet på trøjen er, hvor meget tøj du har på. Mister du trøjen, er du <b>nøgen</b> – find 👕 for at komme med igen. De andre venter ikke på nøgne drenge</li>
-          <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage (kun hvis du mangler noget) · <b>+10</b></li>
+          <li>🌭 Pølsehorn og 🥤 Pepsi Max giver fart · 👕 giver tøj tilbage (kun hvis du mangler noget) · ingen point</li>
           <li>👩 Jeres <b>koner</b> jagter jer med <b>barnevogn</b>. Alle koner og barnevogne spærrer vejen for alle drenge</li>
           <li>🌉 Kanalerne kan kun krydses på broerne · duer bremser</li>
-          <li>⭐ <b>+2 point</b> pr. sekund med tøj på (ikke mens du gemmer dig i et gammelt stop)</li>
         </ul>
         <div class="controls" id="ctrlHelp"></div>
         <input id="nameInput" maxlength="16" placeholder="Skriv dit navn" autocomplete="off">
@@ -261,16 +263,19 @@ const ENEMY_R = 17;
 const ENEMY_GAP = 220;           // så tæt må to tegnere højst komme på hinanden
 const SAFE_KEEP_AWAY = 320;      // tegnerne patruljerer ikke tættere end dette på et fristed
 const LOST_TIME = 2.5;           // så længe går en tegner mod stedet, hvor han sidst så en dreng
-const STOP_R = 70;               // hvor tæt man skal stå på et stop
+const STOP_R = 70;               // hvor tæt man skal stå på et fristed
 const INV_TIME = 2.0;            // sekunder man er usårlig efter at have mistet tøj
 const DRAW_TIME = 1.6;           // så længe står tegneren og tegner bagefter
-const ALIVE_POINTS = 2;          // point pr. sekund med tøj på
-const STOP_POINTS = 100;         // pr. klaret stop (+50 for hver ekstra omgang)
-const FIRST_BONUS = 25;          // til den første ved stoppet
-const PICKUP_POINTS = 10;
+const LETTER_POINTS = 20;        // for at samle et brev op
+const FIRST_BONUS = 20;          // til den første i det åbne fristed
+const WAIT_POINTS = 1;           // pr. sekund man står i det åbne fristed og venter
+const LETTER_R = 18;             // hvor tæt man skal være på brevet
+const LETTER_AWAY = 450;         // brevet lægges mindst så langt fra drengene (hvis muligt)
+const CLOSE_GRACE = 2.0;         // sekunder man er usårlig, når fristedet lukker igen
 const TOJ_ON_MAP = 10;            // så mange stykker tøj ligger der altid på kortet
-// Alle stop er fristeder: tegnerne kan ikke komme ind, og man kan ikke tegnes derinde
-const inSafe = p => STOPS.some(st => Math.hypot(p.x - st.x, p.y - st.y) < STOP_R);
+// Kun det ÅBNE fristed er sikkert: tegnerne kan ikke komme ind, og man kan ikke tegnes derinde
+const openStopOf = g => g && g.open >= 0 ? STOPS[g.open] : null;
+const inSafe = p => { const st = openStopOf(G); return !!st && Math.hypot(p.x - st.x, p.y - st.y) < STOP_R; };
 const MAX_TIME = 150;            // nødstop, hvis nogen gemmer sig i fristederne
 const BOOSTS = { horn: { mul: 1.35, time: 3.5 }, pepsi: { mul: 1.7, time: 3.0 } };
 const PIGEON_SLOW = 0.55;
@@ -296,7 +301,7 @@ const COLORS = [
 ];
 
 /* ---------- Kortet over København ---------- */
-// Julefrokost-ruten. Efter Pølsevognen starter den forfra.
+// Fristederne. Et brev åbner et tilfældigt af dem ad gangen.
 const STOPS = [
   { name: "Bodega",                short: "Bodega",      emoji: "🍺", x: 200,  y: 190 },
   { name: "Julemarkedet i Tivoli", short: "Tivoli",      emoji: "🎡", x: 210,  y: 1160 },
@@ -432,7 +437,18 @@ const BLOCK = new Uint8Array(GN * GN);
 for (let cy = 0; cy < GN; cy++) for (let cx = 0; cx < GN; cx++) {
   const x = (cx + 0.5) * CELL, y = (cy + 0.5) * CELL;
   if (SOLIDS.some(s => inRect(x, y, s, ENEMY_R + 1))) BLOCK[cy * GN + cx] = 1;
-  if (STOPS.some(st => Math.hypot(st.x - x, st.y - y) < STOP_R + ENEMY_R)) BLOCK[cy * GN + cx] = 1; // fristederne går man udenom
+}
+const BASE_BLOCK = BLOCK.slice();
+// Det åbne fristed går tegnerne udenom (de lukkede kan de gå lige igennem)
+function setOpenStop(i) {
+  BLOCK.set(BASE_BLOCK);
+  if (i >= 0) {
+    const st = STOPS[i];
+    for (let cy = 0; cy < GN; cy++) for (let cx = 0; cx < GN; cx++)
+      if (Math.hypot(st.x - (cx + 0.5) * CELL, st.y - (cy + 0.5) * CELL) < STOP_R + ENEMY_R) BLOCK[cy * GN + cx] = 1;
+  }
+  FF_CACHE.clear();
+  if (G) G.ffT = 0;
 }
 const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 const cellOf = (x, y) => clamp(Math.floor(y / CELL), 0, GN - 1) * GN + clamp(Math.floor(x / CELL), 0, GN - 1);
@@ -513,6 +529,7 @@ const Sound = {
   end()  { [523, 392, 330, 262].forEach((f, i) => this.tone(f, 0.18, "triangle", 0.15, null, i * 0.16)); },
   join() { this.tone(660, 0.08, "triangle", 0.1); this.tone(990, 0.12, "triangle", 0.1, null, 0.08); },
   hey()  { this.tone(300, 0.2, "sawtooth", 0.06, 500); },
+  letter() { this.tone(1400, 0.06, "triangle", 0.06, 700); [784, 988, 1319].forEach((f, i) => this.tone(f, 0.18, "sine", 0.13, null, 0.08 + i * 0.1)); this.bell(0.45); },
 };
 
 /* =====================================================================
@@ -598,9 +615,32 @@ let roundResult = null;
 const ITEM_KINDS = ["horn", "pepsi", "toj"];
 const EMODES = ["walk", "draw", "spawn"];
 
+// Drengene starter jævnt fordelt over banen. Værten vælger et tilfældigt tal (roundSeed)
+// og sender det med i "start", så alle regner de samme pladser ud.
+let roundSeed = 1, roundId = "";
+const SPREAD_CACHE = {};
+function spreadPoints(n, seed) {
+  const key = n + "|" + seed;
+  if (SPREAD_CACHE[key]) return SPREAD_CACHE[key];
+  const rnd = mulberry32(seed), m = 180;
+  const cand = ITEM_SPOTS.filter(p => p.x > m && p.y > m && p.x < WORLD - m && p.y < WORLD - m &&
+    STOPS.every(st => Math.hypot(st.x - p.x, st.y - p.y) > STOP_R + 50));
+  const pts = [cand[Math.floor(rnd() * cand.length)]];
+  while (pts.length < n) { // læg hver ny dreng så langt fra de andre som muligt
+    let best = null, bd = -1;
+    for (const c of cand) {
+      const d = Math.min(...pts.map(q => Math.hypot(c.x - q.x, c.y - q.y))) + rnd() * 40;
+      if (d > bd) { bd = d; best = c; }
+    }
+    pts.push(best);
+  }
+  // bland rækkefølgen, så det ikke altid er værten, der står samme sted
+  for (let i = pts.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pts[i], pts[j]] = [pts[j], pts[i]]; }
+  return (SPREAD_CACHE[key] = pts);
+}
 function startPos(slot, n) {
-  const a = (slot / Math.max(1, n)) * Math.PI * 2, rad = n > 1 ? 45 : 0;
-  return { x: START.x + Math.cos(a) * rad, y: START.y + Math.sin(a) * rad };
+  const p = spreadPoints(Math.max(1, n), roundSeed)[slot] || START;
+  return { x: p.x, y: p.y };
 }
 function newMe(slot, n) {
   const p = startPos(slot, n);
@@ -613,7 +653,9 @@ function hostNewGame() {
   G = {
     t: 0, paused: false,
     players: {}, enemies: [], items: [], nextSpot: 0, tojSpot: 150, itemRnd: mulberry32(SEED + 3),
-    stop: 0, firstAt: null, atStop: 0, need: n, lap: 0,
+    stop: 0, firstAt: null, atStop: 0, need: n,
+    phase: 0, open: -1, lastOpen: -1, nextStop: -1, letter: null, // phase 0 = find brevet, 1 = fristed åbent
+    organizer: lobby.players[Math.floor(Math.random() * n)].id, secretDirty: true,
     ff: {}, ffT: 0,
     floaters: [], evq: [], over: false,
   };
@@ -622,18 +664,43 @@ function hostNewGame() {
     G.players[p.id] = {
       id: p.id, name: p.name, c: p.c, x: sp.x, y: sp.y, dx: sp.x, dy: sp.y, r: PLAYER_R, fx: 1, moving: false, step: 0, stun: 0,
       score: 0, clothes: CLOTHES.length, inv: 0, hc: 0, kx: 0, ky: 0, out: false, boost: 0, last: performance.now(),
-      st: { stops: 0, first: 0, horn: 0, pepsi: 0, toj: 0, hits: 0, alive: 0 },
+      st: { stops: 0, first: 0, letters: 0, horn: 0, pepsi: 0, toj: 0, hits: 0, alive: 0 },
     };
   });
-  // én kone pr. dreng – de starter på en række nord for Hovedbanegården
+  // én kone pr. dreng – hun starter et stykke fra sin mand
   G.wives = lobby.players.map((p, i) => {
-    const c = nearFree(START.x + (i - (n - 1) / 2) * 45, START.y - 120);
-    const x = (c % GN + 0.5) * CELL + (i - (n - 1) / 2) * 8, y = (((c / GN) | 0) + 0.5) * CELL;
-    return { owner: p.id, c: p.c, i, x, y, dx: x, dy: y, a: Math.PI / 2, r: WIFE_R };
+    const me = G.players[p.id];
+    let c = nearFree(me.x, me.y);
+    for (let k = 0; k < 16; k++) {
+      const a = Math.random() * Math.PI * 2, cc = nearFree(me.x + Math.cos(a) * 260, me.y + Math.sin(a) * 260);
+      if (!BLOCK[cc]) { c = cc; break; }
+    }
+    const x = (c % GN + 0.5) * CELL, y = (((c / GN) | 0) + 0.5) * CELL;
+    return { owner: p.id, c: p.c, i, x, y, dx: x, dy: y, a: Math.atan2(me.y - y, me.x - x), r: WIFE_R };
   });
   for (let i = 0; i < foodOnMap(n); i++) spawnItem(null);
   for (let i = 0; i < TOJ_ON_MAP; i++) spawnItem("toj");
   S = G;
+  hostSpawnLetter();
+}
+// Nyt brev et tilfældigt sted – helst langt fra alle drengene. Samtidig bestemmes (i hemmelighed),
+// hvilket fristed brevet åbner. Det er tilfældigt, men aldrig det samme to gange i træk.
+function hostSpawnLetter() {
+  const ppl = Object.values(G.players);
+  let best = null, bd = -1;
+  for (let k = 0; k < 80; k++) {
+    const s = ITEM_SPOTS[Math.floor(Math.random() * ITEM_SPOTS.length)];
+    if (STOPS.some(st => Math.hypot(st.x - s.x, st.y - s.y) < STOP_R + 40)) continue;
+    const d = ppl.length ? Math.min(...ppl.map(p => Math.hypot(p.x - s.x, p.y - s.y))) : 1e9;
+    if (d >= LETTER_AWAY) { best = s; break; }
+    if (d > bd) { bd = d; best = s; }
+  }
+  G.letter = { x: best.x, y: best.y };
+  G.phase = 0; G.open = -1; G.firstAt = null;
+  setOpenStop(-1);
+  const choices = STOPS.map((_, i) => i).filter(i => i !== G.lastOpen);
+  G.nextStop = choices[Math.floor(Math.random() * choices.length)];
+  G.secretDirty = true;
 }
 function spawnItem(kind) {
   if (kind === "toj") return spawnToj();
@@ -821,13 +888,7 @@ function hostUpdate(dt) {
   const act = activePlayers();
   const n = Object.keys(G.players).length;
 
-  // ---- Point for at have tøj på ----
-  // (ingen point for at gemme sig i et af de andre fristeder – kun det næste stop tæller)
-  const nextStop = STOPS[G.stop % STOPS.length];
-  for (const p of act) {
-    p.st.alive += dt;
-    if (!inSafe(p) || Math.hypot(p.x - nextStop.x, p.y - nextStop.y) < STOP_R) p.score += ALIVE_POINTS * dt;
-  }
+  for (const p of act) p.st.alive += dt; // (kun statistik – man får ikke point for at have tøj på)
 
   // ---- Ting på gaden: hvem kommer først? ----
   const pickers = Object.values(G.players) // (også nøgne drenge kan samle op).filter(p => performance.now() - p.last < 4000);
@@ -836,8 +897,7 @@ function hostUpdate(dt) {
       const it = G.items[i];
       if (it.k === "toj" && !p.out && p.clothes >= CLOTHES.length) continue; // har allerede alt tøjet på
       if (Math.hypot(it.x - p.x, it.y - p.y) > p.r + 16) continue;
-      G.items.splice(i, 1);
-      p.score += PICKUP_POINTS;
+      G.items.splice(i, 1); // (ingen point for tøj, pølsehorn og Pepsi Max)
       if (it.k === "toj") {
         p.st.toj++;
         if (p.out) {
@@ -850,7 +910,7 @@ function hostUpdate(dt) {
         }
       } else {
         p.st[it.k]++;
-        hostEvent(p.x, p.y - 30, it.k === "pepsi" ? "+10 PEPSI MAX! ⚡" : "+10 Pølsehorn! 🌭", "#f5c542", it.k === "pepsi" ? "slurp" : "pick", p.id, it.k);
+        hostEvent(p.x, p.y - 30, it.k === "pepsi" ? "PEPSI MAX! ⚡" : "Pølsehorn! 🌭", "#f5c542", it.k === "pepsi" ? "slurp" : "pick", p.id, it.k);
         spawnItem(null);
       }
     }
@@ -858,20 +918,40 @@ function hostUpdate(dt) {
   while (G.items.filter(i => i.k !== "toj").length < foodOnMap(n)) spawnItem(null);
   while (G.items.filter(i => i.k === "toj").length < TOJ_ON_MAP) spawnItem("toj"); // der ligger altid 5 stykker tøj
 
-  // ---- Stoppet: alle drenge med tøj på skal være der ----
-  const stop = STOPS[G.stop % STOPS.length];
-  const inStop = act.filter(p => Math.hypot(p.x - stop.x, p.y - stop.y) < STOP_R);
-  for (const p of inStop) if (!G.firstAt) G.firstAt = p.id;
-  G.atStop = inStop.length; G.need = act.length;
-  if (act.length && inStop.length === act.length) {
-    const pts = STOP_POINTS + 50 * G.lap;
-    for (const p of act) { p.score += pts; p.st.stops++; }
-    const first = G.players[G.firstAt];
-    if (first && !first.out && act.length > 1) { first.score += FIRST_BONUS; first.st.first++; }
-    hostEvent(stop.x, stop.y - 60, `SKÅL! ${stop.short} klaret +${pts}`, "#f5c542", "skaal");
-    if (first && act.length > 1) hostEvent(stop.x, stop.y - 25, `${first.name} var først +${FIRST_BONUS}`, "#fff");
-    G.stop++; G.firstAt = null;
-    if (G.stop % STOPS.length === 0) { G.lap++; hostEvent(stop.x, stop.y + 10, "Ruten forfra – nu sværere! 🔁", "#ff9f9f"); }
+  // ---- Brevet: den første dreng (med tøj på), der når det, åbner et fristed ----
+  G.need = act.length;
+  if (G.phase === 0 && G.letter) {
+    const finder = act.find(p => Math.hypot(p.x - G.letter.x, p.y - G.letter.y) < p.r + LETTER_R);
+    if (finder) {
+      finder.score += LETTER_POINTS; finder.st.letters++;
+      hostEvent(G.letter.x, G.letter.y - 30, `✉️ ${finder.name} fandt brevet! +${LETTER_POINTS}`, "#f5c542", "letter");
+      G.letter = null; G.phase = 1; G.open = G.lastOpen = G.nextStop; G.nextStop = -1; G.firstAt = null;
+      G.secretDirty = true;
+      setOpenStop(G.open);
+      const st = STOPS[G.open];
+      hostEvent(st.x, st.y - 40, `🛡️ ${st.short} er åben!`, "#9dffc4");
+    }
+    G.atStop = 0;
+  } else if (G.phase === 1) {
+    // ---- Det åbne fristed: først derhen +20, og +1/sek. mens man venter ----
+    const stop = STOPS[G.open];
+    const inStop = act.filter(p => Math.hypot(p.x - stop.x, p.y - stop.y) < STOP_R);
+    for (const p of inStop) {
+      p.score += WAIT_POINTS * dt;
+      if (!G.firstAt) {
+        G.firstAt = p.id; p.score += FIRST_BONUS; p.st.first++;
+        hostEvent(stop.x, stop.y - 25, `🥇 ${p.name} er først +${FIRST_BONUS}`, "#fff", "bell");
+      }
+    }
+    G.atStop = inStop.length;
+    // alle drenge med tøj på er samlet: fristedet lukker, og et nyt brev dukker op
+    if (act.length && inStop.length === act.length) {
+      for (const p of act) { p.st.stops++; p.inv = Math.max(p.inv, CLOSE_GRACE); }
+      G.stop++;
+      hostEvent(stop.x, stop.y - 60, `SKÅL! Alle er samlet i ${stop.short} 🍻`, "#f5c542", "skaal");
+      hostEvent(stop.x, stop.y + 5, "Nyt brev er gemt i byen… ✉️", "#fff");
+      hostSpawnLetter();
+    }
   }
 
   hostUpdateEnemies(dt, act, n);
@@ -905,7 +985,8 @@ function pointField(x, y) {
 // Patruljepunkter fordelt jævnt over banen (n stk.)
 const PATROL_CACHE = {};
 function patrolPoints(n) {
-  if (PATROL_CACHE[n]) return PATROL_CACHE[n];
+  const os = openStopOf(G), key = n + "|" + (G ? G.open : -1);
+  if (PATROL_CACHE[key]) return PATROL_CACHE[key];
   // jævnt net af mulige punkter – men ikke tæt på fristederne
   let cand = [];
   for (let k = Math.ceil(Math.sqrt(n)); cand.length < n && k < 12; k++) {
@@ -913,7 +994,7 @@ function patrolPoints(n) {
     for (let gy = 0; gy < k; gy++) for (let gx = 0; gx < k; gx++) {
       const c = nearFree((gx + 0.5) * WORLD / k, (gy + 0.5) * WORLD / k);
       const p = { x: (c % GN + 0.5) * CELL, y: (((c / GN) | 0) + 0.5) * CELL };
-      if (STOPS.every(st => Math.hypot(st.x - p.x, st.y - p.y) > SAFE_KEEP_AWAY)) cand.push(p);
+      if (!os || Math.hypot(os.x - p.x, os.y - p.y) > SAFE_KEEP_AWAY) cand.push(p);
     }
   }
   // vælg n af dem, så de ligger så spredt som muligt
@@ -923,7 +1004,7 @@ function patrolPoints(n) {
     cand.forEach((p, i) => { const d = Math.min(...pts.map(q => Math.hypot(p.x - q.x, p.y - q.y))); if (d > bd) { bd = d; bi = i; } });
     pts.push(cand.splice(bi, 1)[0]);
   }
-  return (PATROL_CACHE[n] = pts);
+  return (PATROL_CACHE[key] = pts);
 }
 // Gå et skridt ad gaderne mod et punkt (ff = flow-felt mod punktet)
 function stepAlong(e, tx, ty, ff, speed, dt) {
@@ -996,7 +1077,7 @@ function hostUpdateEnemies(dt, act, n) {
     if (P && P.id !== e.target) hostEvent(e.x, e.y - 45, "!", "#ffd36b", "hey", P.id); // har fået øje på en dreng
     if (P) { e.lost = { x: P.x, y: P.y, t: LOST_TIME }; chasers[P.id] = (chasers[P.id] || 0) + 1; }
     // forsvandt drengen ind i et fristed? så giver tegneren op med det samme og går et andet sted hen
-    else if (e.lost && STOPS.some(st => Math.hypot(st.x - e.lost.x, st.y - e.lost.y) < STOP_R + 60)) e.lost.t = 0;
+    else if (e.lost && openStopOf(G) && Math.hypot(openStopOf(G).x - e.lost.x, openStopOf(G).y - e.lost.y) < STOP_R + 60) e.lost.t = 0;
     e.target = P ? P.id : null; e.td = real; e.travel = false;
   }
   // Tegnere uden nogen at jagte fordeler sig jævnt over banen
@@ -1032,7 +1113,7 @@ function hostUpdateEnemies(dt, act, n) {
       if (!e.travel) e.td = FAR - 1; // fremme: holder sin plads
     }
     collideWorld(e);
-    for (const safe of STOPS) { // skub tegneren ud af fristederne
+    for (const safe of [openStopOf(G)].filter(Boolean)) { // skub tegneren ud af det åbne fristed
       const fx = e.x - safe.x, fy = e.y - safe.y, fd = Math.hypot(fx, fy) || 1;
       if (fd < STOP_R) { e.x = safe.x + fx / fd * STOP_R; e.y = safe.y + fy / fd * STOP_R; collideWorld(e); }
     }
@@ -1093,7 +1174,7 @@ function hostUpdateWives(dt) {
       w.x += dx / d * step; w.y += dy / d * step;
     }
     collideWorld(w);
-    for (const st of STOPS) { // konerne kan ikke komme ind i fristederne (heller ikke med barnevognen)
+    for (const st of [openStopOf(G)].filter(Boolean)) { // konerne kan ikke komme ind i det åbne fristed (heller ikke med barnevognen)
       for (const o of [w, pramOf(w)]) {
         const fx = o.x - st.x, fy = o.y - st.y, fd = Math.hypot(fx, fy) || 1, m = STOP_R + (o === w ? 0 : PRAM_R);
         if (fd < m) { const k = m - fd; w.x += fx / fd * k; w.y += fy / fd * k; }
@@ -1133,7 +1214,8 @@ function hostSendState() {
   const pl = Object.values(G.players).map(p => [p.id, r1(p.x), r1(p.y), p.fx, p.moving ? 1 : 0, Math.floor(p.score), p.clothes, r1(p.inv * 10), p.hc, r1(p.kx * 100), r1(p.ky * 100), p.out ? 1 : 0, p.boost || 0]);
   sendMain("state", {
     t: Math.round(G.t * 100) / 100, p: G.paused ? 1 : 0,
-    so: G.stop, at: G.atStop, nd: G.need,
+    so: G.stop, at: G.atStop, nd: G.need, ph: G.phase, op: G.open,
+    lt: G.letter ? [r1(G.letter.x), r1(G.letter.y)] : 0,
     it: G.items.map(i => [ITEM_KINDS.indexOf(i.k), r1(i.x), r1(i.y)]),
     en: G.enemies.map(e => [r1(e.x), r1(e.y), EMODES.indexOf(e.mode), e.fx]),
     wv: G.wives.map(w => [r1(w.x), r1(w.y), r1(w.a * 100)]),
@@ -1149,7 +1231,8 @@ function hostEnd(reason) {
     .map(p => ({ id: p.id, n: p.name, c: p.c, s: Math.floor(p.score), st: { ...p.st, alive: Math.round(p.st.alive) } }))
     .sort((a, b) => b.s - a.s);
   hostSendState();
-  const msg = { reason, res, stops: G.stop };
+  const org = G.players[G.organizer];
+  const msg = { reason, res, stops: G.stop, org: org ? org.name : "" };
   sendMain("end", msg);
   setTimeout(() => sendMain("end", msg), 800);
   lobby.started = false;
@@ -1160,12 +1243,13 @@ function hostEnd(reason) {
    SPILLERNE (ikke-vært): modtag værtens tilstand
    ===================================================================== */
 function clientNewView() {
-  S = { t: 0, paused: false, stop: 0, atStop: 0, need: 1, items: [], enemies: [], wives: [], players: {}, floaters: [], recvAt: performance.now() };
+  S = { t: 0, paused: false, stop: 0, atStop: 0, need: 1, phase: 0, open: -1, letter: null, items: [], enemies: [], wives: [], players: {}, floaters: [], recvAt: performance.now() };
 }
 function clientState(m) {
   if (!S) return;
   S.t = m.t; S.recvAt = performance.now(); S.paused = !!m.p;
-  S.stop = m.so; S.atStop = m.at; S.need = m.nd;
+  S.stop = m.so; S.atStop = m.at; S.need = m.nd; S.phase = m.ph | 0; S.open = m.op ?? -1;
+  S.letter = m.lt ? { x: m.lt[0], y: m.lt[1] } : null;
   S.items = m.it.map(([k, x, y]) => ({ k: ITEM_KINDS[k], x, y }));
   // tegnere: behold de gamle (til blød glidning), tilføj nye
   m.en.forEach(([x, y, mode, fx], i) => {
@@ -1223,6 +1307,15 @@ function onNetMsg(topic, ev, m) {
     }
     return;
   }
+  // Hemmelig besked på min egen kanal (kun mig + værten): jeg er Den ukendte arrangør
+  if (topic === playerTopic(MY_ID)) {
+    if (ev === "secret" && m.rid === roundId) {
+      const first = !SECRET.org;
+      SECRET.org = true; SECRET.ns = m.ns ?? -1;
+      if (first && (state === "play" || state === "pause" || state === "wait")) announceOrganizer();
+    }
+    return;
+  }
   if (topic !== mainTopic()) return;
   if (ev === "lobby" || ev === "state" || ev === "start" || ev === "end") lastHostMsg = performance.now();
   if (ev === "lobby") {
@@ -1239,7 +1332,7 @@ function onNetMsg(topic, ev, m) {
     }
   } else if (ev === "start") {
     lobby.players = m.pl;
-    if (m.pl.some(p => p.id === MY_ID) && (state === "lobby" || state === "end")) clientStart();
+    if (m.pl.some(p => p.id === MY_ID) && (state === "lobby" || state === "end")) { roundSeed = m.sd | 0 || 1; roundId = m.rid || ""; clientStart(); }
   } else if (ev === "state") {
     if ((state === "play" || state === "pause" || state === "wait") && S) clientState(m);
   } else if (ev === "end") {
@@ -1345,7 +1438,8 @@ function roomLink() { return location.origin + location.pathname + "#" + roomCod
 function hostStart() {
   if (role !== "host" || state !== "lobby") return;
   lobby.started = true;
-  sendMain("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })) });
+  roundSeed = 1 + Math.floor(Math.random() * 1e9); roundId = Math.random().toString(36).slice(2, 8);
+  sendMain("start", { pl: lobby.players.map(p => ({ id: p.id, name: p.name, c: p.c })), sd: roundSeed, rid: roundId });
   hostNewGame();
   beginRound(0);
 }
@@ -1354,7 +1448,16 @@ function clientStart() {
   const slot = lobby.players.findIndex(p => p.id === MY_ID);
   beginRound(slot);
 }
+// Den ukendte arrangør: hos værten står det i G, hos spillerne kommer det som hemmelig besked
+const SECRET = { org: false, ns: -1 };
+const amOrganizer = () => role === "host" ? !!G && G.organizer === MY_ID : SECRET.org;
+const secretNextStop = () => role === "host" ? (G ? G.nextStop : -1) : SECRET.ns;
+function announceOrganizer() {
+  if (S && ME) S.floaters.push({ x: ME.x, y: ME.y - 90, text: "🤫 Du er Den ukendte arrangør!", color: "#d9a8ff", life: 3.5 });
+  toast("🤫 Du er Den ukendte arrangør! Kun du kan se de lilla pile.");
+}
 function beginRound(slot) {
+  SECRET.org = false; SECRET.ns = -1;
   ME = newMe(Math.max(0, slot), lobby.players.length);
   cam.snap = true;
   myStats = { dist: 0, slowed: 0 };
@@ -1365,7 +1468,8 @@ function beginRound(slot) {
   $("pauseBtn").hidden = role !== "host";
   showScreen(null);
   Sound.whistle();
-  S.floaters.push({ x: ME.x, y: ME.y - 60, text: "Første stop: Bodega! 🍺", color: "#f5c542", life: 2.5 });
+  S.floaters.push({ x: ME.x, y: ME.y - 60, text: "Find brevet! ✉️", color: "#f5c542", life: 2.5 });
+  if (amOrganizer()) announceOrganizer();
 }
 
 /* =====================================================================
@@ -1543,9 +1647,9 @@ function draw(now, dt) {
     ctx.fillStyle = "#ffe7a8"; ctx.beginPath(); ctx.arc(x, y, 2 * s, 0, Math.PI * 2); ctx.fill();
   }
 
-  // stop-pladser (tegnes oven på mørket, så de er lette at se)
-  const curStop = S ? S.stop % STOPS.length : 0;
-  STOPS.forEach((st, i) => drawStop(st, i === curStop && !!ME, now));
+  // fristeder (tegnes oven på mørket, så de er lette at se)
+  const inGame = !!(S && ME), curOpen = inGame ? S.open : -1;
+  STOPS.forEach((st, i) => drawStop(st, i === curOpen, inGame, now));
   // Hovedbanegården (start)
   if (visible(START.x, START.y, 120)) { const [x, y] = toS(START.x, START.y + 70); label("🚉 Hovedbanegården", x, y, Math.max(10, 13 * s), "#fff"); }
 
@@ -1556,6 +1660,7 @@ function draw(now, dt) {
 
   // ting på gaden
   if (S) for (const it of S.items) if (visible(it.x, it.y, 40)) drawItem(it, now);
+  if (S && S.letter && visible(S.letter.x, S.letter.y, 40)) drawLetter(S.letter, now);
 
   // personer sorteret oppefra og ned
   const people = [];
@@ -1586,7 +1691,12 @@ function draw(now, dt) {
     ctx.beginPath(); ctx.arc(x, y, f.r, 0, Math.PI * 2); ctx.fill();
   }
 
-  if (ME && S && state !== "end") { drawMeArrow(now); drawStopArrow(now); drawTeamArrows(); drawStopBanner(); drawScoreboard(); drawMinimap(); }
+  if (ME && S && state !== "end") {
+    const tgs = arrowTargets();
+    for (const tg of tgs) drawMeArrow(tg, now);
+    for (const tg of tgs) drawStopArrow(tg, now);
+    drawTeamArrows(); drawStopBanner(); drawScoreboard(); drawMinimap();
+  }
 
   if (joy.active && state === "play") {
     ctx.globalAlpha = 0.35; ctx.fillStyle = "#fff";
@@ -1669,7 +1779,8 @@ function shade(hex, k) {
   return `rgb(${f(r)},${f(g)},${f(b)})`;
 }
 
-function drawStop(st, current, now) {
+function drawStop(st, current, inGame, now) {
+  const closed = inGame && !current;
   if (!visible(st.x, st.y, STOP_R + 80)) return;
   const s = view.s, [x, y] = toS(st.x, st.y), R = STOP_R * s;
   // brolagt plads med lys
@@ -1692,9 +1803,9 @@ function drawStop(st, current, now) {
   ctx.fillStyle = current ? "#173f2c" : "rgba(23,63,44,.75)"; ctx.fill();
   ctx.lineWidth = Math.max(1, 2 * s); ctx.strokeStyle = current ? "#d6a63a" : "rgba(214,166,58,.6)"; ctx.stroke();
   ctx.font = `${Math.max(18, 30 * s)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.globalAlpha = current ? 1 : 0.8; ctx.fillText(st.emoji, x, y - 4 * s); ctx.globalAlpha = 1;
+  ctx.globalAlpha = current ? 1 : closed ? 0.5 : 0.8; ctx.fillText(st.emoji, x, y - 4 * s); ctx.globalAlpha = 1;
   label(st.name, x, y + R * 0.62, Math.max(10, 14 * s), current ? "#fff" : "#e8eaee");
-  label("🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), current ? "#9dffc4" : "#e6fff0");
+  label(current ? "🛡️ Fristed – ÅBENT" : closed ? "🔒 Lukket" : "🛡️ Fristed", x, y - R * 0.62, Math.max(9, 12 * s), current ? "#9dffc4" : closed ? "#c9ccd2" : "#e6fff0");
 }
 
 function drawTree(tr, now) {
@@ -1777,6 +1888,22 @@ function drawItem(it, now) {
     for (let i = 0; i <= 4; i++) ctx.lineTo(x - w * 0.55 + i * w * 0.275, y + h * 0.15 + (i % 2 ? -h * 0.2 : 0));
     ctx.stroke();
   }
+}
+
+// Brevet: hvid konvolut med rødt laksegl (lyser kun svagt – det skal findes)
+function drawLetter(L, now) {
+  const s = view.s, [x, y0] = toS(L.x, L.y), y = y0 + Math.sin(now / 300) * 2 * s;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 26 * s);
+  g.addColorStop(0, "rgba(255,245,200,.55)"); g.addColorStop(1, "rgba(255,245,200,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 26 * s, 0, Math.PI * 2); ctx.fill();
+  softShadow(x + 2 * s, y + 10 * s, 14 * s, 4 * s, 0.35);
+  const w = 26 * s, h = 17 * s;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(-0.12);
+  rr(-w / 2, -h / 2, w, h, 2 * s); fillStroke("#fbf7ee", 2.5);
+  ctx.strokeStyle = "rgba(120,100,80,.6)"; ctx.lineWidth = Math.max(0.8, 1.2 * s);
+  ctx.beginPath(); ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(0, h * 0.12); ctx.lineTo(w / 2, -h / 2); ctx.stroke();
+  ctx.fillStyle = "#c8102e"; ctx.beginPath(); ctx.arc(0, h * 0.1, 3.6 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 // Konen (frakke i samme farve som mandens trøje) med barnevogn
@@ -1979,19 +2106,29 @@ function edgePoint(wx, wy, margin) {
   const k = Math.min((cx - margin) / Math.abs(dx || 1e-6), (cy - margin) / Math.abs(dy || 1e-6));
   return { x: cx + dx * k, y: cy + dy * k, a: Math.atan2(dy, dx) };
 }
-// Hvad skal pilene pege på? Normalt næste stop – er man nøgen, det nærmeste stykke tøj.
-function arrowTarget() {
-  const me = myPlayerData();
+// Hvad skal pilene pege på? Det åbne fristed – er man nøgen, det nærmeste stykke tøj.
+// Mens brevet ligger der, er der INGEN pile – undtagen hos Den ukendte arrangør (lilla og hemmelige).
+const ORG_COLOR = "#8e3fd6";
+function arrowTargets() {
+  const out = [], me = myPlayerData();
+  let naked = false;
   if (me && me.out) {
     let best = null, bd = 1e9;
     for (const it of S.items) if (it.k === "toj") { const d = Math.hypot(it.x - ME.x, it.y - ME.y); if (d < bd) { bd = d; best = it; } }
-    if (best) return { x: best.x, y: best.y, above: 26, near: 18, color: "#00a844", icon: "👕" };
+    if (best) { out.push({ x: best.x, y: best.y, above: 26, near: 18, color: "#00a844", icon: "👕", naked: true }); naked = true; }
   }
-  const st = STOPS[S.stop % STOPS.length];
-  return { x: st.x, y: st.y, above: STOP_R, near: STOP_R * 0.6, color: "#c8102e", icon: st.emoji };
+  if (!naked && S.phase === 1 && S.open >= 0) {
+    const st = STOPS[S.open];
+    out.push({ x: st.x, y: st.y, above: STOP_R, near: STOP_R * 0.6, color: "#c8102e", icon: st.emoji });
+  }
+  if (S.phase === 0 && amOrganizer()) {
+    if (S.letter) out.push({ x: S.letter.x, y: S.letter.y, above: 20, near: 16, color: ORG_COLOR, icon: "✉️" });
+    const ns = secretNextStop();
+    if (ns >= 0) { const st = STOPS[ns]; out.push({ x: st.x, y: st.y, above: STOP_R, near: STOP_R * 0.6, color: ORG_COLOR, icon: st.emoji, small: true }); }
+  }
+  return out;
 }
-function drawStopArrow(now) {
-  const tg = arrowTarget();
+function drawStopArrow(tg, now) {
   const top = 92, side = 50, bottom = Math.min(view.cw, view.ch) < 500 ? 150 : 180; // plads til banner og minikort
   let [sx, sy] = toS(tg.x, tg.y);
   const onScreen = sx > side && sx < view.cw - side && sy > top && sy < view.ch - bottom;
@@ -2005,23 +2142,23 @@ function drawStopArrow(now) {
     const k = Math.min((view.cw / 2 - side) / Math.abs(dx || 1e-6), ((dy < 0 ? cy - top : view.ch - bottom - cy)) / Math.abs(dy || 1e-6));
     x = cx + dx * k; y = cy + dy * k; a = Math.atan2(dy, dx);
   }
-  const R = 34 * pulse;
+  const R = (tg.small ? 26 : 34) * pulse;
   ctx.save(); ctx.translate(x, y);
   ctx.save(); ctx.rotate(a);
   ctx.beginPath(); ctx.moveTo(R + 26, 0); ctx.lineTo(R - 4, -20); ctx.lineTo(R - 4, 20); ctx.closePath();
   ctx.fillStyle = tg.color; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke();
   ctx.restore();
   ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = tg.color; ctx.stroke();
-  ctx.font = "34px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(tg.icon, 0, 2);
+  ctx.font = `${Math.round(R)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(tg.icon, 0, 2);
   ctx.restore();
 }
 // Pil rundt om min egen dreng, der altid peger mod målet (stor og grøn, når man er nøgen)
-function drawMeArrow(now) {
-  const tg = arrowTarget(), naked = tg.icon === "👕";
+function drawMeArrow(tg, now) {
+  const naked = !!tg.naked;
   const dx = tg.x - ME.x, dy = tg.y - ME.y;
   if (Math.hypot(dx, dy) < tg.near) return; // man står lige ved målet
   const a = Math.atan2(dy, dx), [mx, my] = toS(ME.x, ME.y - PLAYER_R * 0.5);
-  const sc = naked ? 1.8 : 1;
+  const sc = naked ? 1.8 : tg.small ? 0.8 : 1;
   const rad = Math.max(46, PLAYER_R * view.s * 3) * (naked ? 1.25 : 1) + Math.sin(now / 150) * 4;
   ctx.save(); ctx.translate(mx + Math.cos(a) * rad, my + Math.sin(a) * rad); ctx.rotate(a); ctx.scale(sc, sc);
   ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -14); ctx.lineTo(-4, 0); ctx.lineTo(-10, 14); ctx.closePath();
@@ -2038,17 +2175,23 @@ function drawTeamArrows() {
     ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
   }
 }
-function drawStopBanner() {
-  const st = STOPS[S.stop % STOPS.length];
-  const lap = Math.floor(S.stop / STOPS.length);
-  const many = S.need > 1;
-  const txt = `📍 ${st.emoji} ${st.short}` + (many ? `  ·  ${S.atStop}/${S.need} drenge er der` : "") + (lap ? `  ·  omgang ${lap + 1}` : "");
-  const fs = view.cw < 420 ? 14 : 16;
+function pillText(txt, y, fs, border, bg = "#fffaf0", color = INK) {
   ctx.font = `900 ${fs}px sans-serif`;
-  const w = ctx.measureText(txt).width + 24, h = fs + 14, x = view.cw / 2 - w / 2, y = 6;
-  ctx.globalAlpha = 0.92; rr(x, y, w, h, h / 2); ctx.fillStyle = "#fffaf0"; ctx.fill(); ctx.globalAlpha = 1;
-  ctx.lineWidth = 2.5; ctx.strokeStyle = "#c8102e"; ctx.stroke();
-  ctx.fillStyle = INK; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(txt, view.cw / 2, y + h / 2 + 1);
+  const w = Math.min(view.cw - 8, ctx.measureText(txt).width + 24), h = fs + 14, x = view.cw / 2 - w / 2;
+  ctx.globalAlpha = 0.92; rr(x, y, w, h, h / 2); ctx.fillStyle = bg; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.lineWidth = 2.5; ctx.strokeStyle = border; ctx.stroke();
+  ctx.fillStyle = color; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(txt, view.cw / 2, y + h / 2 + 1, w - 12);
+  return h;
+}
+function drawStopBanner() {
+  const fs = view.cw < 420 ? 14 : 16;
+  let txt;
+  if (S.phase === 1 && S.open >= 0) {
+    const st = STOPS[S.open];
+    txt = `🛡️ ${st.emoji} ${st.short} er åben` + (S.need > 1 ? `  ·  ${S.atStop}/${S.need} er der` : "");
+  } else txt = "✉️ Find brevet! Alle fristeder er lukket";
+  const h = pillText(txt, 6, fs, "#c8102e");
+  if (amOrganizer()) pillText("🤫 Du er Den ukendte arrangør", 6 + h + 4, fs - 2, ORG_COLOR, "#f3e8ff", "#4a1f78");
 }
 function drawScoreboard() {
   const src = role === "host" ? G.players : S.players;
@@ -2061,7 +2204,7 @@ function drawScoreboard() {
   let shown = rows.slice(0, 5);
   const meRow = rows.find(r => r.me);
   if (meRow && !shown.includes(meRow)) shown.push(meRow);
-  const fs = 12, lh = 17, w = 128, h = shown.length * lh + 8, x0 = 4, y0 = 40;
+  const fs = 12, lh = 17, w = 128, h = shown.length * lh + 8, x0 = 4, y0 = amOrganizer() ? 70 : 40;
   ctx.globalAlpha = 0.85; rr(x0, y0, w, h, 8); ctx.fillStyle = "#fffaf0"; ctx.fill();
   ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke(); ctx.globalAlpha = 1;
   ctx.textBaseline = "middle"; ctx.font = `900 ${fs}px sans-serif`;
@@ -2086,9 +2229,11 @@ function drawMinimap() {
   for (const it of S.items) if (it.k === "toj") { // tøj = grønne prikker
     ctx.beginPath(); ctx.arc(x0 + it.x * k, y0 + it.y * k, 3, 0, Math.PI * 2); ctx.fillStyle = "#00c853"; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = "#fff"; ctx.stroke();
   }
-  const st = STOPS[S.stop % STOPS.length];
-  ctx.beginPath(); ctx.arc(x0 + st.x * k, y0 + st.y * k, 6 + Math.sin(performance.now() / 150) * 1.5, 0, Math.PI * 2);
-  ctx.fillStyle = "#f5c542"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#c8102e"; ctx.stroke();
+  if (S.phase === 1 && S.open >= 0) { // kun det åbne fristed vises (aldrig brevet)
+    const st = STOPS[S.open];
+    ctx.beginPath(); ctx.arc(x0 + st.x * k, y0 + st.y * k, 6 + Math.sin(performance.now() / 150) * 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#f5c542"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#c8102e"; ctx.stroke();
+  }
   for (const e of S.enemies) {
     const ex = role === "client" ? e.dx : e.x, ey = role === "client" ? e.dy : e.y;
     ctx.fillStyle = "#1d1a16"; ctx.fillRect(x0 + ex * k - 2, y0 + ey * k - 2, 4, 4);
@@ -2153,7 +2298,7 @@ function updateNag(now) {
 /* =====================================================================
    Game loop
    ===================================================================== */
-let lastNow = performance.now(), lastSend = 0, lastLobbyPing = 0;
+let lastNow = performance.now(), lastSend = 0, lastLobbyPing = 0, lastSecret = 0;
 function frame(now) {
   let dt = (now - lastNow) / 1000; lastNow = now;
   if (dt > 0.25) dt = 0;
@@ -2164,6 +2309,10 @@ function frame(now) {
       while (rest > 0 && state === "play") { const step = Math.min(rest, 1 / 60); hostUpdate(step); rest -= step; }
     }
     if ((state === "play" || state === "pause") && G && now - lastSend >= HOST_SEND_MS) { lastSend = now; hostSendState(); }
+    if ((state === "play" || state === "pause") && G && G.organizer !== MY_ID && (G.secretDirty || now - lastSecret >= 1200)) {
+      if (Net.send(playerTopic(G.organizer), "secret", { rid: roundId, ns: G.nextStop })) G.secretDirty = false;
+      lastSecret = now;
+    }
     if (G && dt > 0) { smoothList(Object.values(G.players), dt, true); }
     if (state === "lobby" && now - lastLobbyPing >= LOBBY_PING_MS) {
       lastLobbyPing = now;
@@ -2247,7 +2396,8 @@ function showEnd(msg) {
   const mine = msg.res && msg.res.find(r => r.id === MY_ID);
   const score = mine ? mine.s : 0;
   $("endTitle").textContent = msg.reason;
-  $("teamLine").textContent = msg.res ? `🍻 Holdet klarede ${msg.stops || 0} stop` : "";
+  $("teamLine").innerHTML = msg.res ? `🍻 Holdet samledes i ${msg.stops || 0} fristed${msg.stops === 1 ? "" : "er"}` +
+    (msg.org ? `<br>🤫 Den ukendte arrangør var: <b>${esc(msg.org)}</b>` : "") : "";
   $("endScore").textContent = fmtNum(score);
 
   if (mine) {
@@ -2267,10 +2417,11 @@ function showEnd(msg) {
       isBest && score > 0 ? "🎉 Ny rekord!" : oldBest !== null ? `Din bedste: ${fmtNum(oldBest)}` : "",
     ].filter(Boolean).join(" · ");
     $("roundTable").innerHTML = msg.res.map((r, i) =>
-      `<tr class="${r.id === MY_ID ? "me" : ""}"><td>${i + 1}.</td><td><span class="dot" style="display:inline-block;vertical-align:middle;width:12px;height:12px;border-width:2px;background:${COLORS[r.c] || "#ccc"}"></span> ${esc(r.n)}</td><td>${fmtNum(r.s)}</td><td>${r.st.stops}📍 ${r.st.first}🥇 ${r.st.alive}s</td></tr>`).join("");
+      `<tr class="${r.id === MY_ID ? "me" : ""}"><td>${i + 1}.</td><td><span class="dot" style="display:inline-block;vertical-align:middle;width:12px;height:12px;border-width:2px;background:${COLORS[r.c] || "#ccc"}"></span> ${esc(r.n)}</td><td>${fmtNum(r.s)}</td><td>${r.st.letters || 0}✉️ ${r.st.first}🥇 ${r.st.stops}🛡️</td></tr>`).join("");
     $("stats").innerHTML = [
-      `📍 Stop klaret: <b>${mine.st.stops}</b>`,
-      `🥇 Først ved stop: <b>${mine.st.first}</b>`,
+      `✉️ Breve fundet: <b>${mine.st.letters || 0}</b>`,
+      `🥇 Først i fristed: <b>${mine.st.first}</b>`,
+      `🛡️ Fristeder samlet: <b>${mine.st.stops}</b>`,
       `🌭 Pølsehorn: <b>${mine.st.horn}</b>`,
       `🥤 Pepsi Max: <b>${mine.st.pepsi}</b>`,
       `👕 Tøj fundet: <b>${mine.st.toj}</b>`,
@@ -2308,7 +2459,7 @@ function resultText() {
   const best = loadJSON(BEST_KEY, {})[name] ?? score;
   const n = roundResult && roundResult.res ? roundResult.res.length : 1;
   const place = mine ? roundResult.res.indexOf(mine) + 1 : 0;
-  return `🎅 Drengenes Julefrokost-tur – ${name}: ${fmtNum(score)} point, ${roundResult ? roundResult.stops || 0 : 0} stop` +
+  return `🎅 Drengenes Julefrokost-tur – ${name}: ${fmtNum(score)} point, ${mine ? mine.st.letters || 0 : 0} breve, ${roundResult ? roundResult.stops || 0 : 0} fristeder` +
     (n > 1 ? `, nr. ${place} af ${n}` : "") + ` (bedste: ${fmtNum(best)})`;
 }
 function toast(msg) {
